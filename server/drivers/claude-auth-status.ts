@@ -38,6 +38,21 @@ export function claudeAuthStatus(
   });
 }
 
+/** Claude Code sent to another host (ANTHROPIC_BASE_URL in its environment or in its settings.json `env`): its
+ * `auth status` reads only an Anthropic sign-in (claude 2.1.325 reports `loggedIn: false` behind a gateway that
+ * authenticates with ANTHROPIC_CUSTOM_HEADERS), so its "signed out" says nothing there and is reported as unknown. */
+export function throughGateway(
+  status: { authenticated?: boolean; account?: ProviderSnapshot["account"] },
+  env: NodeJS.ProcessEnv,
+  settingsEnv: Record<string, string> = {},
+): { authenticated?: boolean; account?: ProviderSnapshot["account"] } {
+  if (status.authenticated !== false) return status;
+  const base = (env.ANTHROPIC_BASE_URL || settingsEnv.ANTHROPIC_BASE_URL || "").trim();
+  let host: string;
+  try { host = new URL(base).hostname.toLowerCase(); } catch { return status; }
+  return host === "api.anthropic.com" ? status : {};
+}
+
 export async function claudeSignedIn(
   cli: string,
   env: NodeJS.ProcessEnv,

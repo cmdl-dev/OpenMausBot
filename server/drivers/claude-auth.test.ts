@@ -1,11 +1,24 @@
 // These tests inject the CLI runner, so they never read or change the developer's real credentials.
 import { describe, expect, it } from "vitest";
 
-import { claudeAuthStatus, claudeSignedIn } from "./claude-auth-status.ts";
+import { claudeAuthStatus, claudeSignedIn, throughGateway } from "./claude-auth-status.ts";
 import { claudeAuthFailure } from "./claude-auth-recovery.ts";
 import { claudeResultError } from "./claude.ts";
 import { claudeApiErrorMessage, claudeEngineReset, claudeLimitFacts, claudeLimitError, claudeLimitMessage, claudeLimitRefusal, claudeUsageLimit, claudeVersionTooOld } from "./claude-limits.ts";
 import { classifyError } from "./retry.ts";
+
+describe("throughGateway", () => {
+  it("does not call Claude signed out when it is sent to another host, whose credentials auth status cannot see", () => {
+    const out = { authenticated: false };
+    expect(throughGateway(out, {}, { ANTHROPIC_BASE_URL: "https://gateway.example.ts.net:14443" })).toEqual({});
+    expect(throughGateway(out, { ANTHROPIC_BASE_URL: "http://127.0.0.1:8317" })).toEqual({});
+    expect(throughGateway(out, {})).toEqual(out);
+    expect(throughGateway(out, { ANTHROPIC_BASE_URL: "https://api.anthropic.com" })).toEqual(out);
+    expect(throughGateway(out, { ANTHROPIC_BASE_URL: "not a url" })).toEqual(out);
+    expect(throughGateway({ authenticated: true, account: { email: "a@b.co" } }, { ANTHROPIC_BASE_URL: "https://gateway.example" }))
+      .toEqual({ authenticated: true, account: { email: "a@b.co" } });
+  });
+});
 
 describe("claudeSignedIn", () => {
   it("uses the CLI's machine-readable auth status", async () => {

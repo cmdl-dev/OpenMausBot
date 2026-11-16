@@ -12,7 +12,7 @@ import { writeFileAtomicIfChanged } from "../atomic.ts";
 import { augmentedPath, findCliCandidates } from "../env-path.ts"; import { BASH_MAX_TIMEOUT_MS } from "../system-prompt.ts";
 import { brokerSocketPath, describeSpawnFailure, execCli, killCliTree, spawnCli } from "../procs.ts";
 import { cliToLaunch, cliVersionProbe } from "../cli-version-probe.ts";
-import { claudeAuthStatus } from "./claude-auth-status.ts";
+import { claudeAuthStatus, throughGateway } from "./claude-auth-status.ts";
 import { projectMcpServers } from "./claude-project-mcp.ts";
 import { botSettingsFor, folderSettingsEnv, withBotSettings } from "./claude-bot-settings.ts";
 import { claudeBilling, claudeCallUsage } from "./claude-billing.ts";
@@ -1914,7 +1914,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       const update = claudeCliUpdate(version, config.cli);
       const warning = claudeInheritWarning(env);
       if (config.requireApiKey && !input.environment.ANTHROPIC_API_KEY) return { state: "unavailable", version, reason: NO_ANTHROPIC_KEY };
-      const probed: typeof lastAuth = config.requireApiKey ? { authenticated: true } : await claudeAuthStatus(config.cli, env);
+      const probed: typeof lastAuth = config.requireApiKey ? { authenticated: true } : throughGateway(await claudeAuthStatus(config.cli, env), env, readClaudeAuthSettings(env, input.environment).env);
       const auth = probed.authenticated === undefined ? lastAuth : (lastAuth = probed);
       return { state: "available", version, ...auth, ...claudeBilling(env, auth.account), ...(update ? { update } : {}), ...(warning ? { warning } : {}) };
     };

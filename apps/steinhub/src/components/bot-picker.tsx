@@ -1,12 +1,12 @@
 import { router } from "expo-router";
 import { Check, Settings } from "lucide-react-native";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Row } from "@/components/list";
+import { Sheet } from "@/components/sheet";
 import { Txt } from "@/components/text";
 import type { BotView } from "@/state/views";
-import { colors, radius, shadowSheet, size, space } from "@/theme";
+import { colors, radius, size, space } from "@/theme";
 
 export interface BotPickerProps {
   visible: boolean;
@@ -18,10 +18,8 @@ export interface BotPickerProps {
 
 export function BotPicker({ visible, bots, selectedId, onSelect, onClose }: BotPickerProps) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Close bot picker" style={styles.scrim} onPress={onClose} />
-      <SafeAreaView edges={["bottom"]} style={styles.sheet}>
-        <View style={styles.grabber} />
+    <Sheet open={visible} onClose={onClose} label="Bot picker">
+      <View style={styles.sheet}>
         <View style={styles.header}>
           <Txt variant="headline">Chat with</Txt>
           <Txt variant="footnote" tone="tertiary">
@@ -64,22 +62,13 @@ export function BotPicker({ visible, bots, selectedId, onSelect, onClose }: BotP
             router.navigate({ pathname: "/bot/[id]", params: { id: selectedId } });
           }}
         />
-      </SafeAreaView>
-    </Modal>
+      </View>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: colors.scrim },
-  sheet: {
-    backgroundColor: colors.bgRaised,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: space[2],
-    paddingBottom: space[2],
-    ...shadowSheet,
-  },
-  grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.surface3, marginTop: space[2] },
+  sheet: { paddingHorizontal: space[2], paddingBottom: space[2] },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", padding: space[3] },
   bot: { flexDirection: "row", alignItems: "center", gap: space[3], padding: space[3], borderRadius: radius.md },
   botSelected: { backgroundColor: colors.surface1 },

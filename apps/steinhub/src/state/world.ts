@@ -15,6 +15,7 @@ import {
   type BotSection,
   type BotView,
   type ComputerView,
+  type EngineView,
   type HostView,
   type MessageView,
   type PersonView,
@@ -49,6 +50,8 @@ export interface World {
   computers: ComputerView[];
   /** Only the paired computer is known; the computer serves no list of the others to phones yet. */
   computersPartial: boolean;
+  /** What a bot's model can be switched to. */
+  engines: EngineView[];
   detail(threadId: string | undefined): ThreadDetail;
   bot(botId: string | undefined): BotView | null;
 }
@@ -60,6 +63,12 @@ const LINK_STATUS = {
   "signed-out": { label: "Not paired", tone: "danger" },
   "update-app": { label: "Not reachable", tone: "danger" },
 } as const;
+
+/** The sample world's engines, named as its bots' models are. */
+const SAMPLE_ENGINES: EngineView[] = [
+  { instanceId: "claude", name: "Claude", models: [{ id: "claude-opus-5-5", label: "Claude Opus 5.5" }, { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }] },
+  { instanceId: "codex", name: "Codex", models: [{ id: "gpt-6.1-sol", label: "GPT 6.1 Sol" }] },
+];
 
 function demoWorld(): World {
   const automations = sample.automations.map((automation) => (automation.runs.length ? automation : { ...automation, runs: sample.runs }));
@@ -77,6 +86,7 @@ function demoWorld(): World {
     automationsLoaded: true,
     computers: sample.computers,
     computersPartial: false,
+    engines: SAMPLE_ENGINES,
     detail(threadId) {
       const thread = sample.threadById(threadId);
       return {
@@ -131,6 +141,7 @@ export function useWorld(): World {
         },
       ],
       computersPartial: true,
+      engines: world.engines,
       detail(threadId) {
         const owner = threadId ? taskOf(world.bots, threadId) : null;
         const state = threadId ? world.threads[threadId] : undefined;

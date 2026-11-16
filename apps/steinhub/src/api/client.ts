@@ -97,6 +97,9 @@ export function desktopClient(transport: Transport) {
     newFolder: (botId: string, folder: { name: string; emoji?: string }) =>
       transport.request<{ bot: WireBot }>("POST", `/api/bots/${id(botId)}/projects`, folder),
     setPinned: (botId: string, pinned: boolean) => transport.request<BotUpdateResponse>("PATCH", `/api/bots/${id(botId)}`, { pinned }),
+    /** The bot's default model and its selected conversation's; the computer refuses a model it can't run now. */
+    setModel: (botId: string, modelSelection: { instanceId: string; model: string }) =>
+      transport.request<BotUpdateResponse>("PATCH", `/api/bots/${id(botId)}`, { modelSelection, requireAvailableModel: true }),
     markRead: (botId: string, threadId: string) => transport.request<{ bot: WireBot }>("POST", `/api/bots/${id(botId)}/read`, { threadId }),
     deleteBot: (botId: string) => transport.request<unknown>("DELETE", `/api/bots/${id(botId)}`),
     send: (botId: string, message: { text: string; threadId: string; sendId: string }) =>

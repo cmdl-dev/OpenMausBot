@@ -38,6 +38,7 @@ export interface Connection {
   newThread(botId: string, folderId?: string): Promise<string>;
   newFolder(botId: string, folder: { name: string; emoji?: string }): Promise<void>;
   setPinned(botId: string, pinned: boolean): Promise<void>;
+  setModel(botId: string, selection: { instanceId: string; model: string }): Promise<void>;
   markRead(botId: string, threadId: string): Promise<void>;
   deleteBot(botId: string): Promise<void>;
   /** An `/api/attachments/…` path as an image source on the paired computer, with this device's token. */
@@ -333,6 +334,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [client],
   );
 
+  const setModel = useCallback(
+    async (botId: string, selection: { instanceId: string; model: string }) => {
+      if (mode === "demo") throw new Error("Changing a bot's model needs a paired computer.");
+      const reply = await client().setModel(botId, selection);
+      dispatch({ type: "frame", frame: { kind: "bot", bot: reply.bot } });
+    },
+    [mode, client],
+  );
+
   const markRead = useCallback(
     async (botId: string, threadId: string) => {
       const reply = await client().markRead(botId, threadId);
@@ -384,10 +394,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       newThread,
       newFolder,
       setPinned,
+      setModel,
       markRead,
       deleteBot,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, markRead, deleteBot],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, setModel, markRead, deleteBot],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

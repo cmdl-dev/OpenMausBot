@@ -2,6 +2,7 @@ import type { BotsResponse, CompanionEndpointsSnapshot, InstancesResponse, WireM
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import type { RoutinesReply } from "@/api/client";
+import type { EngineView } from "@/state/views";
 
 export interface ThreadState {
   messages: WireMessage[];
@@ -34,6 +35,7 @@ export interface LiveWorld {
   routinesLoaded: boolean;
   /** Model id → its label in the engine's picker. */
   modelLabels: Record<string, string>;
+  engines: EngineView[];
   host: { serverName: string; version?: string } | null;
 }
 
@@ -47,6 +49,7 @@ export const emptyWorld: LiveWorld = {
   runs: [],
   routinesLoaded: false,
   modelLabels: {},
+  engines: [],
   host: null,
 };
 
@@ -138,7 +141,15 @@ export function worldReducer(world: LiveWorld, action: WorldAction): LiveWorld {
       for (const instance of action.reply.instances) {
         for (const option of instance.models.options) modelLabels[option.id] = option.label;
       }
-      return { ...world, modelLabels };
+      const engines = action.reply.instances
+        .filter((instance) => !instance.readOnly && instance.models.options.length > 0)
+        .map((instance) => ({
+          instanceId: instance.instanceId,
+          name: instance.displayName,
+          ...(instance.snapshot.state === "available" ? {} : { unavailable: instance.snapshot.reason ?? "Not available right now" }),
+          models: instance.models.options.map((option) => ({ id: option.id, label: option.label })),
+        }));
+      return { ...world, modelLabels, engines };
     }
     case "routines":
       return { ...world, routines: action.reply.routines, runs: action.reply.runs, routinesLoaded: true };

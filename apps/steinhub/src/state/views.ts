@@ -31,8 +31,19 @@ export interface BotView {
   role: string;
   tint: BotTint;
   model: string;
+  /** The engine and model id the bot runs on; absent in the sample world. */
+  modelSelection?: { instanceId: string; model: string };
   state: { label: string; tone: Status };
   suggestions: string[];
+}
+
+/** One engine on the computer and the models a bot can run on it. */
+export interface EngineView {
+  instanceId: string;
+  name: string;
+  /** Why it can't be picked right now; absent when it can. */
+  unavailable?: string;
+  models: { id: string; label: string }[];
 }
 
 export type ThreadGroup = "Today" | "Yesterday" | "Earlier";
@@ -253,6 +264,7 @@ export function botView(bot: WireBot, index: number, modelLabels: Record<string,
     role: bot.title || bot.description,
     tint: TINTS[bot.color] ?? tintForIndex(index),
     model: modelLabels[bot.modelSelection.model] ?? bot.modelSelection.model,
+    modelSelection: { instanceId: bot.modelSelection.instanceId, model: bot.modelSelection.model },
     state: ACTIVITY[activity],
     suggestions: LIVE_SUGGESTIONS,
   };

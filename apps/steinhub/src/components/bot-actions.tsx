@@ -1,10 +1,10 @@
 import { CheckCheck, Copy, FolderPlus, Pencil, Pin, PinOff, SquarePen, Trash2, type LucideIcon } from "lucide-react-native";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
+import { Sheet } from "@/components/sheet";
 import { Txt } from "@/components/text";
 import type { BotView } from "@/state/views";
-import { colors, radius, shadowSheet, size, space } from "@/theme";
+import { colors, radius, size, space } from "@/theme";
 
 export type BotAction = "new-thread" | "new-folder" | "pin" | "mark-read" | "edit-profile" | "copy-id" | "delete";
 
@@ -37,11 +37,9 @@ function entries(bot: BotView): Entry[][] {
 
 export function BotActions({ bot, onAction, onClose }: { bot: BotView | null; onAction: (bot: BotView, action: BotAction) => void; onClose: () => void }) {
   return (
-    <Modal visible={bot !== null} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Close" style={styles.scrim} onPress={onClose} />
+    <Sheet open={bot !== null} onClose={onClose} label={bot ? `${bot.name} menu` : "Bot menu"}>
       {bot ? (
-        <SafeAreaView edges={["bottom"]} style={styles.sheet}>
-          <View style={styles.grabber} />
+        <View style={styles.sheet}>
           <View style={styles.header}>
             <Avatar bot={bot} label={bot.glyph} tint={bot.tint} />
             <View style={styles.fill}>
@@ -77,23 +75,14 @@ export function BotActions({ bot, onAction, onClose }: { bot: BotView | null; on
                 ))}
             </View>
           ))}
-        </SafeAreaView>
+        </View>
       ) : null}
-    </Modal>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: colors.scrim },
-  sheet: {
-    backgroundColor: colors.bgRaised,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: space[2],
-    paddingBottom: space[2],
-    ...shadowSheet,
-  },
-  grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.surface3, marginTop: space[2] },
+  sheet: { paddingHorizontal: space[2], paddingBottom: space[2] },
   header: { flexDirection: "row", alignItems: "center", gap: space[3], padding: space[3] },
   fill: { flex: 1 },
   group: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: space[1], paddingTop: space[1] },

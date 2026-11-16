@@ -598,7 +598,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
                   live.cua = createSharedCua(mcp, { t });
                 }
                 return live.cua;
-              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })), codexJob(codexTask, call, job.id));
+              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })), codexJob(codexTask, call, job.id, log));
             } catch (error) { result = sharedComputerError(error); live.cua?.close(); live.cua = null; }
             finally {
               clearInterval(heartbeat); ended = true;

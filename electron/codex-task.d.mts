@@ -9,4 +9,6 @@ export function runCodexTask(options: {
   /** For tests: the command and arguments to start instead of `codex app-server`. */
   launch?: [string, string[]];
   env?: NodeJS.ProcessEnv;
+  /** One line per step with its time since the start; never the job's words. */
+  log?: (line: string) => void;
 }): Promise<{ content: Array<{ type: "text"; text: string }> }>;

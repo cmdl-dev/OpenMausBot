@@ -26,8 +26,8 @@ export const validCodexJob = operation => operation.prompt === undefined ? opera
 
 /** One leased codex_task: each app question goes to the server that sent the job (POST …/codex-app), asked again while the
  * person has not answered, since a held request ends before they may. */
-export const codexJob = (codexTask, call, jobId) => (operation, signal) => codexTask({
-  prompt: operation.prompt, timeoutSeconds: operation.timeout_seconds, signal,
+export const codexJob = (codexTask, call, jobId, log) => (operation, signal) => codexTask({
+  prompt: operation.prompt, timeoutSeconds: operation.timeout_seconds, signal, log,
   ask: async request => {
     const questionId = randomUUID();
     for (;;) {
@@ -65,15 +65,19 @@ function stopTree(child) {
 /**
  * Runs `prompt` as one Codex turn and resolves with its final answer as an MCP-style result.
  * `ask(request)` gets each app-access elicitation Codex sends and resolves with the answer for Codex.
- * `launch` is for tests: [command, args] to start instead of `codex app-server`.
+ * `launch` is for tests: [command, args] to start instead of `codex app-server`. `log` gets one line per step with its
+ * time since the start, never the job's words.
  */
-export async function runCodexTask({ prompt, timeoutSeconds = CODEX_TASK_SECONDS, signal, ask, launch, env = process.env }) {
+export async function runCodexTask({ prompt, timeoutSeconds = CODEX_TASK_SECONDS, signal, ask, launch, env = process.env, log = () => {} }) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("Give codex_task the whole job in prompt");
   const seconds = Math.min(Math.max(1, Math.floor(timeoutSeconds)), MAX_CODEX_TASK_SECONDS);
   signal?.throwIfAborted();
+  const began = Date.now();
+  const step = what => log(`codex_task ${((Date.now() - began) / 1000).toFixed(1)}s ${what}`);
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "omb-codex-task-"));
   const childEnv = { ...inheritedEnvironment(env), PATH: await commandPath({ env }), ...(env.CODEX_HOME ? { CODEX_HOME: env.CODEX_HOME } : {}) };
   const [command, args] = launch ?? ["codex", ["app-server", "-c", "features.computer_use=true"]];
+  step("starting Codex");
   const child = spawn(command, args, { cwd, env: childEnv, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32", windowsHide: true });
   const stderr = [];
   child.stderr.on("data", chunk => { if (stderr.length < 40) stderr.push(String(chunk).slice(0, 2000)); });
@@ -105,8 +109,11 @@ export async function runCodexTask({ prompt, timeoutSeconds = CODEX_TASK_SECONDS
       const { result, error } = refusal(message.method);
       return send({ jsonrpc: "2.0", id: message.id, ...(error ? { error } : { result }) });
     }
+    const app = message.params?._meta?.tool_params?.app ?? message.params?.serverName ?? "an app";
+    step(`asking about ${String(app).slice(0, 80)}`);
     let answer = { action: "decline" };
-    try { answer = codexAppAnswer(await ask(message.params)); } catch {}
+    try { answer = codexAppAnswer(await ask(message.params)); } catch (error) { step(`question failed: ${String(error?.message ?? error).slice(0, 200)}`); }
+    step(`answered ${answer.action}`);
     send({ jsonrpc: "2.0", id: message.id, result: answer });
   };
 
@@ -136,12 +143,15 @@ export async function runCodexTask({ prompt, timeoutSeconds = CODEX_TASK_SECONDS
     await Promise.race([done, (async () => {
       await request("initialize", { clientInfo: { name: "openmausbot-lent", title: "OpenMausBot", version: "1" }, capabilities: { experimentalApi: true } });
       send({ jsonrpc: "2.0", method: "initialized", params: {} });
+      step("Codex ready");
       const started = await request("thread/start", { cwd, ephemeral: true, ...THREAD_PERMISSIONS });
       const threadId = started?.thread?.id;
       if (typeof threadId !== "string") throw new Error("Codex did not start a session");
       await request("turn/start", { threadId, input: [{ type: "text", text: prompt }], ...TURN_PERMISSIONS });
+      step("job started");
       await done;
     })()]);
+    step(`finished after ${toolCalls} tool call${toolCalls === 1 ? "" : "s"}`);
     const text = lastText.trim() || "Codex finished without a final message.";
     return { content: [{ type: "text", text: `${text.length > ANSWER_LIMIT ? `${text.slice(0, ANSWER_LIMIT)}\n[cut]` : text}${toolCalls ? `\n\n(Codex made ${toolCalls} tool call${toolCalls === 1 ? "" : "s"} on this computer.)` : ""}` }] };
   } finally {

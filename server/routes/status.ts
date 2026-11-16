@@ -10,6 +10,7 @@ import { reportableServerVersion } from "../environment.ts";
 import { fleetAvailable, fleetRequest, fleetSocketPath } from "../fleet-client.ts";
 import { noteKeyAccepted, noteKeyRejected } from "../key-rejections.ts";
 import { loadPlanUsage, planAccountsFromInstances } from "../plan-usage.ts";
+import { HubError, loadHubUsage, UsageHubStore, withHubRows } from "../usage-hubs.ts";
 import { tregProviderApi } from "../included-services.ts";
 import { checkProviderKey, PROVIDER_KEY_KINDS, providerBaseUrl, type ProviderKeyKind } from "../provider-key-check.ts";
 import { checkTregKey } from "../research.ts";
@@ -46,6 +47,7 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
     configStatus, broadcast, browserEngineInstall, browserEngineInstallError,
   } = deps;
   const version = reportableServerVersion();
+  const usageHubs = new UsageHubStore(DATA_DIR);
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
     const shown = deps.threadShown?.(auth) ?? (() => true);
@@ -133,11 +135,25 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
     // Subscription windows (5-hour and weekly). Unlisted, so it stays admin.
     if (method === "GET" && path === "/api/plan-usage") {
       res.setHeader("cache-control", "no-store");
-      const report = await loadPlanUsage({
-        accounts: planAccountsFromInstances(instanceConfigs(cfg)),
-        refresh: url.searchParams.get("refresh") === "1",
-      });
-      return json(res, 200, report);
+      const accounts = planAccountsFromInstances(instanceConfigs(cfg));
+      const refresh = url.searchParams.get("refresh") === "1";
+      const hubs = usageHubs.hubs();
+      const [report, hubRows] = await Promise.all([loadPlanUsage({ accounts, refresh }), loadHubUsage(hubs, { refresh })]);
+      return json(res, 200, { ...report, providers: withHubRows(report.providers, accounts, hubs, hubRows) });
+    }
+    if (path === "/api/plan-usage/hubs" && method === "GET") return json(res, 200, { hubs: usageHubs.views() });
+    if (path === "/api/plan-usage/hubs" && method === "POST") {
+      const body = await readBody(req, 8192);
+      try {
+        return json(res, 200, { hub: await usageHubs.add(body ?? {}), hubs: usageHubs.views() });
+      } catch (error) {
+        return json(res, 400, { error: error instanceof HubError ? error.message : "Could not add that hub." });
+      }
+    }
+    m = path.match(/^\/api\/plan-usage\/hubs\/([\w-]+)$/);
+    if (m && method === "DELETE") {
+      if (!usageHubs.remove(m[1])) return json(res, 404, { error: "No such usage hub." });
+      return json(res, 200, { hubs: usageHubs.views() });
     }
 
     // One read-only request from this server; the verdict never carries the key.

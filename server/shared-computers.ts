@@ -65,8 +65,9 @@ const jobDeadlineMs = (registration: Registration, operation: Operation) =>
 /** Codex on a lent computer asking to use one of its apps: the parsed form, and the answer Codex takes when it is allowed.
  * `key` names the app across questions (a bundle id when Codex gives one): the person's Allow covers it for the whole job. */
 export type CodexAppAccess = { app: string; key: string; summary: string; allowResult: { action: "accept"; content: Record<string, string> } };
-/** Raises the person's card for one Codex app-access question and settles true on Allow; false on Deny or when `signal` ends it. */
-export type CodexAppAccessAsk = (access: CodexAppAccess, signal: AbortSignal) => Promise<boolean>;
+/** Raises the person's card for one Codex app-access question on `computer` and settles true on Allow; false on Deny or
+ * when `signal` ends it. */
+export type CodexAppAccessAsk = (access: CodexAppAccess, signal: AbortSignal, computer: string) => Promise<boolean>;
 /** The registering session alone may poll, answer and disconnect; only that person's bot turns may see or use it. */
 export type SharedComputerOwner = { session: string; person: string };
 export type SharedComputerStatus = {
@@ -426,7 +427,7 @@ export class SharedComputers {
       if (!access || job.questions.size >= MAX_CODEX_QUESTIONS) return declined;
       let allowed = job.apps.get(access.key);
       if (!allowed) {
-        allowed = job.ask(access, job.ended.signal).catch(() => false);
+        allowed = job.ask(access, job.ended.signal, entry.registration.name).catch(() => false);
         job.apps.set(access.key, allowed);
       }
       question = { access, allowed };

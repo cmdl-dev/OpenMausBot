@@ -2,8 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes, randomUUID } from "node:crypto";
-import { runCodexTask } from "./codex-task.mjs";
+import { randomBytes, randomUUID } from "node:crypto"; import { codexJob, runCodexTask, validCodexJob } from "./codex-task.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { allowedServerOrigin } from "./server-address.mjs";
 import { createSharedCua, executeSharedOperation, personalSecretPaths, sharedComputerError, validCommandSeconds } from "./shared-computer-access.mjs";
@@ -124,8 +123,7 @@ export function validSharedOperation(operation, computerId) {
     optionalText(operation.old_text, 350_000) && optionalText(operation.new_text, 350_000) &&
     (operation.encoding === undefined || operation.encoding === "utf8" || operation.encoding === "base64") &&
     (operation.expected_sha256 === undefined || (typeof operation.expected_sha256 === "string" && /^[a-f0-9]{64}$/.test(operation.expected_sha256))) &&
-    optionalText(operation.command, 8000) && validCommandSeconds(operation.timeout_seconds) && optionalText(operation.tool_name, 256) &&
-    optionalText(operation.prompt, 20_000) && (operation.action !== "codex_task" || (typeof operation.prompt === "string" && operation.prompt.trim().length > 0)) &&
+    optionalText(operation.command, 8000) && validCommandSeconds(operation.timeout_seconds) && optionalText(operation.tool_name, 256) && validCodexJob(operation) &&
     (operation.arguments === undefined || (Boolean(operation.arguments) && typeof operation.arguments === "object" && !Array.isArray(operation.arguments))) &&
     (LENT_MCP_ACTIONS.has(operation.action) ? validLentMcpServer(operation.server) : operation.server === undefined);
 }
@@ -461,9 +459,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
   const supportsChrome = new Set();
   const supportsTimeouts = new Set();
   const supportsLong = new Set();
-  const supportsEdits = new Set();
-  /** The servers of the person's own that take this computer's Codex for codex_task. */
-  const supportsCodex = new Set();
+  const supportsEdits = new Set(), supportsCodex = new Set();
   /** My Cloud's browsers reach the web through this computer while lending runs; never while My Cloud sleeps, so a
    * sleeping Cloud is never dialled. */
   const keepLink = async (env, grant, signal) => {
@@ -543,8 +539,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
             ...(supportsTimeouts.has(env.id) ? { commandTimeouts: true } : {}),
             ...(supportsLong.has(env.id) ? { longCommands: true } : {}),
             ...(supportsEdits.has(env.id) ? { fileEdits: true } : {}),
-            ...((grant.cloud || grant.own) && supportsMcp.has(env.id) ? lendsMcp(localEnvironments()) : {}),
-            ...(supportsCodex.has(env.id) ? { codex: grant.codex === true } : {}),
+            ...((grant.cloud || grant.own) && supportsMcp.has(env.id) ? lendsMcp(localEnvironments()) : {}), ...(supportsCodex.has(env.id) ? { codex: grant.codex === true } : {}),
           }, signal, grant.secret);
           if (signal.aborted) break;
           status.set(env.id, { connected: true });
@@ -603,16 +598,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
                   live.cua = createSharedCua(mcp, { t });
                 }
                 return live.cua;
-              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })), (operation, codexSignal) => codexTask({
-                prompt: operation.prompt, timeoutSeconds: operation.timeout_seconds, signal: codexSignal,
-                ask: async codexRequest => {
-                  const questionId = randomUUID();
-                  for (;;) {
-                    const answer = await call("codex-app", { jobId: job.id, questionId, request: codexRequest }, codexSignal);
-                    if (answer?.pending !== true) return answer?.response;
-                  }
-                },
-              }));
+              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })), codexJob(codexTask, call, job.id));
             } catch (error) { result = sharedComputerError(error); live.cua?.close(); live.cua = null; }
             finally {
               clearInterval(heartbeat); ended = true;
@@ -668,8 +654,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
   const state = id => {
     const grant = records[id];
     return { enabled: grant?.enabled === true, folders: Array.isArray(grant?.folders) ? grant.folders : [], terminal: grant?.terminal === true, computer: grant?.computer === true,
-      ...(grant?.own ? { codex: grant.codex === true } : {}),
-      ...(grant?.own ? { own: true, ...(paused ? { paused: true } : {}) } : {}), ...status.get(id) };
+      ...(grant?.own ? { own: true, codex: grant.codex === true, ...(paused ? { paused: true } : {}) } : {}), ...status.get(id) };
   };
   // `resumes`: lending waits (for the Cloud sign-in, say) and resumes by itself, so the server keeps it as lent, not stopped.
   /** Disconnects still waiting for their Cloud's answer. */

@@ -4,7 +4,7 @@
 import { newId } from "./contracts.ts";
 import { optionCardsForTools } from "./message-db.ts";
 import { buildNotification } from "./notify.ts";
-import type { CodexAppAccess } from "./shared-computers.ts";
+import type { CodexAppAccess, CodexAppAccessAsk } from "./shared-computers.ts";
 import type { BotRecord } from "./store.ts";
 import { turnWaitedOnPerson } from "./waiting-on-person.ts";
 import type { YourComputerBus } from "./your-computer-consent.ts";
@@ -76,6 +76,14 @@ export function askLentCodexApp(
       }));
     }
   });
+}
+
+/** The asks of one turn's codex_task: none at all when `autoAllows` says its bot acts without asking (Just do it). */
+export function lentCodexAsker(bus: YourComputerBus, turn: { botId: string; threadId: string; generation: string }, autoAllows: (bot: BotRecord) => boolean): CodexAppAccessAsk {
+  return (access, signal, computer) => {
+    const bot = bus.store.bot(turn.botId) ?? undefined;
+    return bot && autoAllows(bot) ? Promise.resolve(true) : askLentCodexApp(bus, bot, turn, computer, access, signal);
+  };
 }
 
 /** True when it settled one of these asks; call before handing an answer to the engine. */

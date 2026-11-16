@@ -2,6 +2,7 @@
 // works in this computer's apps itself. Codex asks before it uses each app; `ask` takes that question to the person on the
 // server that sent the job and returns their answer. Nothing else Codex asks for is granted here.
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +19,23 @@ const THREAD_PERMISSIONS = { approvalPolicy: "on-request", approvalsReviewer: "u
 const TURN_PERMISSIONS = { approvalPolicy: "on-request", approvalsReviewer: "user", sandboxPolicy: { type: "readOnly" } };
 
 const record = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** A codex_task names its whole job in `prompt`; any other job carries none longer than a job could. */
+export const validCodexJob = operation => operation.prompt === undefined ? operation.action !== "codex_task"
+  : typeof operation.prompt === "string" && operation.prompt.length <= 20_000 && (operation.action !== "codex_task" || operation.prompt.trim().length > 0);
+
+/** One leased codex_task: each app question goes to the server that sent the job (POST …/codex-app), asked again while the
+ * person has not answered, since a held request ends before they may. */
+export const codexJob = (codexTask, call, jobId) => (operation, signal) => codexTask({
+  prompt: operation.prompt, timeoutSeconds: operation.timeout_seconds, signal,
+  ask: async request => {
+    const questionId = randomUUID();
+    for (;;) {
+      const answer = await call("codex-app", { jobId, questionId, request }, signal);
+      if (answer?.pending !== true) return answer?.response;
+    }
+  },
+});
 
 /** Only "decline", or "accept" with a flat form of short strings (none, for computer use), ever reaches Codex. */
 export function codexAppAnswer(response) {

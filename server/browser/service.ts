@@ -14,6 +14,7 @@ import { BrowserLanes } from "../browser-lane.ts";
 import { BROWSER_CALL_DEFAULTS, type BrowserTiming } from "../browser-runtime.ts";
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
+import type { CardFillDeps } from "../card-fill.ts";
 import type { FillLoginDeps } from "../login-fill.ts";
 import type { Backend, OpenedBrowser } from "./backends.ts";
 import type { CdpBrowser } from "./cdp/browser.ts";
@@ -633,6 +634,25 @@ export class BrowserService {
       insertText: (text) => tab().page.keyboard.insertText(text),
       press: async (key) => { await tab().page.press(key); },
       click: async (selector) => { await tab().page.click({ selector }); },
+    };
+  }
+
+  /** fill_card's reads and typing, on the tab in front: every frame in it, out-of-process iframes included. */
+  cardDeps(target: BrowserTarget): Pick<CardFillDeps, "frames" | "read" | "type"> & { pageUrl(): string | null } {
+    const profile = this.profile(target);
+    const tab = () => {
+      const active = profile.run ? profile.active() : null;
+      if (!active) throw new Error("The browser has no page open.");
+      return active;
+    };
+    return {
+      pageUrl: () => (profile.run ? profile.active()?.page.url() ?? null : null),
+      frames: () => {
+        const page = tab().page;
+        return page.frames.all().map((frame) => ({ id: frame.id, url: frame.url, main: frame.id === page.frames.mainFrameId }));
+      },
+      read: (frameId, script) => tab().page.evaluateInFrame(frameId, script, { whileSecret: true }),
+      type: (frameId, selector, value) => tab().page.fillSecretInFrame(frameId, selector, value),
     };
   }
 

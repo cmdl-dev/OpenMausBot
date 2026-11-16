@@ -5,11 +5,14 @@ import type { RequestAuth } from "../request-auth.ts";
 import type { McpKeys } from "../vault/mcp-keys.ts";
 import { TEAM_READER, type VaultReader, type VaultStore } from "../vault-store.ts";
 import { isJson, parseBots, type LoginRouteDeps } from "./logins.ts";
+import { newCard, parseCardFields } from "./vault-cards.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 export interface VaultRouteDeps {
   logins: Pick<LoginRouteDeps, "list" | "botExists" | "onePassword">;
   secrets: Pick<VaultStore, "listSecrets" | "saveSecret" | "receiveSecret" | "updateSecret" | "removeSecret">;
+  /** Saved payment cards: an admin's only, never a Team Cloud member's. */
+  cards?: Pick<VaultStore, "listCards" | "saveCard" | "updateCard" | "removeCard">;
   /** A linked password manager's secrets, listed beside the saved ones and changed only in the manager. */
   linked?: () => LinkedSecret[];
   /** Which MCP servers lose their key when a secret is deleted. */
@@ -19,6 +22,7 @@ export interface VaultRouteDeps {
 }
 
 const SECRETS = "/api/vault/secrets";
+const CARDS = "/api/vault/cards";
 const ID = /^[\w-]{1,128}$/u;
 
 export const VAULT_ERRORS = {
@@ -49,10 +53,44 @@ export function createVaultRoutes(deps: VaultRouteDeps): RouteHandler {
     const readable = (id: string) => deps.secrets.listSecrets(reader).some((secret) => secret.id === id);
     if (path === "/api/vault") {
       if (method !== "GET") return json(res, 405, { error: "method not allowed" });
-      if (!reader.team) return json(res, 200, { logins: [], secrets: deps.secrets.listSecrets(reader), onePassword: { connected: false } });
-      return json(res, 200, { logins: [...deps.logins.list(), ...deps.logins.onePassword.list()], secrets: [...deps.secrets.listSecrets(reader), ...(deps.linked?.() ?? [])], onePassword: deps.logins.onePassword.status() });
+      if (!reader.team) return json(res, 200, { logins: [], secrets: deps.secrets.listSecrets(reader), cards: [], onePassword: { connected: false } });
+      return json(res, 200, {
+        logins: [...deps.logins.list(), ...deps.logins.onePassword.list()], secrets: [...deps.secrets.listSecrets(reader), ...(deps.linked?.() ?? [])],
+        cards: deps.cards?.listCards() ?? [], onePassword: deps.logins.onePassword.status(),
+      });
     }
+    if (path === CARDS || path.startsWith(`${CARDS}/`)) return cardRoute();
     if (path !== SECRETS && !path.startsWith(`${SECRETS}/`)) return json(res, 404, { error: "not found" });
+
+    async function cardRoute() {
+      const cards = deps.cards;
+      if (!cards) return json(res, 404, { error: "not found" });
+      if (!reader.team) return json(res, 403, { error: "Only an admin can add or change a card in the Vault." });
+      if (method !== "GET" && method !== "DELETE" && !isJson(req)) return json(res, 415, { error: "content-type must be application/json" });
+      if (path === CARDS) {
+        if (method !== "POST") return json(res, 405, { error: "method not allowed" });
+        const body = await readBody(req, 8_192);
+        if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "send the card as a JSON object" });
+        const fields = parseCardFields(body, { creating: true });
+        if (!fields.ok) return json(res, 400, { error: fields.error });
+        const bots = parseBots(body.bots ?? "all", deps.logins.botExists);
+        if (!bots.ok) return json(res, 400, { error: bots.error });
+        return json(res, 201, { card: cards.saveCard(newCard(fields.value, bots.value ?? "all")) });
+      }
+      const id = path.slice(`${CARDS}/`.length);
+      const current = ID.test(id) ? cards.listCards().find((card) => card.id === id) : undefined;
+      if (!current) return json(res, 404, { error: "no such card" });
+      if (method === "DELETE") return cards.removeCard(id) ? json(res, 200, { ok: true }) : json(res, 404, { error: "no such card" });
+      if (method !== "PATCH") return json(res, 405, { error: "method not allowed" });
+      const body = await readBody(req, 8_192);
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "send the change as a JSON object" });
+      const fields = parseCardFields(body, { creating: false, saved: current });
+      if (!fields.ok) return json(res, 400, { error: fields.error });
+      const bots = parseBots(body.bots, deps.logins.botExists);
+      if (!bots.ok) return json(res, 400, { error: bots.error });
+      const card = cards.updateCard(id, { ...fields.value, ...(bots.value === undefined ? {} : { bots: bots.value }) });
+      return card ? json(res, 200, { card }) : json(res, 404, { error: "no such card" });
+    }
     if (!reader.team && method !== "DELETE") return json(res, 403, { error: "Only an admin can add or change a secret in the Vault." });
     // JSON only, so a form posted from another local page cannot add or change one.
     if (method !== "GET" && method !== "DELETE" && !isJson(req)) return json(res, 415, { error: "content-type must be application/json" });

@@ -14,7 +14,7 @@ import { Keyboard } from "./keyboard.ts";
 import { RefTable, type RefCounter } from "./refs.ts";
 import { captureScreenshot, type Screenshot, type ScreenshotOptions } from "./screencast.ts";
 import { SecretGuard } from "./secrets.ts";
-import { resolveElement } from "./selectors.ts";
+import { resolveCssInFrame, resolveElement } from "./selectors.ts";
 import { takeSnapshot, visibleText, type Snapshot } from "./snapshot.ts";
 import { releaseSession, setUpDocumentSession, setUpWorkerSession, type TargetSetup } from "./targets.ts";
 import { Lifecycle, waitFor, type LoadState, type WaitConditions, type WaitContext } from "./wait.ts";
@@ -372,6 +372,21 @@ export class CdpPage implements ActionContext, WaitContext {
     this.#ready();
     this.secrets.arm(this.frames, [secret]);
     await actions.fill(this, target, secret);
+  }
+
+  /** A saved card's field, in any frame of the tab: typed like fillSecret, so screenshots and evaluation stay refused while it is there. */
+  async fillSecretInFrame(frameId: string, css: string, secret: string): Promise<void> {
+    this.#ready();
+    await this.bringToFront();
+    this.secrets.arm(this.frames, [secret]);
+    await actions.fillElement(this, await resolveCssInFrame(this.frames, frameId, css), secret);
+  }
+
+  /** The isolated world of one frame, for fill_card's reads: refused like evaluate while a typed secret is on the page, unless `whileSecret`. */
+  async evaluateInFrame(frameId: string, expression: string, options: { whileSecret?: boolean } = {}): Promise<unknown> {
+    this.#ready();
+    if (!options.whileSecret) await this.secrets.refuseWhilePresent(this.frames);
+    return evaluate(this.frames, expression, { frameId });
   }
 
   async type(target: Exclude<Target, Point> | null, text: string): Promise<void> {

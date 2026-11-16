@@ -93,6 +93,7 @@ const TEAM_ACTION_KEYS: Record<string, string> = {
   decide: "activity.tool.team.decide",
   delegate_bot: "activity.tool.team.delegateBot",
   extract: "activity.tool.team.extract",
+  fill_card: "activity.tool.team.fillCard",
   fill_login: "activity.tool.team.fillLogin",
   find_tool: "activity.tool.team.findTool",
   generate_image: "activity.tool.team.generateImage",

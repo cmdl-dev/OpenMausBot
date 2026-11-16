@@ -176,6 +176,12 @@ export class ChromeEngine {
     return { kind: "engine", version: "omb-cdp", chrome: this.launcher.describe() };
   }
 
+  /** fill_card's reads and typing; only the new engine can type into a payment provider's frame and keep it out of screenshots. */
+  cardDeps(session: string): ReturnType<BrowserService["cardDeps"]> | null {
+    const target = this.target(session);
+    return target ? this.service.cardDeps(target) : null;
+  }
+
   /** fill_login's reads and typing on the new engine. */
   loginDeps(session: string): Pick<FillLoginDeps, "engine" | "insertText" | "press" | "click"> | null {
     const target = this.target(session);

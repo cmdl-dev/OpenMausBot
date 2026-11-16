@@ -138,7 +138,7 @@ describe("the Vault routes", () => {
 
     expect((await ari("GET", "/api/vault")).body.secrets.map((one: { id: string }) => one.id)).toEqual([team.id]);
     expect(await ada("GET", "/api/vault")).toMatchObject({ status: 200, cache: "no-store", body: { logins: [], secrets: [{ id: own.id, name: "Stripe secret key" }], onePassword: { connected: false } } });
-    expect((await ben("GET", "/api/vault")).body).toEqual({ logins: [], secrets: [], onePassword: { connected: false } });
+    expect((await ben("GET", "/api/vault")).body).toEqual({ logins: [], secrets: [], cards: [], onePassword: { connected: false } });
 
     for (const [who, caller] of [["an admin", ari], ["another member", ben]] as const) {
       expect((await caller("DELETE", `/api/vault/secrets/${own.id}`)).status, who).toBe(404);
@@ -162,7 +162,7 @@ describe("the Vault routes", () => {
   it("off a Team Cloud show a session without admin nothing, and a member's own never exist there", async () => {
     const { call } = await serve();
     await call("POST", "/api/vault/secrets", { name: "Stripe secret key", value: VALUE });
-    expect((await call("GET", "/api/vault", undefined, "application/json", "member:p_phone000000000000000000")).body).toEqual({ logins: [], secrets: [], onePassword: { connected: false } });
+    expect((await call("GET", "/api/vault", undefined, "application/json", "member:p_phone000000000000000000")).body).toEqual({ logins: [], secrets: [], cards: [], onePassword: { connected: false } });
     expect((await call("GET", "/api/vault")).body.secrets).toHaveLength(1);
   });
 });

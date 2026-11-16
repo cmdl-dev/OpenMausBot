@@ -492,6 +492,21 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "fill_card",
+    description:
+      "Pay on the checkout open in your browser, once it shows the final total. The first call shows the person a Pay card for a saved card, or a secure card to add one, and ends your turn. Once they approve you are resumed: call it again with the same amount, OpenMausBot types the card in (you never see it), then press the page's pay button once. Never ask for card details in chat.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        amount: { type: "string", minLength: 1, maxLength: 40, description: "The total as the checkout shows it, such as $42.10." },
+        item: { type: "string", minLength: 1, maxLength: 160, description: "What is being bought." },
+        card: { type: "string", maxLength: 80, description: "A saved card's last four digits, or new for one the person adds." },
+      },
+      required: ["amount", "item"],
+    },
+  },
+  {
     name: "send_voice_note",
     description:
       "Send the user a voice note: a short spoken message synthesized with your configured voice, stored as audio, and attached to your reply when the turn ends. Write the note as speakable words, exactly as it should be said — no lists, links or markdown meant for screens. The words are kept as the note's transcript, which the person can open to read instead of listening; they are not repeated in your reply, so do not write them out again. Use it for warmth, tone or emphasis a written line cannot carry; use ordinary text otherwise.",

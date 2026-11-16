@@ -8,6 +8,7 @@ import { QuestionCard } from "./QuestionCard";
 import { isQuestionCard } from "@/lib/question-card";
 import type { Asker } from "./AskCard";
 import { AskingLine } from "./TeamOwner";
+import { PaymentCardEntry } from "./PaymentCardEntry";
 
 /**
  * Called, not mounted: a quiz that dropped out must come back as null so the transcript draws no row and no day
@@ -33,6 +34,8 @@ export function optionsCardRow({ message: m, transcript, botId, botName, botColo
   const card = m.helperIntro ? (
     <HelperIntro botId={botId} threadId={threadId} message={m} answered={shouldHideOnboardingCard(m, transcript)}
       followup={transcript.find((entry) => entry.helperFollowup)} />
+  ) : m.card?.paymentRequest?.needsCard && !m.card.answered && !m.card.dismissed && !m.card.expired && !m.card.stopped && !m.inbox ? (
+    <PaymentCardEntry message={m} threadId={threadId} color={botColor} />
   ) : isQuestionCard(m.card) ? (
     <QuestionCard threadId={threadId} asker={asker ?? (botColor ? { name: botName, color: botColor } : undefined)} message={m} typedPast={typedPast(m, transcript)} />
   ) : m.card?.requestId && m.card.tool ? (

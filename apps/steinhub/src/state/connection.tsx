@@ -29,6 +29,8 @@ export interface Connection {
   stop(botId: string, threadId: string): Promise<void>;
   respond(threadId: string, requestId: string, answer: { behavior: "allow" | "deny" | "answer"; message?: string }): Promise<void>;
   setRoutineEnabled(routineId: string, enabled: boolean): Promise<void>;
+  /** An `/api/attachments/…` path as an image source on the paired computer, with this device's token. */
+  attachmentSource(path: string): { uri: string; headers: Record<string, string> } | null;
   runRoutine(routineId: string): Promise<void>;
 }
 
@@ -236,6 +238,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => live.current?.retryNow(), []);
 
+  const attachmentSource = useCallback(
+    (path: string) => {
+      if (mode !== "live" || !session) return null;
+      const base = session.urls[urlIndex.current % session.urls.length].replace(/\/+$/, "");
+      return { uri: `${base}${path}`, headers: { authorization: `Bearer ${session.token}` } };
+    },
+    [mode, session],
+  );
+
   const value = useMemo<Connection>(
     () => ({
       mode,
@@ -254,8 +265,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       respond,
       setRoutineEnabled,
       runRoutine,
+      attachmentSource,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

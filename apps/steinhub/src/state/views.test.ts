@@ -1,7 +1,7 @@
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import { emptyWorld, worldReducer, type LiveWorld, type WorldAction } from "@/state/live-world";
-import { automationView, botView, formatWhen, messageViews, threadViews, toolLabel } from "@/state/views";
+import { automationView, botSections, botView, formatWhen, messageViews, threadViews, toolLabel } from "@/state/views";
 
 const NOW = new Date(2026, 10, 16, 9, 41).getTime();
 
@@ -57,7 +57,7 @@ test("threads leave out routine runs and group by recency", () => {
   ]);
 });
 
-test("tool rows fold into the reply that follows; cards become approvals", () => {
+test("tool rows stay out of the thread; cards become approvals", () => {
   const views = messageViews([
     text("m1", "user", "Send it"),
     { id: "a1", role: "bot", kind: "activity", at: NOW },
@@ -73,7 +73,7 @@ test("tool rows fold into the reply that follows; cards become approvals", () =>
   ]);
   expect(views).toEqual([
     { id: "m1", from: "user", text: "Send it" },
-    { id: "m2", from: "bot", text: "Drafted.", tools: 2, at: NOW },
+    { id: "m2", from: "bot", text: "Drafted.", at: NOW },
     expect.objectContaining({ id: "c1", from: "approval", kind: "permission", action: "Send email", state: "pending", requestId: "r1", preview: "Hi Jordan" }),
   ]);
 });
@@ -95,7 +95,7 @@ test("streamed text shows until the saved message with its item id arrives", () 
     },
   });
   const streaming = run(emptyWorld, delta("Hel"), delta("lo"));
-  expect(messageViews([], { streaming: streaming.streaming.t1 })).toEqual([{ id: "live:i1", from: "bot", text: "Hello", tools: undefined, streaming: true }]);
+  expect(messageViews([], { streaming: streaming.streaming.t1 })).toEqual([{ id: "live:i1", from: "bot", text: "Hello", streaming: true }]);
 
   const saved = run(streaming, { type: "frame", frame: { kind: "message", threadId: "t1", message: text("m9", "bot", "Hello", { itemId: "i1" }) } });
   expect(saved.streaming.t1).toEqual([]);
@@ -113,8 +113,34 @@ test("a busy thread with nothing streamed yet shows the bot working", () => {
   expect(messageViews([text("m1", "user", "go"), { id: "a", role: "bot", kind: "activity", at: NOW }], { busy: true }).at(-1)).toEqual({
     id: "working",
     from: "working",
-    tools: 1,
   });
+});
+
+test("work handed to a teammate and its answer read as hand-off rows", () => {
+  const views = messageViews([
+    {
+      id: "h1",
+      role: "bot",
+      kind: "activity",
+      at: NOW,
+      tool: { name: "Sent to eBay Seller", ok: true },
+      doneWhen: "Fees and subscription costs compared",
+      threadRef: { botId: "b2", threadId: "t9", title: "Store fees" },
+    },
+    {
+      id: "h2",
+      role: "bot",
+      kind: "activity",
+      at: NOW + 1,
+      tool: { name: "eBay Seller replied", ok: true, output: "Basic Store is the best option." },
+      roomRequest: { id: "r1", phase: "result" },
+      threadRef: { botId: "b2", threadId: "t9", title: "Store fees" },
+    },
+  ]);
+  expect(views).toEqual([
+    { id: "h1", from: "handoff", label: "Sent to eBay Seller", ok: true, doneWhen: "Fees and subscription costs compared", result: undefined, threadId: "t9" },
+    { id: "h2", from: "handoff", label: "eBay Seller replied", ok: true, doneWhen: undefined, result: "Basic Store is the best option.", threadId: "t9" },
+  ]);
 });
 
 test("pages merge with live frames in time order", () => {
@@ -157,4 +183,17 @@ test("times and tools read the way the mockups write them", () => {
   expect(formatWhen(new Date(2026, 10, 13, 7, 0).getTime(), NOW)).toBe("Fri 7:00");
   expect(toolLabel("Bash")).toBe("Bash");
   expect(toolLabel(undefined)).toBe("Question");
+});
+
+test("bots group into the computer's sections, unsectioned first and each Chief of Staff on top", () => {
+  const view = (id: string, section?: string, chief?: boolean) => ({ ...botView(bot({ id, name: id }), 0, {}), section, chief });
+  const sections = botSections(
+    [view("a"), view("sales-1", "Sales"), view("ops-1", "Ops"), view("sales-chief", "Sales", true), view("b")],
+    ["Sales", "Empty"],
+  );
+  expect(sections.map((section) => [section.name, section.bots.map((entry) => entry.id)])).toEqual([
+    [null, ["a", "b"]],
+    ["Sales", ["sales-chief", "sales-1"]],
+    ["Ops", ["ops-1"]],
+  ]);
 });

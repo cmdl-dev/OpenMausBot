@@ -1,4 +1,11 @@
-import { PAIRING_CREDENTIAL_PREFIX, readPairingInput, type PairingErrorCode } from "@openmausbot/phone-protocol/pairing-code.ts";
+import {
+  formatPairingCode,
+  PAIRING_CREDENTIAL_PREFIX,
+  PAIRING_INPUT_PROBLEM_KEY,
+  PAIRING_INPUT_PROBLEM_TEXT,
+  readPairingInput,
+  type PairingErrorCode,
+} from "@openmausbot/phone-protocol/pairing-code.ts";
 import { qrEndpoints, type CompanionEndpoint } from "@openmausbot/phone-protocol/pairing-link.ts";
 import type { PairRequest, PairResponse } from "@openmausbot/phone-protocol/responses.ts";
 import { DesktopError } from "@/api/errors";
@@ -78,29 +85,47 @@ export function readPairingLink(raw: string): PairingInvite | null {
   return { urls: unique([first, ...endpoints, ...hosts]), credential: token, code, name };
 }
 
+/** A server's or Cloud's pairing link, `https://host[:port]/pair#code=…` (also `?code=` or `?token=`): its origin is the
+ * address and the code or credential it carries is the code. */
+export function readServerPairingLink(raw: string): { address: string; code: string } | null {
+  const value = raw.trim();
+  if (!/^https?:\/\//i.test(value)) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (!parsed.hostname || parsed.username || parsed.password) return null;
+  const carried = readPairingInput(value);
+  if (carried.kind === "code") return { address: parsed.origin, code: formatPairingCode(carried.code) };
+  if (carried.kind === "credential") return { address: parsed.origin, code: carried.credential };
+  return null;
+}
+
 export type ManualPairing = { kind: "ready"; invite: PairingInvite } | { kind: "problem"; field: "address" | "code"; text: string } | { kind: "incomplete" };
 
 /** What the person typed on the "Enter code manually" screen. A pasted pairing link fills both fields. */
 export function readManualPairing(address: string, code: string): ManualPairing {
   const link = readPairingLink(address) ?? readPairingLink(code);
   if (link) return { kind: "ready", invite: link };
+  const serverLink = readServerPairingLink(address) ?? readServerPairingLink(code);
+  if (serverLink) return readManualPairing(serverLink.address, serverLink.code);
   const typedCode = code.replace(/[\s-]/g, "");
   if (!address.trim() || !typedCode) return { kind: "incomplete" };
   const url = computerUrl(address);
   if (!url) {
-    return { kind: "problem", field: "address", text: "That isn't an address. Type it as the computer shows it, like mac-studio.local:8810." };
+    return { kind: "problem", field: "address", text: "That isn't an address. Type the pairing address as the computer shows it, like 192.168.1.20:8810." };
   }
   if (SIX_DIGITS.test(typedCode) || CREDENTIAL.test(code.trim())) {
     return { kind: "ready", invite: { urls: [url], credential: SIX_DIGITS.test(typedCode) ? typedCode : code.trim() } };
   }
-  if (readPairingInput(code).kind === "code") {
-    return {
-      kind: "problem",
-      field: "code",
-      text: "That code is for a server or a Cloud. SteinHub pairs with the six-digit code a computer shows under Pair a phone.",
-    };
+  const typed = readPairingInput(code);
+  if (typed.kind === "code") return { kind: "ready", invite: { urls: [url], credential: formatPairingCode(typed.code) } };
+  if (typed.kind === "wrong" && typed.problem !== "notACode" && typed.problem !== "oldCode") {
+    return { kind: "problem", field: "code", text: PAIRING_INPUT_PROBLEM_TEXT[PAIRING_INPUT_PROBLEM_KEY[typed.problem]] };
   }
-  return { kind: "problem", field: "code", text: "Pairing needs the six-digit code the computer shows under Pair a phone." };
+  return { kind: "problem", field: "code", text: "Pairing needs the code the computer shows under Pair a phone, like 7KQ2-M9XD-H4TP." };
 }
 
 export interface Paired {

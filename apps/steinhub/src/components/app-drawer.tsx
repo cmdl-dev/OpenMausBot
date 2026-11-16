@@ -51,31 +51,35 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
         <NavItem icon={Zap} label="Automations" onPress={() => go("/automations")} />
         <NavItem icon={Monitor} label="Computers" onPress={() => go("/computers")} />
 
-        <SectionLabel>Bots</SectionLabel>
-        {world.bots.map((bot) => (
-          <Pressable
-            key={bot.id}
-            accessibilityRole="button"
-            accessibilityState={{ selected: botFilter === bot.id }}
-            onPress={() => setBotFilter((current) => (current === bot.id ? null : bot.id))}
-            onLongPress={() => go({ pathname: "/bot/[id]", params: { id: bot.id } })}
-            style={[styles.item, botFilter === bot.id && styles.itemSelected]}
-          >
-            <Avatar label={bot.glyph} tint={bot.tint} size="sm" />
-            <Txt variant="callout" style={styles.fill}>
-              {bot.name}
-            </Txt>
-            {botFilter === bot.id ? (
-              <Check size={18} color={colors.text} strokeWidth={size.iconStroke} />
-            ) : (
-              <>
-                <StatusDot tone={bot.state.tone} />
-                <Txt variant="caption" weight="400" tone="tertiary">
-                  {bot.state.label}
+        {world.sections.map((section) => (
+          <View key={section.name ?? ""}>
+            <SectionLabel>{section.name ?? "Bots"}</SectionLabel>
+            {section.bots.map((bot) => (
+              <Pressable
+                key={bot.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: botFilter === bot.id }}
+                onPress={() => setBotFilter((current) => (current === bot.id ? null : bot.id))}
+                onLongPress={() => go({ pathname: "/bot/[id]", params: { id: bot.id } })}
+                style={[styles.item, botFilter === bot.id && styles.itemSelected]}
+              >
+                <Avatar bot={bot} label={bot.glyph} tint={bot.tint} size="sm" />
+                <Txt variant="callout" style={styles.fill}>
+                  {bot.name}
                 </Txt>
-              </>
-            )}
-          </Pressable>
+                {botFilter === bot.id ? (
+                  <Check size={18} color={colors.text} strokeWidth={size.iconStroke} />
+                ) : (
+                  <>
+                    <StatusDot tone={bot.state.tone} />
+                    <Txt variant="caption" weight="400" tone="tertiary">
+                      {bot.state.label}
+                    </Txt>
+                  </>
+                )}
+              </Pressable>
+            ))}
+          </View>
         ))}
 
         <SectionLabel
@@ -119,7 +123,7 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
                   onPress={() => go({ pathname: "/chat/[id]", params: { id: thread.id } })}
                   style={({ pressed }) => [styles.thread, pressed && styles.itemSelected]}
                 >
-                  <Avatar label={owner?.glyph ?? "?"} tint={owner?.tint} size="xs" />
+                  <Avatar bot={owner} label={owner?.glyph ?? "?"} tint={owner?.tint} size="xs" />
                   <Txt variant="callout" numberOfLines={1} style={styles.fill}>
                     {thread.title}
                   </Txt>

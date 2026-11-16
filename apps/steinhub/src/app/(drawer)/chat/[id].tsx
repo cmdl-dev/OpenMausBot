@@ -1,17 +1,18 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, ChevronRight, ShieldAlert, Wrench, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronRight, CornerDownLeft, Send, ShieldAlert, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
 import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { Composer } from "@/components/composer";
+import { Markdown } from "@/components/markdown";
 import { Screen } from "@/components/screen";
 import { Badge, StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { ChatTopBar } from "@/components/top-bar";
 import { useConnection } from "@/state/connection";
-import { clock, type ApprovalView, type BotView, type MessageView } from "@/state/views";
+import { clock, type ApprovalView, type BotView, type HandoffView, type MessageView } from "@/state/views";
 import { useWorld } from "@/state/world";
 import { colors, radius, size, space } from "@/theme";
 
@@ -137,7 +138,7 @@ export default function ChatScreen() {
 function ReplyHeader({ bot, note, live }: { bot: BotView; note?: string; live?: boolean }) {
   return (
     <View style={styles.replyHeader}>
-      <Avatar label={bot.glyph} tint={bot.tint} size="sm" />
+      <Avatar bot={bot} label={bot.glyph} tint={bot.tint} size="sm" />
       <Txt variant="subhead" weight="600">
         {bot.name}
       </Txt>
@@ -151,14 +152,49 @@ function ReplyHeader({ bot, note, live }: { bot: BotView; note?: string; live?: 
   );
 }
 
-function Tools({ count, running }: { count: number; running?: boolean }) {
+function Handoff({ handoff }: { handoff: HandoffView }) {
+  const [open, setOpen] = useState(false);
+  const Icon = handoff.result ? CornerDownLeft : Send;
+  const target = handoff.threadId;
   return (
-    <View style={styles.tools}>
-      <Wrench size={16} color={colors.text2} strokeWidth={size.iconStroke} />
-      <Txt variant="footnote" tone="secondary">
-        {running ? "Using" : "Used"} {count} {count === 1 ? "tool" : "tools"}
-      </Txt>
-      <ChevronRight size={14} color={colors.text3} strokeWidth={size.iconStroke} />
+    <View style={styles.handoff}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={handoff.label}
+        disabled={!target}
+        onPress={target ? () => router.navigate({ pathname: "/chat/[id]", params: { id: target } }) : undefined}
+        style={({ pressed }) => [styles.handoffChip, pressed && styles.pressed]}
+      >
+        <Icon size={14} color={handoff.ok ? colors.text2 : colors.danger} strokeWidth={size.iconStroke} />
+        <Txt variant="subhead" numberOfLines={1} style={[styles.handoffLabel, !handoff.ok && styles.errorText]}>
+          {handoff.label}
+        </Txt>
+        {target ? <ChevronRight size={14} color={colors.text3} strokeWidth={size.iconStroke} /> : null}
+      </Pressable>
+      {handoff.doneWhen ? (
+        <Txt variant="footnote" tone="secondary" numberOfLines={1} style={styles.doneWhen}>
+          Done when: {handoff.doneWhen}
+        </Txt>
+      ) : null}
+      {handoff.result ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          onPress={() => setOpen((value) => !value)}
+          style={styles.handoffResult}
+        >
+          <View style={styles.fill}>
+            {open ? (
+              <Markdown>{handoff.result}</Markdown>
+            ) : (
+              <Txt variant="footnote" tone="secondary" numberOfLines={1}>
+                {handoff.result.replace(/[*_`#>]/g, "")}
+              </Txt>
+            )}
+          </View>
+          {open ? <ChevronDown size={14} color={colors.text3} /> : <ChevronRight size={14} color={colors.text3} />}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -180,17 +216,18 @@ function Message({ message, bot, onAnswer, hostName }: { message: MessageView; b
       return (
         <View style={styles.reply}>
           <ReplyHeader bot={bot} note="Working" live />
-          {message.tools ? <Tools count={message.tools} running /> : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
+          <ActivityIndicator color={colors.text3} style={styles.spinner} />
         </View>
       );
     case "bot":
       return (
         <View style={styles.reply}>
           <ReplyHeader bot={bot} note={message.streaming ? "Writing" : message.at ? clock(message.at) : "9:40"} live={message.streaming} />
-          {message.tools ? <Tools count={message.tools} /> : null}
-          <Txt>{message.text}</Txt>
+          <Markdown>{message.text}</Markdown>
         </View>
       );
+    case "handoff":
+      return <Handoff handoff={message} />;
     case "approval":
       return <ApprovalCard card={message} onAnswer={onAnswer} hostName={hostName} />;
   }
@@ -305,7 +342,33 @@ const styles = StyleSheet.create({
   sending: { opacity: 0.6 },
   reply: { gap: space[2] },
   replyHeader: { flexDirection: "row", alignItems: "center", gap: space[2] },
-  tools: { flexDirection: "row", alignItems: "center", gap: 6 },
+  handoff: { alignItems: "flex-start", gap: space[1] },
+  handoffChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: "100%",
+    height: 34,
+    paddingHorizontal: space[3],
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  handoffLabel: { flexShrink: 1 },
+  pressed: { backgroundColor: colors.surface1 },
+  doneWhen: { paddingHorizontal: space[3], maxWidth: "100%" },
+  handoffResult: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
+    alignSelf: "stretch",
+    paddingHorizontal: space[3],
+    paddingVertical: space[2],
+    borderRadius: radius.md,
+    backgroundColor: colors.surface1,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   spinner: { alignSelf: "flex-start" },
   approval: {
     backgroundColor: colors.surface1,

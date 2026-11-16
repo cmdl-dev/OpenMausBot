@@ -31,7 +31,7 @@ export default function BotProfileScreen() {
   return (
     <Screen header={<PageTopBar leading="back" />}>
       <View style={styles.hero}>
-        <Avatar label={bot.glyph} tint={bot.tint} size="lg" />
+        <Avatar bot={bot} label={bot.glyph} tint={bot.tint} size="lg" />
         <Txt variant="title">{bot.name}</Txt>
         <Txt variant="callout" tone="secondary">
           {bot.role}

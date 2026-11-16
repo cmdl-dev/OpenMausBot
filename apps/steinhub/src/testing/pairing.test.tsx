@@ -64,7 +64,7 @@ test("pairs with a typed address and six-digit code, stores the token, and opens
   await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/onboarding" });
 
   await fireEvent.press(await screen.findByText("Enter code manually"));
-  await fireEvent.changeText(screen.getByLabelText("Computer address"), "mac.local");
+  await fireEvent.changeText(screen.getByLabelText("Pairing address"), "mac.local");
   await fireEvent.changeText(screen.getByLabelText("Pairing code"), "482 913");
   await fireEvent.press(screen.getByText("Continue"));
 
@@ -87,31 +87,45 @@ test("pairs with a typed address and six-digit code, stores the token, and opens
   expect(await screen.findByLabelText("Switch bot, Scout")).toBeTruthy();
 });
 
-test("a wrong code is explained on the confirm step and can be tried again", async () => {
+test("a refused code is explained, and the person enters a new one instead of resending it", async () => {
   network.fetch = fakeFetch({
     "POST /api/pair": jsonResponse(401, { error: "wrong code", code: "pairing_code_wrong" }),
   }).fetch;
 
   await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/onboarding" });
   await fireEvent.press(await screen.findByText("Enter code manually"));
-  await fireEvent.changeText(screen.getByLabelText("Computer address"), "mac.local:8810");
+  await fireEvent.changeText(screen.getByLabelText("Pairing address"), "mac.local:8810");
   await fireEvent.changeText(screen.getByLabelText("Pairing code"), "000000");
   await fireEvent.press(screen.getByText("Continue"));
   await fireEvent.press(await screen.findByText("Pair"));
 
-  expect(await screen.findByText("That code didn't match. Check the six digits on the computer and try again.")).toBeTruthy();
-  expect(screen.getByText("Try again")).toBeTruthy();
+  expect(await screen.findByText("That code didn't match. Check the code on the computer and try again.")).toBeTruthy();
+  expect(screen.queryByText("Try again")).toBeNull();
+  await fireEvent.press(screen.getByText("Enter a new code"));
+  expect(screen.getByLabelText("Pairing address").props.value).toBe("mac.local:8810");
   expect(secureValues.has("steinhub.session")).toBe(false);
 });
 
-test("a server's 12-character code is explained before anything is sent", async () => {
-  const desktop = fakeFetch({});
+test("a computer's 12-character code pairs with the computer itself", async () => {
+  const desktop = fakeFetch({
+    "POST http://127.0.0.1:18799/api/pair": jsonResponse(200, { ...PAIRED, serverName: "Ada's Mac" }),
+    "GET /api/events": streamResponse(pushStream()),
+  });
   network.fetch = desktop.fetch;
   await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/onboarding" });
   await fireEvent.press(await screen.findByText("Enter code manually"));
-  await fireEvent.changeText(screen.getByLabelText("Computer address"), "mac.local");
-  await fireEvent.changeText(screen.getByLabelText("Pairing code"), "7KQ2-M9XD-H4TP");
+  await fireEvent.changeText(screen.getByLabelText("Pairing address"), "127.0.0.1:18799");
+  await fireEvent.changeText(screen.getByLabelText("Pairing code"), "7kq2-m9xd-h4tp");
   await fireEvent.press(screen.getByText("Continue"));
-  expect(await screen.findByText(/That code is for a server or a Cloud/)).toBeTruthy();
-  expect(desktop.calls).toHaveLength(0);
+  await fireEvent.press(await screen.findByText("Pair"));
+  await waitFor(() => expect(screen).toHavePathname("/"));
+  expect(desktop.calls.find((call) => call.path === "/api/pair")?.body).toMatchObject({ credential: "7KQ2-M9XD-H4TP" });
+});
+
+test("pasting a server's pairing link into the address fills in both fields", async () => {
+  await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/onboarding" });
+  await fireEvent.press(await screen.findByText("Enter code manually"));
+  await fireEvent.changeText(screen.getByLabelText("Pairing address"), "https://mac.tail1234.ts.net:16443/pair#code=7KQ2-M9XD-H4TP");
+  expect(screen.getByLabelText("Pairing address").props.value).toBe("https://mac.tail1234.ts.net:16443");
+  expect(screen.getByLabelText("Pairing code").props.value).toBe("7KQ2-M9XD-H4TP");
 });

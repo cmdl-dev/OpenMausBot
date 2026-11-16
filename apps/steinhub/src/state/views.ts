@@ -1,13 +1,27 @@
+import { botAvatarProfile, mascotFaceInk } from "@openmausbot/phone-protocol/bot-avatar.ts";
 import { cronScheduleLabel } from "@openmausbot/phone-protocol/cron-label.ts";
+import { botMascotBody, type MascotBodyId } from "@openmausbot/phone-protocol/mascot-bodies.ts";
 import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-protocol/routines.ts";
 import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
 import { tintForIndex, type BotTint, type Status } from "@/theme";
 
+/** How a bot looks on the desktop: its mascot, or the picture it was given instead. */
+export interface BotLook {
+  body: MascotBodyId;
+  color: MausColor;
+  faceInk?: string;
+  picture?: { path: string; crop: "circle" | "rounded" | "square" };
+}
+
 export interface BotView {
   id: string;
   name: string;
+  /** The sidebar section it is filed under on the computer; absent: the main Bots list. */
+  section?: string;
+  chief?: boolean;
   glyph: string;
+  look?: BotLook;
   role: string;
   tint: BotTint;
   model: string;
@@ -39,10 +53,24 @@ export interface ApprovalView {
   requestId?: string;
 }
 
+/** Work handed to another bot ("Sent to eBay Seller"), or that bot's answer coming back ("eBay Seller replied"). */
+export interface HandoffView {
+  id: string;
+  from: "handoff";
+  label: string;
+  ok: boolean;
+  doneWhen?: string;
+  /** The answer that came back, on a reply row. */
+  result?: string;
+  /** Where the work happens, when it is a conversation the phone can open. */
+  threadId?: string;
+}
+
 export type MessageView =
   | { id: string; from: "user"; text: string; pending?: "sending" | "failed" }
-  | { id: string; from: "bot"; text: string; tools?: number; at?: number; streaming?: boolean }
-  | { id: string; from: "working"; tools: number }
+  | { id: string; from: "bot"; text: string; at?: number; streaming?: boolean }
+  | { id: string; from: "working" }
+  | HandoffView
   | ApprovalView;
 
 export interface RunView {
@@ -169,12 +197,25 @@ const ACTIVITY: Record<NonNullable<WireBot["activity"]>, { label: string; tone: 
 
 export const LIVE_SUGGESTIONS = ["What's waiting on me?", "Plan my day", "Summarize today"];
 
+export function botLook(bot: Pick<WireBot, "color" | "mascotBody" | "mascotFaceColor" | "avatarUrl" | "avatarCrop">): BotLook {
+  const profile = botAvatarProfile({ avatarUrl: bot.avatarUrl, avatarCrop: bot.avatarCrop });
+  return {
+    body: botMascotBody(bot.mascotBody),
+    color: bot.color,
+    faceInk: mascotFaceInk(bot.mascotFaceColor),
+    picture: profile.avatarUrl && profile.avatarCrop !== "mascot" ? { path: profile.avatarUrl, crop: profile.avatarCrop } : undefined,
+  };
+}
+
 export function botView(bot: WireBot, index: number, modelLabels: Record<string, string>): BotView {
   const activity = bot.activity ?? (bot.busy ? "working" : "idle");
   return {
     id: bot.id,
     name: bot.name,
+    section: bot.section || undefined,
+    chief: bot.chiefOfStaff === true || undefined,
     glyph: (Array.from(bot.name.trim())[0] ?? "?").toUpperCase(),
+    look: botLook(bot),
     role: bot.title || bot.description,
     tint: TINTS[bot.color] ?? tintForIndex(index),
     model: modelLabels[bot.modelSelection.model] ?? bot.modelSelection.model,
@@ -244,14 +285,14 @@ export function messageViews(
   extras: { streaming?: readonly StreamingItem[]; pending?: readonly PendingSend[]; busy?: boolean } = {},
 ): MessageView[] {
   const views: MessageView[] = [];
-  let tools = 0;
   for (const message of messages) {
     if (message.role === "user") {
       if (message.kind === "text" && message.text && !message.reaction) views.push({ id: message.id, from: "user", text: message.text });
       continue;
     }
     if (message.kind === "activity") {
-      tools += 1;
+      const handoff = handoffView(message);
+      if (handoff) views.push(handoff);
       continue;
     }
     if (message.kind === "options" && message.card) {
@@ -259,18 +300,29 @@ export function messageViews(
       continue;
     }
     if (HIDDEN_KINDS.has(message.kind) || !message.text) continue;
-    views.push({ id: message.id, from: "bot", text: message.text, tools: tools || undefined, at: message.at });
-    tools = 0;
+    views.push({ id: message.id, from: "bot", text: message.text, at: message.at });
   }
   for (const send of extras.pending ?? []) {
     views.push({ id: `send:${send.sendId}`, from: "user", text: send.text, pending: send.failed ? "failed" : "sending" });
   }
   const streaming = (extras.streaming ?? []).filter((item) => item.text.trim());
-  streaming.forEach((item, index) => {
-    views.push({ id: `live:${item.key}`, from: "bot", text: item.text, tools: index === 0 && tools ? tools : undefined, streaming: true });
-  });
-  if (!streaming.length && extras.busy) views.push({ id: "working", from: "working", tools });
+  for (const item of streaming) views.push({ id: `live:${item.key}`, from: "bot", text: item.text, streaming: true });
+  if (!streaming.length && extras.busy) views.push({ id: "working", from: "working" });
   return views;
+}
+
+function handoffView(message: WireMessage): HandoffView | null {
+  if (!message.tool || !(message.threadRef || message.comm)) return null;
+  const result = message.roomRequest?.phase === "result" ? message.tool.output?.trim() : undefined;
+  return {
+    id: message.id,
+    from: "handoff",
+    label: message.tool.label ?? message.tool.name,
+    ok: message.tool.ok !== false,
+    doneWhen: message.doneWhen?.trim() || undefined,
+    result: result || undefined,
+    threadId: message.threadRef?.threadId,
+  };
 }
 
 function scheduleLabel(schedule: RoutineSchedule): string {
@@ -346,4 +398,21 @@ export function automationView(routine: Routine, runs: readonly RoutineRun[], ho
     timeZone: routine.schedule.type === "cron" ? routine.schedule.timeZone : undefined,
     failureStreak: routine.failureStreak || undefined,
   };
+}
+
+export interface BotSection {
+  /** null: the main Bots list, for bots in no section. */
+  name: string | null;
+  bots: BotView[];
+}
+
+/** The desktop sidebar's order: unsectioned bots under Bots, then each section in the computer's order (a section
+ * only a bot names comes after), its Chief of Staff first. Empty sections are left out. */
+export function botSections(bots: readonly BotView[], order: readonly string[]): BotSection[] {
+  const names = [...order];
+  for (const bot of bots) if (bot.section && !names.includes(bot.section)) names.push(bot.section);
+  const chiefFirst = (list: BotView[]) => [...list.filter((bot) => bot.chief), ...list.filter((bot) => !bot.chief)];
+  const sections: BotSection[] = [{ name: null, bots: chiefFirst(bots.filter((bot) => !bot.section)) }];
+  for (const name of names) sections.push({ name, bots: chiefFirst(bots.filter((bot) => bot.section === name)) });
+  return sections.filter((section) => section.bots.length > 0);
 }

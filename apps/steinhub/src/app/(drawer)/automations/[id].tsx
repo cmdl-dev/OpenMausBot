@@ -87,7 +87,7 @@ export default function AutomationDetailScreen() {
   return (
     <Screen header={<PageTopBar leading="back" />}>
       <View style={styles.hero}>
-        <Avatar label={bot?.glyph ?? "?"} tint={bot?.tint} />
+        <Avatar bot={bot} label={bot?.glyph ?? "?"} tint={bot?.tint} />
         <View style={styles.fill}>
           <Txt variant="title" numberOfLines={2}>
             {automation.name}

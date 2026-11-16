@@ -30,7 +30,7 @@ export function asDesktopError(error: unknown): DesktopError {
 }
 
 const PAIRING_TEXT: Partial<Record<PairingErrorCode, string>> = {
-  pairing_code_wrong: "That code didn't match. Check the six digits on the computer and try again.",
+  pairing_code_wrong: "That code didn't match. Check the code on the computer and try again.",
   pairing_not_open:
     "Pairing isn't open on the computer. Open Settings → Phone & devices there, choose Pair a phone, and try again.",
   pairing_too_many: "Too many wrong codes. Choose Pair a phone on the computer again for a new code.",

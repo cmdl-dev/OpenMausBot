@@ -4,8 +4,8 @@ import { router } from "expo-router";
 import { Inbox, Keyboard, MessageSquare, Monitor, QrCode, Zap, ChevronLeft, X, type LucideIcon } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { problemText } from "@/api/errors";
-import { readManualPairing, readPairingLink, type PairingInvite } from "@/api/pairing";
+import { asDesktopError, problemText } from "@/api/errors";
+import { readManualPairing, readPairingLink, readServerPairingLink, type PairingInvite } from "@/api/pairing";
 import { Button } from "@/components/button";
 import { IconButton } from "@/components/icon-button";
 import { Screen } from "@/components/screen";
@@ -44,6 +44,7 @@ export default function OnboardingScreen() {
   const connection = useConnection();
   const [step, setStep] = useState<Step>("welcome");
   const [invite, setInvite] = useState<PairingInvite | null>(null);
+  const [address, setAddress] = useState("");
   const demo = connection.mode === "demo";
   const canClose = connection.mode !== "unpaired";
 
@@ -72,12 +73,13 @@ export default function OnboardingScreen() {
     >
       {step === "welcome" ? <Welcome onScan={() => setStep("scan")} onCode={() => setStep("code")} /> : null}
       {step === "scan" ? <Scan demo={demo} onInvite={confirm} onCode={() => setStep("code")} /> : null}
-      {step === "code" ? <ManualCode onInvite={confirm} /> : null}
+      {step === "code" ? <ManualCode address={address} onAddress={setAddress} onInvite={confirm} /> : null}
       {step === "confirm" ? (
         <Confirm
           invite={invite ?? DEMO_INVITE}
           demo={demo}
           onCancel={() => setStep("welcome")}
+          onNewCode={() => setStep(invite?.code === undefined ? "code" : "scan")}
           onPair={async (chosen) => {
             if (demo) {
               router.replace("/");
@@ -193,27 +195,45 @@ function Scan({ demo, onInvite, onCode }: { demo: boolean; onInvite: (invite: Pa
   );
 }
 
-function ManualCode({ onInvite }: { onInvite: (invite: PairingInvite) => void }) {
-  const [address, setAddress] = useState("");
+function ManualCode({
+  address,
+  onAddress: setAddress,
+  onInvite,
+}: {
+  address: string;
+  onAddress: (address: string) => void;
+  onInvite: (invite: PairingInvite) => void;
+}) {
   const [code, setCode] = useState("");
   const [tried, setTried] = useState(false);
   const reading = readManualPairing(address, code);
+
+  function typed(text: string, field: "address" | "code") {
+    const link = readServerPairingLink(text);
+    if (link) {
+      setAddress(link.address);
+      setCode(link.code);
+      return;
+    }
+    if (field === "address") setAddress(text);
+    else setCode(text);
+  }
   const problem = tried && reading.kind === "problem" ? reading : null;
 
   return (
     <View style={styles.body}>
       <View style={styles.form}>
         <Txt variant="subhead" tone="secondary">
-          On the computer, open Settings → Phone & devices and choose Pair a phone. It shows its address and a six-digit code.
+          On the computer, open Settings → Phone & devices, choose Pair a phone, then open Having trouble? It shows the pairing address and pairing code to type here.
         </Txt>
         <Txt variant="footnote" tone="secondary" weight="500">
-          Computer address
+          Pairing address
         </Txt>
         <TextInput
-          accessibilityLabel="Computer address"
+          accessibilityLabel="Pairing address"
           value={address}
-          onChangeText={setAddress}
-          placeholder="mac-studio.local:8810"
+          onChangeText={(text) => typed(text, "address")}
+          placeholder="192.168.1.20:8810 or a pairing link"
           placeholderTextColor={colors.text3}
           selectionColor={colors.text}
           autoCapitalize="none"
@@ -227,13 +247,12 @@ function ManualCode({ onInvite }: { onInvite: (invite: PairingInvite) => void })
         <TextInput
           accessibilityLabel="Pairing code"
           value={code}
-          onChangeText={setCode}
-          placeholder="482 913"
+          onChangeText={(text) => typed(text, "code")}
+          placeholder="7KQ2-M9XD-H4TP"
           placeholderTextColor={colors.text3}
           selectionColor={colors.text}
-          autoCapitalize="none"
+          autoCapitalize="characters"
           autoCorrect={false}
-          keyboardType="number-pad"
           style={[styles.input, styles.codeInput, problem?.field === "code" ? styles.inputError : null]}
         />
         {problem ? (
@@ -262,11 +281,14 @@ function Confirm({
   demo,
   onPair,
   onCancel,
+  onNewCode,
 }: {
   invite: PairingInvite;
   demo: boolean;
   onPair: (invite: PairingInvite) => Promise<void>;
   onCancel: () => void;
+  /** The code was refused: sending it again can't work, so the person gets a new one. */
+  onNewCode: () => void;
 }) {
   const [pairing, setPairing] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -332,7 +354,11 @@ function Confirm({
         ) : null}
       </View>
       <View style={styles.actions}>
-        <Button label={pairing ? "Pairing…" : failure ? "Try again" : "Pair"} block disabled={pairing} onPress={() => void pair()} />
+        {failure && asDesktopError(failure).kind === "pairing" ? (
+          <Button label="Enter a new code" block onPress={onNewCode} />
+        ) : (
+          <Button label={pairing ? "Pairing…" : failure ? "Try again" : "Pair"} block disabled={pairing} onPress={() => void pair()} />
+        )}
         <Button label="Cancel" variant="ghost" block disabled={pairing} onPress={onCancel} />
       </View>
     </View>

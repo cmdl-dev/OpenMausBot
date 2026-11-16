@@ -39,7 +39,7 @@ export function BotPicker({ visible, bots, selectedId, onSelect, onClose }: BotP
             }}
             style={[styles.bot, bot.id === selectedId && styles.botSelected]}
           >
-            <Avatar label={bot.glyph} tint={bot.tint} />
+            <Avatar bot={bot} label={bot.glyph} tint={bot.tint} />
             <View style={styles.fill}>
               <Txt variant="callout" weight="600">
                 {bot.name}

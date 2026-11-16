@@ -1,7 +1,7 @@
 import { phonePairingLink } from "@openmausbot/phone-protocol/pairing-link.ts";
 import type { PairResponse } from "@openmausbot/phone-protocol/responses.ts";
 import { problemText } from "@/api/errors";
-import { computerUrl, pair, readManualPairing, readPairingLink } from "@/api/pairing";
+import { computerUrl, pair, readManualPairing, readPairingLink, readServerPairingLink } from "@/api/pairing";
 import { fakeFetch, jsonResponse } from "@/testing/fake-desktop";
 
 const TOKEN = `omb_pair_${"A".repeat(43)}`;
@@ -52,13 +52,32 @@ describe("readManualPairing", () => {
     expect(computerUrl("http://[fd7a::1]:9000/")).toBe("http://[fd7a::1]:9000");
   });
 
-  test("explains a server's 12-character code instead of sending it", () => {
-    expect(readManualPairing("mac.local", "7KQ2-M9XD-H4TP")).toMatchObject({ kind: "problem", field: "code" });
+  test("a computer's 12-character code is sent as the credential, tidied", () => {
+    expect(readManualPairing("127.0.0.1:18799", "7kq2 m9xd h4tp")).toEqual({
+      kind: "ready",
+      invite: { urls: ["http://127.0.0.1:18799"], credential: "7KQ2-M9XD-H4TP" },
+    });
+  });
+
+  test("a sign-in code from an email is explained instead of sent", () => {
+    expect(readManualPairing("mac.local", "1234 5678")).toMatchObject({ kind: "problem", field: "code", text: expect.stringMatching(/sign-in code from an email/) });
   });
 
   test("a pasted pairing link fills in both fields", () => {
     const link = phonePairingLink({ address: "mac.local", port: 8810, token: TOKEN, code: "111222" })!;
     expect(readManualPairing(link, "")).toMatchObject({ kind: "ready", invite: { credential: TOKEN, code: "111222" } });
+  });
+
+  test("a server's pairing link fills in the address and the code", () => {
+    const link = "https://mac.tail1234.ts.net:16443/pair#code=7KQ2-M9XD-H4TP";
+    expect(readServerPairingLink(link)).toEqual({ address: "https://mac.tail1234.ts.net:16443", code: "7KQ2-M9XD-H4TP" });
+    expect(readServerPairingLink("https://maus.example.com/pair?code=7kq2m9xdh4tp")).toEqual({ address: "https://maus.example.com", code: "7KQ2-M9XD-H4TP" });
+    expect(readManualPairing(link, "")).toEqual({
+      kind: "ready",
+      invite: { urls: ["https://mac.tail1234.ts.net:16443"], credential: "7KQ2-M9XD-H4TP" },
+    });
+    expect(readServerPairingLink("https://mac.local/pair")).toBeNull();
+    expect(readServerPairingLink("mac.local:8810")).toBeNull();
   });
 
   test("waits for both fields", () => {
@@ -91,7 +110,7 @@ describe("pair", () => {
     );
     expect(calls).toHaveLength(1);
     expect(failure).toMatchObject({ kind: "pairing", pairing: "pairing_code_wrong" });
-    expect(problemText(failure)).toBe("That code didn't match. Check the six digits on the computer and try again.");
+    expect(problemText(failure)).toBe("That code didn't match. Check the code on the computer and try again.");
   });
 
   test("no address answering is offline", async () => {

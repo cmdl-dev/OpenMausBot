@@ -4,6 +4,7 @@ import * as sample from "@/sample/world";
 import { useConnection } from "@/state/connection";
 import {
   automationView,
+  botSections,
   botView,
   formatDate,
   initials,
@@ -11,6 +12,7 @@ import {
   taskOf,
   threadViews,
   type AutomationView,
+  type BotSection,
   type BotView,
   type ComputerView,
   type HostView,
@@ -32,6 +34,7 @@ export interface ThreadDetail {
 export interface World {
   source: "demo" | "live";
   bots: BotView[];
+  sections: BotSection[];
   threads: ThreadView[];
   /** null when the computer doesn't say who its person is. */
   person: PersonView | null;
@@ -63,6 +66,7 @@ function demoWorld(): World {
   return {
     source: "demo",
     bots: sample.bots,
+    sections: botSections(sample.bots, []),
     threads: sample.threads,
     person: sample.user,
     host: { ...sample.host, status: { label: "Online", tone: "success" } },
@@ -101,6 +105,7 @@ export function useWorld(): World {
     return {
       source: "live",
       bots,
+      sections: botSections(bots, world.sections),
       threads,
       person: null,
       host: {

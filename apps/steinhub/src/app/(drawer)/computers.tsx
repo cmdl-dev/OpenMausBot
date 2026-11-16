@@ -74,7 +74,7 @@ function ComputerCard({ computer, world }: { computer: ComputerView; world: Worl
         <View style={styles.avatars}>
           {bots.slice(0, MAX_AVATARS).map((bot, index) => (
             <View key={bot.id} style={[styles.stacked, index > 0 && styles.overlap]}>
-              <Avatar label={bot.glyph} tint={bot.tint} size="xs" />
+              <Avatar bot={bot} label={bot.glyph} tint={bot.tint} size="xs" />
             </View>
           ))}
           {bots.length > MAX_AVATARS ? (

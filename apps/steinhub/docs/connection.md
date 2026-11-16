@@ -68,11 +68,15 @@ asks the person to pair again.
    SteinHub reads it with `readPairingLink` (`src/api/pairing.ts`), using
    `qrEndpoints` from the protocol to check the endpoint list. Its tests build
    links with the protocol's own `phonePairingLink`.
-3. When typing by hand, the person enters the computer's address
-   (`host[:port]`; the port defaults to 8810) and the six digits. A pasted
-   pairing link fills in both. The protocol's `readPairingInput` recognizes a
-   12-character server code, and SteinHub explains that it can't use it
-   instead of sending it.
+3. When typing by hand, the person enters the **Pairing address** and
+   **Pairing code** from the desktop's Pair a phone → Having trouble? panel
+   (`host[:port]`, where the port defaults to 8810). The code can be the
+   companion's six digits or a 12-character code like `7KQ2-M9XD-H4TP`: the
+   harness's own `POST /api/pair` takes the same request and accepts it. A
+   pasted link fills in both fields: the QR link (`openmausbot://pair?…`) or a
+   server's sign-in link (`https://host:port/pair#code=…`, also `?code=`).
+   A refused code sends the person back to enter a new one instead of
+   resending it.
 4. `POST /api/pair` with `PairRequest`
    `{credential, deviceName, pairRequestId, replacesToken?}` returns
    `PairResponse` `{token, device, serverName, endpoints?}`. A refusal carries
@@ -115,8 +119,8 @@ don't have it.
 |---|---|---|
 | Onboarding: welcome, scan QR, typed code, confirm | **Live** | `POST /api/pair` |
 | Home: bots, greeting, new chat | **Live** (no person's name; see gaps) | `GET /api/bots`, `GET /api/instances` (model labels), `POST /api/bots/:id/tasks`, `POST /api/bots/:id/messages` |
-| Bot picker, drawer bots and recent threads | **Live** | `GET /api/bots`, `bot` / `bot.deleted` / `bots.order` frames |
-| Chat thread: history, send, streamed reply, Stop | **Live** | `GET /api/threads/:id/messages`, `POST /api/bots/:id/messages`, `POST /api/bots/:id/interrupt`, `message` / `message.patch` / `runtime` (`content.delta`) frames |
+| Bot picker, drawer bots (in the computer's sidebar sections, each drawn as its mascot or picture) and recent threads | **Live** | `GET /api/bots` (`sections`), `GET /api/attachments/:file` (pictures), `bot` / `bot.deleted` / `bots.order` / `sections` frames |
+| Chat thread: history (Markdown through `react-native-enriched-markdown`, hand-off chips with their replies), send, streamed reply, Stop | **Live** | `GET /api/threads/:id/messages`, `POST /api/bots/:id/messages`, `POST /api/bots/:id/interrupt`, `message` / `message.patch` / `runtime` (`content.delta`) frames |
 | Chat approval and question cards | **Live** | `POST /api/threads/:id/respond` `{requestId, behavior: allow, deny or answer}` |
 | Automations list and detail (switch, Run now, Pause/Resume, run history) | **Live** | `GET /api/routines` (routines and runs), `PATCH /api/routines/:id {enabled}`, `POST /api/routines/:id/run`, `routine` / `routine.run` frames |
 | Computers | **Partly live**: the paired computer (name, version, bot count, connection state) | `GET /api/companion/endpoints` |

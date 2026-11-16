@@ -113,7 +113,7 @@ function NeedsYouCard({ row, world, now }: { row: InboxRow; world: World; now: n
     return (
       <View style={styles.card}>
         <View style={styles.cardHead}>
-          <Avatar label={glyph} tint={bot?.tint} size="sm" />
+          <Avatar bot={bot} label={glyph} tint={bot?.tint} size="sm" />
           <Txt variant="subhead" weight="600">
             {row.from.name}
           </Txt>
@@ -142,7 +142,7 @@ function NeedsYouCard({ row, world, now }: { row: InboxRow; world: World; now: n
   const Icon = kind.icon;
   return (
     <View style={[styles.card, styles.cardRow]}>
-      <Avatar label={glyph} tint={bot?.tint} size="sm" />
+      <Avatar bot={bot} label={glyph} tint={bot?.tint} size="sm" />
       <View style={styles.fill}>
         <View style={styles.kindLine}>
           <Txt variant="footnote" weight="600">
@@ -167,7 +167,7 @@ function MessageRow({ row, world, now }: { row: InboxRow; world: World; now: num
   const [title, ...rest] = row.text.split("\n");
   return (
     <Pressable accessibilityRole="button" onPress={() => open(row, world)} style={({ pressed }) => [styles.message, pressed && styles.pressed]}>
-      <Avatar label={bot?.glyph ?? row.from.name.slice(0, 1)} tint={bot?.tint} />
+      <Avatar bot={bot} label={bot?.glyph ?? row.from.name.slice(0, 1)} tint={bot?.tint} />
       <View style={styles.fill}>
         <View style={styles.kindLine}>
           <Txt variant="subhead" tone="secondary" style={styles.fill}>

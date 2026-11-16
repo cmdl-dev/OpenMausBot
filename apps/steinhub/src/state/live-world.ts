@@ -24,6 +24,8 @@ export interface PendingSend {
 
 export interface LiveWorld {
   bots: WireBot[];
+  /** The computer's sidebar sections, in its order. */
+  sections: string[];
   threads: Record<string, ThreadState>;
   streaming: Record<string, StreamingItem[]>;
   pending: Record<string, PendingSend[]>;
@@ -37,6 +39,7 @@ export interface LiveWorld {
 
 export const emptyWorld: LiveWorld = {
   bots: [],
+  sections: [],
   threads: {},
   streaming: {},
   pending: {},
@@ -123,7 +126,11 @@ export function worldReducer(world: LiveWorld, action: WorldAction): LiveWorld {
     case "reset":
       return emptyWorld;
     case "bots":
-      return { ...world, bots: action.reply.bots.map(({ messages: _messages, hasMore: _more, activeLeafId: _leaf, ...bot }) => bot) };
+      return {
+        ...world,
+        bots: action.reply.bots.map(({ messages: _messages, hasMore: _more, activeLeafId: _leaf, ...bot }) => bot),
+        sections: action.reply.sections,
+      };
     case "instances": {
       const modelLabels: Record<string, string> = {};
       for (const instance of action.reply.instances) {
@@ -177,6 +184,8 @@ export function worldReducer(world: LiveWorld, action: WorldAction): LiveWorld {
       switch (frame.kind) {
         case "bot":
           return { ...world, bots: botsWithFrame(world.bots, frame.bot) };
+        case "sections":
+          return { ...world, sections: frame.sections };
         case "bot.deleted":
           return { ...world, bots: world.bots.filter((bot) => bot.id !== frame.botId) };
         case "bots.order": {

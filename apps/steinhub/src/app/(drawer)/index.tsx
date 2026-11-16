@@ -75,7 +75,7 @@ export default function HomeScreen() {
       <View style={styles.empty}>
         {bot ? (
           <>
-            <Avatar label={bot.glyph} tint={bot.tint} size="hero" />
+            <Avatar bot={bot} label={bot.glyph} tint={bot.tint} size="hero" />
             <Txt variant="display" style={styles.center}>
               {firstName ? `${greeting(new Date().getHours())}, ${firstName}` : greeting(new Date().getHours())}
             </Txt>

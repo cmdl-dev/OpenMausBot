@@ -130,7 +130,7 @@ function AutomationGroup({ items, world, onError }: { items: AutomationView[]; w
             onPress={() => router.navigate({ pathname: "/automations/[id]", params: { id: automation.id } })}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
-            <Avatar label={bot?.glyph ?? "?"} tint={bot?.tint} size="sm" />
+            <Avatar bot={bot} label={bot?.glyph ?? "?"} tint={bot?.tint} size="sm" />
             <View style={styles.rowText}>
               <Txt variant="callout" numberOfLines={1}>
                 {automation.name}

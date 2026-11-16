@@ -9,7 +9,6 @@ import {
   BROWSER_SIGN_IN,
   clearSessionCookie,
   fromBrowser,
-  adminOnlyBotSetting,
   botProfileSettings,
   clientBotPatchViolation,
   clientGroupPatchViolation,
@@ -264,12 +263,10 @@ describe("scopes", () => {
     for (const method of ["POST", "PUT"]) expect(requiredScope(method, "/api/sidebar-sections"), method).toBe("admin");
   });
 
-  it("lets a bot's maker without the admin scope say who it is and how it looks, never what it may do or whom it directs", () => {
+  it("keeps a moved-in bot to who it is and how it looks, never what it may do or whom it directs", () => {
     const profile = { name: "Scout", title: "Trips", soul: "Plans trips.", color: "teal", avatarCrop: "square", voice: "alloy", modelSelection: { instanceId: "claude", model: "m" } };
-    expect(adminOnlyBotSetting(profile)).toBeNull();
     for (const field of ["approvalMode", "autoApprove", "alwaysAllow", "chiefOfStaff", "managedSections", "computer", "cwd",
       "mcpServers", "browserProfile", "toolScope", "composio", "browser", "section", "visibility", "reportsTo", "preset", "defaultBot", "installedPackage"]) {
-      expect(adminOnlyBotSetting({ ...profile, [field]: true }), field).toBe(field);
       expect(botProfileSettings({ ...profile, [field]: true }), field).toEqual(profile);
     }
   });
@@ -309,18 +306,14 @@ describe("resolveRequestAuth", () => {
     ]) expect(check(method, path).auth?.kind, path).toBe("loopback");
     expect(check("GET", "/api/phones/self/jobs").auth).toEqual({ kind: "loopback", scopes: ["admin", "client"], companionDevice: "phone-1" });
     expect(check("GET", "/api/bots/b/skills").auth?.kind).toBe("loopback");
-    expect(check("POST", "/api/bots/b/skills").auth).toBeNull();
+    expect(check("POST", "/api/bots/b/skills").auth?.kind).toBe("loopback");
+    expect(check("PUT", "/api/config").auth?.kind).toBe("loopback");
     expect(check("DELETE", "/api/attachments/abc-1.jpg").auth).toEqual({ kind: "loopback", scopes: ["admin", "client"], companionDevice: "phone-1" });
-    expect(check("DELETE", "/api/attachments/..%2Fconfig.json").auth).toBeNull();
     const plain = resolveRequestAuth(request({ host: "127.0.0.1:8799", "x-openmausbot-companion": "1", "x-openmausbot-companion-device": "phone-1" }, "GET"), {
       sessions, cookieName, streamPath: "/api/events", url: new URL("/api/phones/self/jobs", "http://localhost"),
       loopbackMutationToken: "desktop-secret", companionMutationToken: "relay-secret",
     });
     expect(plain.auth).toEqual({ kind: "loopback", scopes: ["admin", "client"] });
-    for (const [method, path] of [
-      ["POST", "/api/bots/b/browser/live"], ["GET", "/api/bots/b/browser/action"],
-      ["POST", "/api/bots/b/browser/restart"],
-    ]) expect(check(method, path).auth?.kind, path).not.toBe("loopback");
     const forged: Record<string, string>[] = [
       { "x-openmausbot-companion-auth": "" },
       { "x-openmausbot-companion-auth": "desktop-secret" },
@@ -334,12 +327,11 @@ describe("resolveRequestAuth", () => {
     expect(check("POST", "/api/bots/b/read", {}, "").auth).toBeNull();
     for (const [method, path] of [
       ["PUT", "/api/config"], ["POST", "/api/auth/pairing"],
-      ["POST", "/api/internal/anything"], ["GET", "/api/auth/sessions"],
-      ["POST", "/api/not-yet-supported"],
-    ]) expect(check(method, path).auth, path).toBeNull();
+      ["GET", "/api/auth/sessions"], ["POST", "/api/not-yet-supported"],
+      ["POST", "/api/bots/b/browser/restart"],
+    ]) expect(check(method, path).auth?.kind, path).toBe("loopback");
     expect(check("POST", "/api/live/device-revoked").auth?.kind).toBe("loopback");
     for (const overrides of forged) expect(check("POST", "/api/live/device-revoked", overrides).auth).toBeNull();
-    expect(check("GET", "/api/live/device-revoked").auth).toBeNull();
   });
 
   function pairedToken(scopes: Array<"admin" | "client"> = ["admin", "client"]): string {

@@ -237,7 +237,7 @@ export class CompanionViewerRelay {
 
   #target(rawUrl: string | undefined, device: ViewerDevice | null): { session: ViewerSession; target: URL } | null {
     this.#prune();
-    if (!device?.id || !device.cloudDesktopAccess) return null;
+    if (!device?.id) return null;
     const incoming = requestTarget(rawUrl);
     const match = incoming && VIEWER_PATH.exec(incoming.pathname);
     if (!match) return null;
@@ -262,7 +262,6 @@ export class CompanionViewerRelay {
   handleHttp(req: IncomingMessage, res: ServerResponse, device: ViewerDevice | null): void {
     const resolved = this.#target(req.url, device);
     if (!device) return sendJson(res, 401, { error: "pair this device first" });
-    if (!device.cloudDesktopAccess) return sendJson(res, 403, { error: "cloud desktop access is off for this device" });
     if (!resolved || req.method !== "GET") return sendJson(res, 404, { error: "viewer session not found" });
 
     const headers: Record<string, string> = { accept: String(req.headers.accept ?? "*/*") };
@@ -306,7 +305,6 @@ export class CompanionViewerRelay {
     this.#upgrades.add(socket);
     socket.once("close", () => this.#upgrades.delete(socket));
     if (!device) return socketError(socket, 401, "pair this device first");
-    if (!device.cloudDesktopAccess) return socketError(socket, 403, "cloud desktop access is off for this device");
     const resolved = this.#target(req.url, device);
     const headers = websocketHeaders(req);
     if (!resolved || !headers) return socketError(socket, 404, "viewer session not found");

@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { denyReason, isBrowserControlAccess, isCloudDesktopAccess, isCompanionNotice } from "../src/routes.ts";
+import { denyReason, isBrowserControlAccess, isCompanionNotice } from "../src/routes.ts";
 
 const ask = (method: string, path: string, authenticated = true) =>
   denyReason({ method, path, authenticated });
-
-const allowed = (method: string, path: string) => ask(method, path) === null;
 
 describe("credentials", () => {
   it("lets an unpaired device pair, and do nothing else", () => {
@@ -149,111 +147,28 @@ describe("what the app may do", () => {
   }
 });
 
-describe("what it may not", () => {
-  it("does not list phones to a phone", () => {
-    expect(ask("GET", "/api/phones")?.status).toBe(404);
-    expect(ask("DELETE", "/api/phones/companion%3Ad1")?.status).toBe(404);
-  });
-
-  it("refuses host configuration, and says where it happens", () => {
+describe("a paired device is the app", () => {
+  it("may change anything the app on the computer can", () => {
     for (const [method, path] of [
+      ["PATCH", "/api/bots/bot_123"],
+      ["PUT", "/api/bots/bot_123/settings"],
+      ["POST", "/api/bots"],
+      ["DELETE", "/api/bots/bot_123"],
       ["PUT", "/api/config"],
-      ["PATCH", "/api/config"],
-      ["GET", "/api/devices"],
-      ["GET", "/api/companion"],
-      ["POST", "/api/local-computer/start"],
-      ["POST", "/api/webhooks"],
-      ["POST", "/api/webhooks/wh_1/rotate"],
-      ["DELETE", "/api/connectors/gmail"],
-      ["POST", "/api/teams/import"],
-    ] as Array<[string, string]>) {
-      const denial = ask(method, path);
-      expect(denial?.status, `${method} ${path}`).toBe(403);
-      expect(denial?.error, `${method} ${path}`).toMatch(/on (?:your|the host) computer/);
-    }
-    expect(ask("GET", "/api/devices")).toEqual({
-      status: 403,
-      error: "Remote access settings are managed on the host computer",
-    });
-    expect(ask("GET", "/api/companion")).toEqual({
-      status: 403,
-      error: "Remote access settings are managed on the host computer",
-    });
-  });
-
-  it("reads a bot's MCP servers and nothing of MCP settings", () => {
-    expect(ask("GET", "/api/bots/bot_123/mcp-servers", false)?.status).toBe(401);
-    for (const [method, path] of [
-      ["POST", "/api/bots/bot_123/mcp-servers"],
-      ["PATCH", "/api/bots/bot_123/mcp-servers"],
-      ["PUT", "/api/bots/bot_123/mcp-servers"],
-      ["DELETE", "/api/bots/bot_123/mcp-servers"],
-      ["GET", "/api/bots/bot_123/mcp-servers/warehouse"],
-      ["GET", "/api/bots/bot_123/../mcp-servers"],
-      ["GET", "/api/mcp/servers"],
-      ["POST", "/api/mcp/servers"],
-      ["POST", "/api/mcp/servers/import"],
-      ["PATCH", "/api/mcp/servers/warehouse"],
-      ["POST", "/api/mcp/servers/warehouse/test"],
-      ["POST", "/api/mcp/servers/warehouse/sign-in"],
-    ] as Array<[string, string]>) {
-      expect(allowed(method, path), `${method} ${path}`).toBe(false);
-    }
-  });
-
-  it("reads a bot's skills and changes none of them", () => {
-    expect(ask("GET", "/api/bots/bot_123/skills", false)?.status).toBe(401);
-    for (const [method, path] of [
-      ["POST", "/api/bots/bot_123/skills"],
-      ["PUT", "/api/bots/bot_123/skills"],
-      ["PATCH", "/api/bots/bot_123/skills"],
-      ["DELETE", "/api/bots/bot_123/skills"],
-      ["GET", "/api/bots/bot_123/skills/research"],
-      ["PATCH", "/api/bots/bot_123/skills/research"],
-      ["POST", "/api/bots/bot_123/skills/import"],
-      ["GET", "/api/bots/bot_123/../skills"],
-      ["GET", "/api/skills"],
-    ] as Array<[string, string]>) {
-      expect(allowed(method, path), `${method} ${path}`).toBe(false);
-    }
-  });
-
-  it("discards one uploaded file by its generated name, never a path", () => {
-    expect(ask("DELETE", "/api/attachments/3f2c9a1e-photo.jpg", false)?.status).toBe(401);
-    for (const path of [
-      "/api/attachments",
-      "/api/attachments/../config.json",
-      "/api/attachments/..%2Fconfig.json",
-      "/api/attachments/sub/photo.jpg",
-      "/api/attachments/photo",
-      "/api/attachments/.hidden",
-      "/api/attachments/photo.jpg.",
-    ]) {
-      expect(allowed("DELETE", path), path).toBe(false);
-    }
-  });
-
-  it("keeps endpoint refresh authenticated and exact-method only", () => {
-    expect(ask("GET", "/api/companion/endpoints", false)?.status).toBe(401);
-    expect(ask("GET", "/api/companion/endpoints")).toBeNull();
-    expect(ask("POST", "/api/companion/endpoints")?.status).toBe(403);
-    expect(ask("GET", "/api/companion/endpoints/extra")?.status).toBe(403);
-  });
-
-  it("describes only refused routine operations as computer-only", () => {
-    for (const [method, path] of [
-      ["GET", "/api/routines/routine_1"],
+      ["POST", "/api/secrets"],
       ["PUT", "/api/routines/routine_1"],
       ["POST", "/api/routines/routine_1/cancel"],
+      ["POST", "/api/engines/codex/install"],
+      ["POST", "/api/bots/bot_123/computer/join"],
+      ["POST", "/api/bots/bot_123/local-computer/join"],
+      ["GET", "/api/bots/b1/browser/live"],
+      ["POST", "/api/bots/b1/browser/action"],
+      ["POST", "/api/bots/b1/browser/restart"],
+      ["GET", "/api/phones"],
+      ["GET", "/api/some/route/added/later"],
     ] as Array<[string, string]>) {
-      const denial = ask(method, path);
-      expect(denial, `${method} ${path}`).toEqual({
-        status: 403,
-        error: "this routine operation is only available on your computer",
-      });
+      expect(ask(method, path), `${method} ${path}`).toBeNull();
     }
-    expect(ask("GET", "/api/routines")).toBeNull();
-    expect(ask("POST", "/api/routines/routine_1/run")).toBeNull();
   });
 
   it("keeps the unpaired-phone notice for the companion alone", () => {
@@ -264,209 +179,14 @@ describe("what it may not", () => {
     expect(isCompanionNotice("POST", "/api/live/device-revoked/x")).toBe(false);
     expect(isCompanionNotice("POST", "/api/live/call/end")).toBe(false);
   });
-
-  it("denies the peer-agent endpoints exist at all", () => {
-    expect(ask("GET", "/api/internal/peers")?.status).toBe(404);
-    expect(ask("POST", "/api/internal/ask-bot")?.status).toBe(404);
-  });
-
-  it("does not serve the desktop UI", () => {
-    expect(ask("GET", "/")?.status).toBe(404);
-    expect(ask("GET", "/index.html")?.status).toBe(404);
-  });
-
-  it("opens and previews only an explicitly granted cloud viewer", () => {
-    expect(allowed("POST", "/api/bots/bot_123/computer/join")).toBe(true);
-    expect(allowed("POST", "/api/bots/bot_123/computer/control")).toBe(true);
-    expect(allowed("POST", "/api/bots/bot_123/computer/screenshot")).toBe(true);
-    expect(allowed("POST", "/api/bots/bot_123/computer/viewer-close")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/computer")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123/computer/control")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123/computer/viewer-close")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/computer/provision")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/computer/sleep")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/computer/exec")).toBe(false);
-  });
-
-  it("previews a Local VM without reaching its lifecycle", () => {
-    expect(allowed("POST", "/api/bots/bot_123/local-computer/screenshot")).toBe(true);
-    expect(isCloudDesktopAccess("POST", "/api/bots/bot_123/local-computer/screenshot")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/local-computer/screenshot")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123/local-computer")).toBe(false);
-    for (const action of ["run", "stop", "remove"]) {
-      expect(allowed("POST", `/api/bots/bot_123/local-computer/${action}`)).toBe(false);
-    }
-    expect(allowed("POST", "/api/local-computer/screenshot")).toBe(false);
-  });
-
-  it("joins a Local VM's live desktop only behind computer access", () => {
-    expect(allowed("POST", "/api/bots/bot_123/local-computer/join")).toBe(true);
-    expect(isCloudDesktopAccess("POST", "/api/bots/bot_123/local-computer/join")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/local-computer/join")).toBe(false);
-    expect(allowed("POST", "/api/local-computer/join")).toBe(false);
-  });
-
-  it("allows only the exact encrypted credential submission verb", () => {
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/provide")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/secret-cards/message_1/provide")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/provided")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/provide/extra")).toBe(false);
-  });
-
-  it("allows a typed custom secret only through the exact save verb", () => {
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/save")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/secret-cards/message_1/save")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/save/extra")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/message_1/saved")).toBe(false);
-  });
-
-  it("allows a path only for the methods it was allowed for", () => {
-    expect(allowed("GET", "/api/bots")).toBe(true);
-    expect(allowed("DELETE", "/api/bots")).toBe(false);
-    expect(allowed("POST", "/api/threads/th_1/messages")).toBe(false);
-    expect(allowed("GET", "/api/threads/th_1/messages/msg_2/file")).toBe(false);
-    expect(allowed("POST", "/api/threads/th_1/messages/msg_2/file/extra")).toBe(false);
-    expect(allowed("GET", "/api/groups/room-1")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123")).toBe(false);
-    expect(allowed("PUT", "/api/bots/bot_123")).toBe(false);
-    expect(allowed("PATCH", "/api/bots/bot_123/extra")).toBe(false);
-    expect(allowed("PATCH", "/api/bots/bot_123/../other")).toBe(false);
-    expect(ask("PATCH", "/api/bots/bot_123", false)?.status).toBe(401);
-    expect(allowed("GET", "/api/bots/bot_123/model")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/model")).toBe(false);
-    expect(allowed("PATCH", "/api/bots/bot_123/model/extra")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/overview")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123/overview/extra")).toBe(false);
-    expect(allowed("PATCH", "/api/bots/bot_123/profile/execution-policy")).toBe(false);
-    expect(allowed("GET", "/api/sidebar-sections")).toBe(false);
-    expect(allowed("PATCH", "/api/sidebar-sections")).toBe(false);
-    expect(allowed("POST", "/api/sidebar-sections/extra")).toBe(false);
-    expect(allowed("PUT", "/api/config")).toBe(false);
-    expect(allowed("GET", "/api/attachments/../config.json")).toBe(false);
-    expect(allowed("GET", "/api/files")).toBe(false);
-    expect(allowed("POST", "/api/files/anything")).toBe(false);
-    expect(allowed("GET", "/api/routine-runs/run_1/cancel")).toBe(false);
-    expect(allowed("POST", "/api/routine-runs/run_1/retry")).toBe(false);
-    expect(allowed("DELETE", "/api/connectors/slack")).toBe(false);
-    expect(allowed("GET", "/api/connectors/connected/all")).toBe(false);
-    expect(allowed("DELETE", "/api/connectors/slack/accounts/ca_123")).toBe(true);
-    expect(allowed("DELETE", "/api/connectors/slack/accounts/../gmail")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/secret-cards/msg_2/provided")).toBe(false);
-    expect(allowed("POST", "/api/bots/bot_123/sign-in-cards/msg_3/resume")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123/sign-in-cards/msg_3/done")).toBe(false);
-    expect(allowed("PATCH", "/api/groups/room-1")).toBe(false);
-    expect(allowed("GET", "/api/limit-resets/continue")).toBe(false);
-    expect(allowed("DELETE", "/api/limit-resets/continue")).toBe(false);
-    expect(allowed("GET", "/api/limit-resets")).toBe(false);
-    expect(allowed("POST", "/api/limit-resets/after-reset")).toBe(false);
-  });
-
-  it("lets a phone update Claude Code and change nothing else about engines", () => {
-    for (const [method, path] of [
-      ["GET", "/api/instances/claude/claude-update"],
-      ["POST", "/api/instances/../claude-update"],
-      ["POST", "/api/instances/.../claude-update"],
-      ["POST", "/api/instances/%2e%2e/claude-update"],
-      ["PATCH", "/api/instances/claude"],
-    ] as Array<[string, string]>) {
-      expect(allowed(method, path), `${method} ${path}`).toBe(false);
-    }
-  });
-
-  it("allows only the four Live call routes, never the key", () => {
-    expect(ask("POST", "/api/live/summary")?.status).toBe(404);
-    expect(ask("PUT", "/api/config")?.status).toBe(403);
-    expect(allowed("PUT", "/api/live/settings")).toBe(false);
-    expect(allowed("GET", "/api/live/settings")).toBe(false);
-    expect(allowed("GET", "/api/live/session")).toBe(false);
-    expect(allowed("POST", "/api/live/call")).toBe(false);
-    expect(allowed("POST", "/api/live/call/end/extra")).toBe(false);
-  });
-
-  it("allows an app's document, rpc and context and nothing else of apps", () => {
-    for (const [method, path] of [
-      ["POST", "/api/threads/th_1/messages/msg_2/app"],
-      ["GET", "/api/bots/bot_123/apps/msg_2/rpc"],
-      ["GET", "/api/bots/bot_123/apps/msg_2/context"],
-      ["POST", "/api/bots/bot_123/apps/msg_2"],
-      ["POST", "/api/bots/bot_123/apps/msg_2/delete"],
-      ["POST", "/api/bots/bot_123/apps/msg_2/rpc/extra"],
-      ["POST", "/api/bots/bot_123/apps/../rpc"],
-      ["GET", "/api/threads/th_1/messages/msg_2/app/../../../config"],
-    ] as const) expect(allowed(method, path), `${method} ${path}`).toBe(false);
-  });
-
-  it("reads a bot's Data and nothing that runs, changes or exports it", () => {
-    expect(allowed("GET", "/api/bots/bot_123/data")).toBe(true);
-    expect(allowed("POST", "/api/bots/bot_123/data/page")).toBe(true);
-    expect(allowed("GET", "/api/bots/bot_123/data/cards/c_2/image")).toBe(true);
-    for (const [method, path] of [
-      ["POST", "/api/bots/bot_123/data/run"],
-      ["POST", "/api/bots/bot_123/data/cancel"],
-      ["POST", "/api/bots/bot_123/data/export"],
-      ["PATCH", "/api/bots/bot_123/data/cards/c_2"],
-      ["DELETE", "/api/bots/bot_123/data/cards/c_2"],
-      ["GET", "/api/bots/bot_123/data/tables/orders/stats"],
-      ["POST", "/api/bots/bot_123/data"],
-      ["GET", "/api/bots/bot_123/data/page"],
-      ["GET", "/api/bots/bot_123/data/cards/../../config"],
-      ["GET", "/api/bots/bot_123/data/cards/c_2/image/extra"],
-    ] as const) expect(ask(method, path)?.status, `${method} ${path}`).toBe(404);
-    expect(ask("GET", "/api/bots/bot_123/data", false)?.status).toBe(401);
-  });
-
-  it("lets a paired phone delete one bot, and nothing beside it", () => {
-    expect(allowed("DELETE", "/api/bots/bot_123")).toBe(true);
-    expect(allowed("DELETE", "/api/bots")).toBe(false);
-    expect(allowed("DELETE", "/api/bots/bot_123/extra")).toBe(false);
-    expect(allowed("DELETE", "/api/bots/../config")).toBe(false);
-    expect(allowed("GET", "/api/bots/bot_123")).toBe(false);
-    expect(ask("DELETE", "/api/bots/bot_123", false)?.status).toBe(401);
-  });
-
-  it("is not fooled by a prefix", () => {
-    expect(allowed("GET", "/api/bots/bot_123/computer")).toBe(false);
-    expect(allowed("GET", "/api/botsandthensome")).toBe(false);
-    expect(allowed("GET", "/api/events/all")).toBe(false);
-    expect(allowed("GET", "/api/threads/th_1/messages/msg_2/image/../../../config")).toBe(false);
-    expect(allowed("GET", "/api/bots%2f..%2fwebhooks")).toBe(false);
-  });
-
-  it("denies a route it has never heard of", () => {
-    for (const path of [
-      "/api/whatever-ships-next",
-      "/api/bots/bot_123/some-new-verb",
-      "/api/secrets",
-    ]) {
-      expect(allowed("GET", path), path).toBe(false);
-      expect(allowed("POST", path), path).toBe(false);
-      expect(allowed("DELETE", path), path).toBe(false);
-    }
-  });
 });
 
-describe("browser control", () => {
-  it("allows the live stream and the action channel, and nothing else under browser/", () => {
-    expect(allowed("GET", "/api/bots/b1/browser/live")).toBe(true);
-    expect(allowed("POST", "/api/bots/b1/browser/action")).toBe(true);
-    expect(allowed("POST", "/api/bots/b1/browser/live")).toBe(false);
-    expect(allowed("GET", "/api/bots/b1/browser/action")).toBe(false);
-    expect(allowed("POST", "/api/bots/b1/browser/restart")).toBe(false);
-    expect(allowed("GET", "/api/bots/b1/browser")).toBe(false);
-  });
-
-  it("classifies exactly the two routes as needing the browser capability", () => {
+describe("browser responses", () => {
+  it("marks exactly the live stream and the action channel as showing a signed-in browser", () => {
     expect(isBrowserControlAccess("GET", "/api/bots/b1/browser/live")).toBe(true);
     expect(isBrowserControlAccess("POST", "/api/bots/b1/browser/action")).toBe(true);
     expect(isBrowserControlAccess("GET", "/api/bots/b1/messages")).toBe(false);
     expect(isBrowserControlAccess("POST", "/api/bots/b1/computer/join")).toBe(false);
-    expect(isCloudDesktopAccess("GET", "/api/bots/b1/browser/live")).toBe(false);
-  });
-
-  it("anchors the bot id so a traversal cannot reach another route", () => {
-    expect(allowed("GET", "/api/bots/b1/browser/live/../../config")).toBe(false);
-    expect(allowed("GET", "/api/bots/b1/browser/live?x=1")).toBe(false);
     expect(isBrowserControlAccess("GET", "/api/bots/b1/browser/live/extra")).toBe(false);
   });
 });

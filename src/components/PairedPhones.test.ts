@@ -13,12 +13,10 @@ const row = (device: PhoneDevice, companion: CompanionState) =>
   renderToStaticMarkup(createElement(PhoneRow, { device, connected: false, state: companion, c, onRemoved: () => {}, defaultOpen: true }));
 
 describe("paired phones", () => {
-  it("keeps browser access separately off until granted, including old sidecar snapshots", () => {
-    for (const browserControlAccess of [undefined, false, true]) {
-      const markup = row(phone({ browserControlAccess }), state());
-      expect(markup.match(/<button[^>]*aria-label="Browser control access for Ada"[^>]*>/)?.[0]).toContain(`aria-checked="${browserControlAccess === true}"`);
-      expect(markup.match(/<button[^>]*aria-label="Computer view access for Ada"[^>]*>/)?.[0]).toContain('aria-checked="true"');
-    }
+  it("shows no per-device access switches: a paired phone has the app's access", () => {
+    const markup = row(phone({ browserControlAccess: false, cloudDesktopAccess: false }), state());
+    expect(markup).not.toContain("Browser control access for Ada");
+    expect(markup).not.toContain("Computer view access for Ada");
   });
 
   it("offers Connect from only once the computer serves the encrypted connection", () => {

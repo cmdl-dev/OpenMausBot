@@ -18,7 +18,6 @@ import {
 import {
   denyReason,
   isBrowserControlAccess,
-  isCloudDesktopAccess,
   isMessageFileDownload,
 } from "./routes.ts";
 import { createJsonScrubber } from "./json-scrub.ts";
@@ -418,10 +417,7 @@ export function createProxyHandler(options: ProxyOptions) {
       if (!current || current.id !== device?.id) {
         return { status: 401, error: "pair this device from Remote access settings on the host computer" };
       }
-      return current.browserControlAccess ? null : {
-        status: 403,
-        error: "browser control is off for this device — enable it in Remote access settings on the host computer",
-      };
+      return null;
     };
     if (viewers.isViewerPath(req.url)) {
       viewers.handleHttp(req, res, device);
@@ -433,21 +429,6 @@ export function createProxyHandler(options: ProxyOptions) {
       authenticated: Boolean(device),
     });
     if (denial) return sendJson(res, denial.status, { error: denial.error });
-
-    // Pairing grants the ordinary companion surface, not a computer's browser
-    // session; the owner enables this per device, off by default.
-    if (isCloudDesktopAccess(method, path) && !device?.cloudDesktopAccess) {
-      return sendJson(res, 403, {
-        error: "computer access is off for this device — enable it in OpenMausBot → Settings → Remote access",
-      });
-    }
-
-    // A separate grant: this browser is normally signed into the person's own accounts.
-    if (isBrowserControlAccess(method, path) && !device?.browserControlAccess) {
-      return sendJson(res, 403, {
-        error: "browser control is off for this device — open Remote access on the computer and turn on \"Allow browser control\" for it",
-      });
-    }
 
     const viewerClose = /^\/api\/bots\/([\w-]+)\/computer\/viewer-close$/.exec(path);
     if (viewerClose && device?.id) viewers.close(device.id, viewerClose[1]);

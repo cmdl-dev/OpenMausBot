@@ -38,7 +38,6 @@ import type { UsageTrigger } from "../usage-ledger.ts";
 import { noteTypedSend } from "../typed-sends.ts";
 import { startFresh } from "../fresh-start.ts";
 import { parseMentionPicks } from "../../shared/room-mentions.ts";
-import { pinnedClientThreadGuard } from "./pinned-client-thread.ts";
 import { refusalBody, userError } from "../user-errors.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -176,7 +175,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     deliverLateQuestionAnswer, stopThreadForPerson, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
     cancelGroupTurnOperations, closeOpenApprovals, harnessCardOutcome, pressRecords, serverPress, relayedReaction, answeredIn, fromPhone, notePhoneSend, goals,
   } = deps; const owners = routeRunOwners(deps.runOwners, deps.runActor);
-  const pinnedClientThread = pinnedClientThreadGuard(store);
   /** Security: a bot's own shell must never approve its own card, so a local request counts only from the desktop app, or
    * from a browser while every bot is idle. */
   const ownerReview = (auth: RequestAuth, req: IncomingMessage) => auth.kind === "loopback"
@@ -188,7 +186,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
   const route: RouteHandler = async (ctx) => {
     const { req, res, path, method, auth, json, readBody } = ctx;
     let m: RegExpMatchArray | null = null;
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
     const routines = deps.routines();
     m = path.match(/^\/api\/bots\/([\w-]+)\/messages(?:\/(guarded))?$/);
     if (m && method === "POST") {
@@ -229,7 +226,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       if (!pressed && !fromAnApp && !typed) return json(res, 400, { error: "text required" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such bot" });
-      requirePinnedClientThread(bot.id, body.threadId);
       if (body.threadId !== undefined && (typeof body.threadId !== "string" || !/^[\w-]+$/.test(body.threadId))) {
         return json(res, 400, { error: "threadId must be a task id" });
       }
@@ -360,7 +356,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/queue\/([\w-]+)$/);
     if (m && method === "DELETE") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const queueId = m[2];
       const waiting = queuedSteerSender(bot.id, bot.threadId, queueId);
@@ -377,7 +372,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/queue\/([\w-]+)\/steer$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       // Hold the whole queue atomically: a racing settle drains it or this request steers it, never both.
       const held = holdSteeredQueue(bot.id, bot.threadId, m[2]);
@@ -471,7 +465,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/compact$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -484,7 +477,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/start-fresh$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -498,7 +490,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     if (m && method === "POST") {
       const messageId = m[2];
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
       const notYours = owners.decidesRetry(bot.threadId) ? null : cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -549,7 +540,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/active-branch$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -774,7 +764,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         return json(res, 400, { error: "body must be a JSON object" });
       }
       const body = rawBody ?? {};
-      requirePinnedClientThread(bot.id, body.threadId);
       const expectedThreadId = body.threadId;
       if (expectedThreadId !== undefined && (typeof expectedThreadId !== "string" || !/^[\w-]+$/.test(expectedThreadId))) {
         return json(res, 400, { error: "threadId must be a task id" });

@@ -20,7 +20,7 @@ import { autoCompactWindow } from "./drivers/claude.ts";
 import { RoomContextTracker, roomResetNote } from "./room-context.ts";
 import { createRoomTranscript, GROUP_CONTEXT_MESSAGES } from "./host/room-transcript.ts";
 import { createRoomSessions } from "./host/room-sessions.ts";
-import { LentComputers, provenRequestPerson, SharedComputers, sharedComputerOperation } from "./shared-computers.ts"; import { lentScreenResult } from "./lent-screen-guidance.ts"; import { DeviceLinks } from "./device-links.ts"; import { createLentMcp, isLentMcpPath } from "./lent-mcp.ts";
+import { LentComputers, provenRequestPerson, SharedComputers, sharedComputerOperation, type CodexAppAccess } from "./shared-computers.ts"; import { lentScreenResult } from "./lent-screen-guidance.ts"; import { DeviceLinks } from "./device-links.ts"; import { createLentMcp, isLentMcpPath } from "./lent-mcp.ts";
 import { cloudHomeLendingRefusal, cloudHomeOwnTurnRefusal, createCloudRoutineAuthors, ownerOnlyConversation } from "./cloud-lending.ts"; import { createOwnHome, selfHostedPersonName } from "./own-home.ts"; import { createPlacesElsewhere } from "./places-elsewhere.ts"; import { createPlacesElsewhereRoutes } from "./routes/places-elsewhere.ts"; import { assertRoomFolder } from "./room-folder.ts"; import { cloudConnectedAppsBrokerUrl, startCloudHomeConnectedApps, stopCloudHomeConnectedApps } from "./cloud-connected-apps.ts"; import { createTeamConnectionsHost } from "./host/team-connections-host.ts"; import { createCloudLendingTurns } from "./host/cloud-lending-turns.ts"; import { createTeamConnectionRoutes } from "./routes/team-connections.ts";
 import { botMemoryFiles, createLendingMemory } from "./lending-memory.ts";
 import { SharedComputerControl } from "./shared-computer-control.ts";
@@ -422,6 +422,7 @@ import { shellTimeoutHookResult } from "./shell-timeout-hint.ts";
 import { spillToolResult } from "./tool-result-spill.ts";
 import { gatedLocalComputer } from "./local-computer.ts";
 import { desktopComputer, thisComputerNotReadyError } from "./desktop-computer.ts";
+import { askLentCodexApp, cancelLentCodexAsks, dismissStaleLentCodexCards, resolveLentCodexAsk } from "./lent-codex-asks.ts";
 import { askToUseYourComputer, cancelYourComputerAsks, claimWithYourComputerConsent, dismissStaleYourComputerCards, yourComputerCallFrom, yourComputerWaiting, type YourComputerBus } from "./your-computer-consent.ts";
 import { createComputerAsksHost } from "./host/computer-asks-host.ts";
 import { discoverExistingPerBotLocalVms, localVmInventoryEntry } from "./local-vm-inventory.ts";
@@ -2105,7 +2106,7 @@ const parkedSeatTaken = (nodeId: string): boolean => { const seat = parkedSeats.
 function releaseTurnResources(owner: TurnOwner | undefined): void {
   if (!owner) return;
   if (autoVmClaims.get(owner.threadId)?.owner.generation === owner.generation) autoVmClaims.delete(owner.threadId);
-  cancelYourComputerAsks(owner.threadId, owner.generation);
+  cancelYourComputerAsks(owner.threadId, owner.generation); cancelLentCodexAsks(owner.threadId, owner.generation);
   if (settlingResourceOwners.get(owner.threadId) === owner.generation) settlingResourceOwners.delete(owner.threadId);
   cloudComputerPower.released(owner);
   turnResources.release(owner);
@@ -4939,7 +4940,7 @@ async function respondToCard(input: {
 
 function closeOpenApprovals(threadId: string): void {
   for (const key of pendingCommandRules.keys()) if (key.startsWith(`${threadId}:`)) pendingCommandRules.delete(key);
-  cancelYourComputerAsks(threadId); computerAsks?.asks.cancel(threadId);
+  cancelYourComputerAsks(threadId); cancelLentCodexAsks(threadId); computerAsks?.asks.cancel(threadId);
   for (const message of store.messagesFor(threadId)) {
     const card = message.card;
     if (!card?.requestId || card.answered || card.dismissed) continue;
@@ -9579,11 +9580,11 @@ const approvalBus: YourComputerBus = { store, notify };
 
 // A bot resets a stuck cloud computer: its own, or as a Chief one of a bot it manages; Settings' reset, at once.
 const cloudComputerResets = createCloudComputerResetAsks({ language: threadLanguage, store, refusal: (from, target) => target.id !== from.id && !(chiefLevel(from) && canManage(from, target)) ? "You can ask to reset only your own cloud computer; a Chief of Staff can also ask for a bot in a department it manages." : noOwnCloudComputer(target, boat.boatConfigured(cfg), Boolean(inheritedTeamComputer(target))), computer: async (botId) => (await ownCloudComputer(cfg, botId, managedBoatOwners()))?.boxId ?? null, reset: async (botId, boxId) => { if (boatLifecycleBusyBots.has(botId)) throw Object.assign(new Error("this bot's cloud computer is being changed — wait for it to finish"), { status: 409 }); return resetBotCloudComputer(cfg, botId, managedBoatOwners(), (instance) => { if (computerProviderConfigTransitions.has("box")) throw Object.assign(new Error(providerTransitionMessage("box")), { status: 409 }); workspaceMaintenance.assertAvailable(); return claimManagedBoatMutation(instance); }, boxId); } });
-const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coordinator, registry, turnStops, hostedModels, providerConfigs, policyModelRefusal, checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage, takeover: limitTakeover, ownCards: (requestId, behavior) => computerAsks?.asks.answer(requestId, behavior) ?? false });
+const { quotaSwitch, harnessCardOutcome } = createQuotaSwitchHost({ store, coordinator, registry, turnStops, hostedModels, providerConfigs, policyModelRefusal, checkedTaskModelSwitch, threadBusy, directRequestOwners, startOrQueueDirectMessage, takeover: limitTakeover, ownCards: (requestId, behavior) => resolveLentCodexAsk(requestId, behavior) || (computerAsks?.asks.answer(requestId, behavior) ?? false) });
 
 // Consent cards live only in memory: settle every card still open on disk, or it locks the composer forever.
 {
-  const stale = dismissLeftoverPeerCards(store) + dismissStaleYourComputerCards(store) + (computerAsks?.asks.dismissStale() ?? 0);
+  const stale = dismissLeftoverPeerCards(store) + dismissStaleYourComputerCards(store) + dismissStaleLentCodexCards(approvalBus) + (computerAsks?.asks.dismissStale() ?? 0);
   if (stale) console.log(`approvals: dismissed ${stale} card(s) left by a previous run`);
 }
 
@@ -13151,13 +13152,18 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         if (!botLending()) return json(res, 404, { error: "unknown internal endpoint" });
         if (!parsed.success) return json(res, 400, { error: "Invalid shared computer operation" });
         // The bot's own "no computer" setting holds on a lent screen too.
-        if (["computer_tools", "computer_call"].includes(parsed.data.action) && store.bot(internalCapability.botId)?.computer === "off") {
+        if (["computer_tools", "computer_call", "codex_task"].includes(parsed.data.action) && store.bot(internalCapability.botId)?.computer === "off") {
           return json(res, 403, { error: "This bot has no computer. Change its Computer setting to use a shared computer's apps and screen." });
         }
         const principal = sharedComputerPrincipal(internalCapability);
         const why = (CLOUD_TEAM ? managedPolicy.computerRefusal("thisComputer") : null) ?? (CLOUD_HOME && !principal ? cloudLendingRefusalForBot(internalCapability) : null);
         if (why) return json(res, 403, { error: why });
-        return json(res, 200, { result: lentScreenResult(parsed.data, await sharedComputers.request(parsed.data, principal, () => botLending() && internalCapabilityIsActive(internalCapability), store.bot(internalCapability.botId))) });
+        const actingBot = store.bot(internalCapability.botId);
+        const computerName = sharedComputers.list(principal).find((computer) => computer.id === parsed.data.computer_id)?.name ?? "the shared computer";
+        const askCodexApp = parsed.data.action !== "codex_task" ? undefined
+          : (access: CodexAppAccess, signal: AbortSignal) => actingBot && liveApprovalMode(actingBot, internalCapability.threadId, internalCapability.depth > 0) === "full" ? Promise.resolve(true)
+            : askLentCodexApp(approvalBus, actingBot ?? undefined, { threadId: internalCapability.threadId, generation: internalCapability.generation }, computerName, access, signal);
+        return json(res, 200, { result: lentScreenResult(parsed.data, await sharedComputers.request(parsed.data, principal, () => botLending() && internalCapabilityIsActive(internalCapability), actingBot, askCodexApp)) });
       }
       if (method === "GET" && path === "/api/internal/agents") {
         const sender = internalSender;

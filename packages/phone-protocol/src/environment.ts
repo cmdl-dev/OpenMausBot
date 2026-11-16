@@ -32,6 +32,9 @@ export interface EnvironmentDescriptor {
     fileEdits?: true;
     /** A lent computer may say it runs the MCP servers saved here that run on it (mcp_tools, mcp_call). Never a team Cloud. */
     lentMcp?: true;
+    /** A lent computer may lend its own Codex for codex_task jobs and send Codex's app-access questions back
+     * (POST /api/shared-computers/:id/codex-app). Told only to the owner of a server one person owns. */
+    codexTasks?: true;
     /** A person's own OMB Cloud home. */
     cloudHome?: true;
     /** A team's Cloud home: `label` is the team's name. */

@@ -250,7 +250,9 @@ test("Settings: each server of the person's own has the switch, which asks the s
   assert.equal(calls.boxes[0].message, "Let Garage use this computer?");
   assert.deepEqual(calls.lent, [["garage", { folders: [], terminal: false, computer: true }]]);
   await handlers.get("sharing:save")({}, "garage", { folders: [], terminal: true, computer: true });
-  assert.deepEqual(calls.lent.at(-1), ["garage", { folders: [], terminal: true, computer: true }], "a change lends as theirs, never through the maintainer path");
+  assert.deepEqual(calls.lent.at(-1), ["garage", { folders: [], terminal: true, computer: true, codex: false }], "a change lends as theirs, never through the maintainer path");
+  await handlers.get("sharing:save")({}, "garage", { folders: [], terminal: false, computer: false, codex: true });
+  assert.deepEqual(calls.lent.at(-1), ["garage", { folders: [], terminal: false, computer: false, codex: true }], "its own Codex, lent only when asked for");
   assert.deepEqual(calls.saved, []);
   await handlers.get("sharing:revoke")({}, "garage");
   assert.deepEqual(calls.revoked, ["garage"]);

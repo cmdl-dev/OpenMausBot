@@ -9550,6 +9550,8 @@
   "native.lend.terminalOff": "Terminal: desligado",
   "native.lend.computerOn": "Controle do computador: pode ver sua tela e usar os apps em que você fez login. Pode acessar informações fora das pastas acima.",
   "native.lend.computerOff": "Controle do computador: desligado",
+  "native.lend.codexOn": "Codex: pode passar tarefas para o Codex conectado aqui, que trabalha nos seus apps e pede permissão antes de cada app.",
+  "native.lend.codexOff": "Codex: desligado",
   "native.lend.footer": "O conteúdo compartilhado é enviado a este servidor e pode chegar ao provedor de modelos dele. Os bots deste servidor podem usar essas permissões até você revogá-las. Fechar o app para computador encerra o acesso.",
   "native.lend.allow.title": "Permitir que {name} acesse o computador?",
   "native.lend.allow.button": "Permitir acesso",

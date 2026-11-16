@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
+import { runCodexTask } from "./codex-task.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { allowedServerOrigin } from "./server-address.mjs";
 import { createSharedCua, executeSharedOperation, personalSecretPaths, sharedComputerError, validCommandSeconds } from "./shared-computer-access.mjs";
@@ -110,8 +111,8 @@ export async function validateSharedFolders(folders, { homeEdits = false } = {})
   return result;
 }
 
-const JOB_KEYS = new Set(["computer_id", "action", "folder_id", "path", "content", "encoding", "expected_sha256", "old_text", "new_text", "command", "timeout_seconds", "tool_name", "arguments", "server"]);
-const JOB_ACTIONS = new Set(["list_files", "read_file", "write_file", "edit_file", "append_file", "delete_file", "run_command", "computer_tools", "computer_call", ...LENT_MCP_ACTIONS]);
+const JOB_KEYS = new Set(["computer_id", "action", "folder_id", "path", "content", "encoding", "expected_sha256", "old_text", "new_text", "command", "timeout_seconds", "tool_name", "arguments", "server", "prompt"]);
+const JOB_ACTIONS = new Set(["list_files", "read_file", "write_file", "edit_file", "append_file", "delete_file", "run_command", "computer_tools", "computer_call", "codex_task", ...LENT_MCP_ACTIONS]);
 const optionalText = (value, max) => value === undefined || (typeof value === "string" && value.length <= max);
 /** Refuses malformed input only; the grant still decides whether the operation is allowed. */
 export function validSharedOperation(operation, computerId) {
@@ -124,6 +125,7 @@ export function validSharedOperation(operation, computerId) {
     (operation.encoding === undefined || operation.encoding === "utf8" || operation.encoding === "base64") &&
     (operation.expected_sha256 === undefined || (typeof operation.expected_sha256 === "string" && /^[a-f0-9]{64}$/.test(operation.expected_sha256))) &&
     optionalText(operation.command, 8000) && validCommandSeconds(operation.timeout_seconds) && optionalText(operation.tool_name, 256) &&
+    optionalText(operation.prompt, 20_000) && (operation.action !== "codex_task" || (typeof operation.prompt === "string" && operation.prompt.trim().length > 0)) &&
     (operation.arguments === undefined || (Boolean(operation.arguments) && typeof operation.arguments === "object" && !Array.isArray(operation.arguments))) &&
     (LENT_MCP_ACTIONS.has(operation.action) ? validLentMcpServer(operation.server) : operation.server === undefined);
 }
@@ -230,7 +232,7 @@ const BROWSE_NOTE_MS = 10 * 60_000;
  * running commands once the person confirms it here. */
 export function createComputerSharing({ file, fetch: fetchImpl, environments, localEnvironments = () => [], cuaConnection, hostControl, screenLocked = () => false, idleSeconds = () => null, protectedPaths = [], enabled = async () => false, home = os.homedir(), activityFile, cloud = () => null, onChange = () => {}, reconnect = null, now = Date.now, power = createCloudPowerGate(),
   linkHeaders = () => ({}), WebSocket: linkSocket = globalThis.WebSocket, egress = {}, chrome = {}, serverPorts = () => [], myCloud = () => null, ownClouds = () => [], screen = () => false, askForScreen = () => {}, cloudPower = () => null,
-  prompt = async () => null, startScreen = async () => null, confirmTerminal = async () => false, log = () => {}, t = nativeText.englishText.t }) {
+  prompt = async () => null, startScreen = async () => null, confirmTerminal = async () => false, log = () => {}, t = nativeText.englishText.t, codexTask = runCodexTask }) {
   const protectedRoots = [path.dirname(file), ...protectedPaths.filter(entry => typeof entry === "string" && entry), ...personalSecretPaths(home)];
   const activity = createLendingActivity(activityFile ?? path.join(path.dirname(file), "lending-activity.jsonl"));
   const presence = createLentScreenPresence({ idleSeconds, now });
@@ -417,7 +419,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
     // A server of the person's own says what it takes from them in their own sign-in's answer (`lending`), never before pairing.
     const offered = { ...descriptor.capabilities, ...(ownServerSession(auth) && auth.lending && typeof auth.lending === "object" ? auth.lending : {}) };
     if (required && offered.sharedComputers !== true) throw new Error(UPDATE_SERVER);
-    return { supported: offered.sharedComputers === true, auth, info: { sessionId: auth.id, environmentId: descriptor.environmentId }, details: offered.lendingDetails === true, link: offered.deviceLink === true, chrome: offered.myChromeLink === true, timeouts: offered.commandTimeouts === true, long: offered.longCommands === true, edits: offered.fileEdits === true, asks: offered.computerAsks === true, mcp: offered.lentMcp === true };
+    return { supported: offered.sharedComputers === true, auth, info: { sessionId: auth.id, environmentId: descriptor.environmentId }, details: offered.lendingDetails === true, link: offered.deviceLink === true, chrome: offered.myChromeLink === true, timeouts: offered.commandTimeouts === true, long: offered.longCommands === true, edits: offered.fileEdits === true, asks: offered.computerAsks === true, mcp: offered.lentMcp === true, codex: offered.codexTasks === true };
   };
   const identity = async env => {
     await requireEnabled();
@@ -430,8 +432,8 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
    * server the move chose (lending-target.mjs `own:<environment id>`). */
   const ownHomeId = env => { const current = cloud(env); return current?.origin === env.origin && current.accountId?.startsWith("own:") ? current.accountId.slice(4) : null; };
   /** What the server says it takes, remembered for its connect; a server of the person's own never gets the device link. */
-  const takes = (env, { details, link, chrome: takesChrome, timeouts, long, edits, mcp }) => {
-    for (const [set, on] of [[supportsDetails, details], [supportsLink, link], [supportsChrome, takesChrome], [supportsTimeouts, timeouts], [supportsLong, long], [supportsEdits, edits], [supportsMcp, mcp]]) {
+  const takes = (env, { details, link, chrome: takesChrome, timeouts, long, edits, mcp, codex }) => {
+    for (const [set, on] of [[supportsDetails, details], [supportsLink, link], [supportsChrome, takesChrome], [supportsTimeouts, timeouts], [supportsLong, long], [supportsEdits, edits], [supportsMcp, mcp], [supportsCodex, codex]]) {
       if (on) set.add(env.id); else set.delete(env.id);
     }
   };
@@ -460,6 +462,8 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
   const supportsTimeouts = new Set();
   const supportsLong = new Set();
   const supportsEdits = new Set();
+  /** The servers of the person's own that take this computer's Codex for codex_task. */
+  const supportsCodex = new Set();
   /** My Cloud's browsers reach the web through this computer while lending runs; never while My Cloud sleeps, so a
    * sleeping Cloud is never dialled. */
   const keepLink = async (env, grant, signal) => {
@@ -540,6 +544,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
             ...(supportsLong.has(env.id) ? { longCommands: true } : {}),
             ...(supportsEdits.has(env.id) ? { fileEdits: true } : {}),
             ...((grant.cloud || grant.own) && supportsMcp.has(env.id) ? lendsMcp(localEnvironments()) : {}),
+            ...(supportsCodex.has(env.id) ? { codex: grant.codex === true } : {}),
           }, signal, grant.secret);
           if (signal.aborted) break;
           status.set(env.id, { connected: true });
@@ -598,7 +603,16 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
                   live.cua = createSharedCua(mcp, { t });
                 }
                 return live.cua;
-              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })));
+              }, () => (live.mcp ??= createLentMcp({ ports: () => ownPorts({ serverPorts: serverPorts() }) })), (operation, codexSignal) => codexTask({
+                prompt: operation.prompt, timeoutSeconds: operation.timeout_seconds, signal: codexSignal,
+                ask: async codexRequest => {
+                  const questionId = randomUUID();
+                  for (;;) {
+                    const answer = await call("codex-app", { jobId: job.id, questionId, request: codexRequest }, codexSignal);
+                    if (answer?.pending !== true) return answer?.response;
+                  }
+                },
+              }));
             } catch (error) { result = sharedComputerError(error); live.cua?.close(); live.cua = null; }
             finally {
               clearInterval(heartbeat); ended = true;
@@ -654,6 +668,7 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
   const state = id => {
     const grant = records[id];
     return { enabled: grant?.enabled === true, folders: Array.isArray(grant?.folders) ? grant.folders : [], terminal: grant?.terminal === true, computer: grant?.computer === true,
+      ...(grant?.own ? { codex: grant.codex === true } : {}),
       ...(grant?.own ? { own: true, ...(paused ? { paused: true } : {}) } : {}), ...status.get(id) };
   };
   // `resumes`: lending waits (for the Cloud sign-in, say) and resumes by itself, so the server keeps it as lent, not stopped.
@@ -882,14 +897,14 @@ export function createComputerSharing({ file, fetch: fetchImpl, environments, lo
       if (closed) throw new Error("Lending is unavailable while the app is closing.");
       const info = await ownIdentity(env);
       const folders = await validateSharedFolders(input?.folders ?? []);
-      const grant = { ...info, id: randomUUID(), secret: randomBytes(32).toString("hex"), enabled: true, own: true, folders, terminal: input?.terminal === true, computer: input?.computer === true };
-      if (!folders.length && !grant.terminal && !grant.computer) throw new Error("Choose at least one folder or capability to share");
+      const grant = { ...info, id: randomUUID(), secret: randomBytes(32).toString("hex"), enabled: true, own: true, folders, terminal: input?.terminal === true, computer: input?.computer === true, codex: input?.codex === true };
+      if (!folders.length && !grant.terminal && !grant.computer && !grant.codex) throw new Error("Choose at least one folder or capability to share");
       if (grantVersions.get(env.id) !== version) return state(env.id);
       disconnect(env, records[env.id]);
       store({ ...records, [env.id]: grant }); run(env, grant); changed(); return state(env.id);
     },
     /** Not now: nothing is lent, and this pairing is not asked again. */
-    declineOwn(env, info) { changeGrant(env.id); disconnect(env, records[env.id]); store({ ...records, [env.id]: { ...info, enabled: false, own: true, folders: [], terminal: false, computer: false } }); changed(); },
+    declineOwn(env, info) { changeGrant(env.id); disconnect(env, records[env.id]); store({ ...records, [env.id]: { ...info, enabled: false, own: true, folders: [], terminal: false, computer: false, codex: false } }); changed(); },
     cloudState,
     /** What Files copies to My Cloud (electron/lent-folders.mjs): the folders lent to it, with this grant's id and the
      * places no grant reaches, and `paused` while lending is; `{ off: true }` while nothing is lent to it. */

@@ -16,6 +16,7 @@ export function ComputerSharingSettings({ workspace, own = false, onClose }: { w
   const [folders, setFolders] = useState<DesktopSharedFolder[]>([]);
   const [terminal, setTerminal] = useState(false);
   const [computer, setComputer] = useState(false);
+  const [codex, setCodex] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [activity, setActivity] = useState<DesktopLendingActivity[] | null>(null);
@@ -23,7 +24,7 @@ export function ComputerSharingSettings({ workspace, own = false, onClose }: { w
   const pending = useRef(false);
   const panel = useRef<HTMLDivElement>(null);
   const apply = (next: DesktopComputerSharing) => {
-    setState(next); setFolders(next.folders); setTerminal(next.terminal); setComputer(next.computer);
+    setState(next); setFolders(next.folders); setTerminal(next.terminal); setComputer(next.computer); setCodex(next.codex === true);
   };
   useEffect(() => {
     mounted.current = true;
@@ -78,11 +79,12 @@ export function ComputerSharingSettings({ workspace, own = false, onClose }: { w
         <legend className="font-medium text-ink">{t("computerSharing.broader")}</legend>
         <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" checked={terminal} onChange={event => setTerminal(event.target.checked)} /><span className="text-ink">{t("computerSharing.terminal")}<span className="mt-1 block text-[12px] text-ink-secondary">{t("computerSharing.terminalHint")}</span></span></label>
         <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" checked={computer} onChange={event => setComputer(event.target.checked)} /><span className="text-ink">{t("computerSharing.control")}<span className="mt-1 block text-[12px] text-ink-secondary">{t("computerSharing.controlHint")}</span></span></label>
+        {own && <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" checked={codex} onChange={event => setCodex(event.target.checked)} /><span className="text-ink">{t("computerSharing.codex")}<span className="mt-1 block text-[12px] text-ink-secondary">{t("computerSharing.codexHint")}</span></span></label>}
       </fieldset>
       {(error || state?.error) && <p role="alert" className="text-[12px] text-danger">{error || state?.error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !state || (!folders.length && !terminal && !computer)} onClick={() => void perform(async () => {
-          const next = await bridge.save(workspace.id, { folders, terminal, computer });
+        <button type="button" disabled={busy || !state || (!folders.length && !terminal && !computer && !codex)} onClick={() => void perform(async () => {
+          const next = await bridge.save(workspace.id, { folders, terminal, computer, ...(own ? { codex } : {}) });
           if (mounted.current && next) apply(next);
         })} className="rounded-lg bg-accent px-3 py-2 font-medium text-accent-ink disabled:opacity-50">{t(state?.enabled ? "computerSharing.save" : "computerSharing.share")}</button>
         {state?.enabled && <button type="button" disabled={busy} onClick={() => void perform(async () => {

@@ -26,6 +26,8 @@ export const sharedComputerRegistration = z.object({
   mcpServers: z.literal(true).optional(),
   /** The environment ids of its own OpenMausBot installs, which an MCP server's `runsOn` names; sent with mcpServers. */
   environments: z.array(z.string().uuid()).max(8).optional(),
+  /** It lends its own signed-in Codex, with computer use, for codex_task; sent only to a server that advertises codexTasks. */
+  codex: z.boolean().optional(),
 }).strict();
 const wireSecrets = z.record(z.string().min(1).max(256), z.string().max(16_384));
 /** An MCP server as this server keeps it for a lent computer: that computer starts, or reaches, exactly this and nothing else. */
@@ -36,7 +38,8 @@ export const lentMcpServer = z.union([
 export type LentMcpServer = z.infer<typeof lentMcpServer>;
 export const sharedComputerOperation = z.object({
   computer_id: z.string().uuid(),
-  action: z.enum(["list_files", "read_file", "write_file", "edit_file", "append_file", "delete_file", "run_command", "computer_tools", "computer_call", "mcp_tools", "mcp_call"]),
+  action: z.enum(["list_files", "read_file", "write_file", "edit_file", "append_file", "delete_file", "run_command", "computer_tools", "computer_call", "mcp_tools", "mcp_call", "codex_task"]),
+  prompt: z.string().min(1).max(20_000).optional(),
   folder_id: z.string().uuid().optional(), path: z.string().max(2048).optional(),
   content: z.string().max(350_000).optional(), encoding: z.enum(["utf8", "base64"]).optional(),
   old_text: z.string().min(1).max(350_000).optional(), new_text: z.string().max(350_000).optional(),
@@ -53,10 +56,17 @@ const MCP_DEADLINE_MS = { mcp_tools: 145_000, mcp_call: 315_000 } as const;
 /** How long an MCP call waits behind the computer's current action, since an engine calls its tools side by side. */
 const MCP_QUEUE_MS = 30_000;
 const isMcp = (operation: Pick<Operation, "action">): operation is Operation & { action: "mcp_tools" | "mcp_call" } => operation.action === "mcp_tools" || operation.action === "mcp_call";
-/** A command's deadline is its own limit on the desktop plus time for the result to come back. */
+export const CODEX_TASK_SECONDS = 600;
+/** A command's or Codex job's deadline is its own limit on the desktop plus time for the result to come back. */
 const jobDeadlineMs = (registration: Registration, operation: Operation) =>
   isMcp(operation) ? MCP_DEADLINE_MS[operation.action]
+    : operation.action === "codex_task" ? (operation.timeout_seconds ?? CODEX_TASK_SECONDS) * 1000 + 15_000
     : operation.action === "run_command" && registration.commandTimeouts ? (operation.timeout_seconds ?? COMMAND_SECONDS) * 1000 + 15_000 : 45_000;
+/** Codex on a lent computer asking to use one of its apps: the parsed form, and the answer Codex takes when it is allowed.
+ * `key` names the app across questions (a bundle id when Codex gives one): the person's Allow covers it for the whole job. */
+export type CodexAppAccess = { app: string; key: string; summary: string; allowResult: { action: "accept"; content: Record<string, string> } };
+/** Raises the person's card for one Codex app-access question and settles true on Allow; false on Deny or when `signal` ends it. */
+export type CodexAppAccessAsk = (access: CodexAppAccess, signal: AbortSignal) => Promise<boolean>;
 /** The registering session alone may poll, answer and disconnect; only that person's bot turns may see or use it. */
 export type SharedComputerOwner = { session: string; person: string };
 export type SharedComputerStatus = {
@@ -72,8 +82,16 @@ export type KnownLentComputer = {
 export type ActingBot = { name: string; color: string };
 type Job = {
   id: string; operation: Operation; by?: ActingBot; active: () => boolean; sent: boolean; leased: boolean; resolve: (result: unknown) => void; reject: (error: Error) => void;
-  timer: NodeJS.Timeout; delivery?: NodeJS.Timeout;
+  timer: NodeJS.Timeout; delivery?: NodeJS.Timeout; ask?: CodexAppAccessAsk; ended: AbortController;
+  questions: Map<string, { access: CodexAppAccess; allowed: Promise<boolean> }>;
+  /** Per app key: the person's one answer for this job, asked once even when Codex asks before every call. */
+  apps: Map<string, Promise<boolean>>;
 };
+/** The desktop asks again after this while the person has not answered, inside its own request timeout. */
+const CODEX_APP_HOLD_MS = 25_000;
+const MAX_CODEX_QUESTIONS = 50;
+/** A Codex app-access question: the answer for Codex, or `pending` while the person has not answered yet. */
+export type CodexAppAnswer = { response: CodexAppAccess["allowResult"] | { action: "decline" } } | { pending: true };
 type Computer = { registration: Registration; owner: SharedComputerOwner; secret: string; seen: number; jobs: Map<string, Job>; wake?: () => void; polls: number };
 const failure = (message: string, status = 409) => Object.assign(new Error(message), { status });
 const TOTAL = 100;
@@ -114,6 +132,9 @@ export function sharedComputerScopeRefusal(registration: Registration, operation
     case "run_command":
       if (!registration.terminal && askTool) return `${registration.name} doesn't let this Cloud run commands right now. Call ${askTool} with need "terminal" and why: it asks them with a one-tap Turn on, and you carry on once it's on. Never run the command another way or anywhere else.`;
       return registration.terminal ? null : `${registration.name} does not lend its terminal, so commands cannot run there. Do not try to run the command another way or anywhere else; use its folders, or tell the person in one sentence what to run themselves, or, when it is their own Cloud, that they can turn on "Let Clouds run commands on this ${deviceWord(registration.platform)}" from the OpenMausBot icon in its menu bar or taskbar.`;
+    case "codex_task":
+      return registration.codex === true ? null
+        : `${registration.name} doesn't lend its Codex to this server. Tell the person in one sentence that they can turn on "Codex on this ${deviceWord(registration.platform)}" for this server in OpenMausBot there (Settings → Your computers), or use its apps and screen with computer_call instead.`;
     case "computer_tools":
     case "computer_call":
       if (!registration.computer && askTool) return `Apps and screen are not lent to this Cloud right now. ${askHint(askTool, "screen")}`;
@@ -392,6 +413,34 @@ export class SharedComputers {
     job.leased = true; clearTimeout(job.delivery);
     return job.active();
   }
+  /** Codex, running a codex_task on the desktop, asks to use an app: the person's card answers it, never the desktop or
+   * this server. Anything that is not a running codex_task of this desktop, or that the turn cannot ask about, is declined. */
+  async codexAppAccess(id: string, session: string, secret: string, jobId: string, questionId: string, access: CodexAppAccess | null, gone?: AbortSignal): Promise<CodexAppAnswer> {
+    const declined = { response: { action: "decline" as const } };
+    const entry = this.authorize(id, session, secret);
+    const job = entry.jobs.get(jobId);
+    if (!/^[\w-]{1,64}$/.test(questionId) || !job?.leased || job.operation.action !== "codex_task" || !job.ask || !job.active()) return declined;
+    entry.seen = Date.now();
+    let question = job.questions.get(questionId);
+    if (!question) {
+      if (!access || job.questions.size >= MAX_CODEX_QUESTIONS) return declined;
+      let allowed = job.apps.get(access.key);
+      if (!allowed) {
+        allowed = job.ask(access, job.ended.signal).catch(() => false);
+        job.apps.set(access.key, allowed);
+      }
+      question = { access, allowed };
+      job.questions.set(questionId, question);
+    }
+    const held = new AbortController();
+    const timer = setTimeout(() => held.abort(), CODEX_APP_HOLD_MS);
+    const stop = gone ? AbortSignal.any([gone, held.signal]) : held.signal;
+    try {
+      const allowed = await Promise.race([question.allowed, new Promise<null>(resolve => stop.addEventListener("abort", () => resolve(null), { once: true }))]);
+      if (allowed === null) return { pending: true };
+      return allowed ? { response: question.access.allowResult } : declined;
+    } finally { clearTimeout(timer); }
+  }
   complete(id: string, session: string, secret: string, jobId: string, result: unknown) {
     const entry = this.authorize(id, session, secret);
     const job = entry.jobs.get(jobId);
@@ -409,8 +458,9 @@ export class SharedComputers {
     this.changed();
   }
   /** Another person's computer answers exactly like one that does not exist. */
-  async request(operation: Operation, principal: string | null, active: () => boolean, by?: ActingBot | null): Promise<unknown> {
+  async request(operation: Operation, principal: string | null, active: () => boolean, by?: ActingBot | null, ask?: CodexAppAccessAsk): Promise<unknown> {
     if (!principal) throw failure("This conversation cannot use a shared computer: only a conversation started by the person who shared it can.", 403);
+    if (operation.action === "codex_task" && !operation.prompt?.trim()) throw failure("Give codex_task the whole job in prompt.", 400);
     const lent = () => this.chosen(principal, operation.computer_id);
     for (const deadline = Date.now() + RECONNECT_WAIT_MS; ;) {
       const known = lent();
@@ -424,7 +474,7 @@ export class SharedComputers {
         const why = known && this.sessionLive(known.owner.session)
           ? lentButOffline(known.registration.name, known.seen, deviceWord(known.registration.platform))
           : this.offline(principal, operation.computer_id);
-        throw failure(this.askTool ? `${why} ${askHint(this.askTool, operation.action === "run_command" ? "terminal" : operation.action.startsWith("computer_") ? "screen" : "folders")}` : why);
+        throw failure(this.askTool ? `${why} ${askHint(this.askTool, operation.action === "run_command" ? "terminal" : operation.action.startsWith("computer_") || operation.action === "codex_task" ? "screen" : "folders")}` : why);
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
@@ -448,7 +498,7 @@ export class SharedComputers {
     const forDesktop = entry.registration.fileEdits ? timed : withoutEdits;
     return new Promise((resolve, reject) => {
       const id = randomUUID();
-      const job: Job = { id, operation: forDesktop, ...(by ? { by: { name: by.name, color: by.color } } : {}), active, sent: false, leased: false, resolve, reject, timer: setTimeout(() => this.finish(entry, job, failure("Computer action timed out. Its outcome is unknown; inspect before retrying.")), jobDeadlineMs(entry.registration, operation)) };
+      const job: Job = { id, operation: forDesktop, ...(by ? { by: { name: by.name, color: by.color } } : {}), ...(ask ? { ask } : {}), ended: new AbortController(), questions: new Map(), apps: new Map(), active, sent: false, leased: false, resolve, reject, timer: setTimeout(() => this.finish(entry, job, failure("Computer action timed out. Its outcome is unknown; inspect before retrying.")), jobDeadlineMs(entry.registration, operation)) };
       entry.jobs.set(id, job); entry.wake?.();
     });
   }
@@ -478,7 +528,7 @@ export class SharedComputers {
     this.computers.clear();
   }
   private finish(entry: Computer, job: Job, error: Error | null, result?: unknown) {
-    clearTimeout(job.timer); clearTimeout(job.delivery); entry.jobs.delete(job.id);
+    clearTimeout(job.timer); clearTimeout(job.delivery); entry.jobs.delete(job.id); job.ended.abort();
     if (error) job.reject(error); else job.resolve(result);
   }
 }

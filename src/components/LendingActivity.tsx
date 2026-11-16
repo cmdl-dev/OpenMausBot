@@ -11,6 +11,7 @@ const ACTIONS: Record<string, LocaleKey> = {
   run_command: "lending.action.runCommand",
   computer_tools: "lending.action.screenTools",
   computer_call: "lending.action.screen",
+  codex_task: "lending.action.codex",
   invalid: "lending.action.invalid",
   internet: "lending.action.website",
   chrome: "lending.action.chrome",

@@ -291,9 +291,13 @@ export function createSharedCua(connection, { platform = process.platform, t } =
   };
 }
 
-export async function executeSharedOperation(grant, operation, signal, cua, lentMcp) {
+export async function executeSharedOperation(grant, operation, signal, cua, lentMcp, codex) {
   signal.throwIfAborted();
   if (grant.enabled !== true) throw new Error("Computer sharing is off");
+  if (operation.action === "codex_task") {
+    if (grant.codex !== true || !codex) throw new Error("Codex on this computer is not lent to this server");
+    return codex(operation, signal);
+  }
   if (LENT_MCP_ACTIONS.has(operation.action)) {
     const refused = lentMcpRefusal(grant, operation.server);
     if (refused) throw new Error(refused);

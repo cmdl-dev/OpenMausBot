@@ -4,6 +4,8 @@ export interface SharingState {
   folders: SharedFolder[];
   terminal: boolean;
   computer: boolean;
+  /** A server of the person's own may hand whole jobs to this computer's own Codex, which uses its apps (codex_task). */
+  codex?: boolean;
   /** Lent to a server of the person's own, which they allowed here: no maintainer flag, and Pause holds it. */
   own?: boolean;
   /** Lending is paused from the OpenMausBot icon's menu or Settings. */
@@ -107,6 +109,8 @@ export function createComputerSharing(options: {
   /** The desktop's cua connection, or why it did not start (`reason` stays on this computer). */
   cuaConnection: () => Promise<{ mcpCommand: string; mcpArgs: string[]; mcpEnv?: Record<string, string> } | { mode: "unavailable"; reason: string } | null>;
   hostControl?: (id: string, signal: AbortSignal) => Promise<{ renew(): Promise<unknown>; release(): Promise<unknown> }>;
+  /** Runs one codex_task with this computer's own Codex (codex-task.mjs runCodexTask); tests stand a fake in for it. */
+  codexTask?: typeof import("./codex-task.mjs").runCodexTask;
   /** The OS reports the screen locked: a screen action is refused with the fix instead of failing in the driver. */
   screenLocked?: () => boolean;
   /** Seconds since the person last touched this computer, or null when the system cannot tell: while they are using it,

@@ -24,6 +24,7 @@ export function describeSharedOperation(grant, operation) {
     case "computer_call": return clean(operation.tool_name, 100);
     case "mcp_tools": return clean(operation.server?.name, 100);
     case "mcp_call": return clean(`${operation.server?.name ?? ""} ${operation.tool_name ?? ""}`, 300);
+    case "codex_task": return clean(operation.prompt, 300);
     default: return "";
   }
 }

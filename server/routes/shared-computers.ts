@@ -6,11 +6,38 @@ import type { DeviceLinks } from "../device-links.ts";
 import { requestSource, type RequestAuth } from "../request-auth.ts";
 import type { SessionRecord } from "../sessions.ts";
 import { desktopPresence, type Answerer, type ComputerAsks } from "../computer-asks.ts";
-import { responseGone, sharedComputerRegistration, type SharedComputers } from "../shared-computers.ts";
+import { boundedLabel, mcpAppApprovalForm, plainRecord } from "../drivers/codex-app-approval.ts";
+import { responseGone, sharedComputerRegistration, type CodexAppAccess, type SharedComputers } from "../shared-computers.ts";
 import { PASS, type RouteContext, type RouteHandler } from "./table.ts";
 import type { Upgrades } from "./upgrades.ts";
 
 const LINK = /^\/api\/shared-computers\/([\w-]+)\/link$/;
+
+/** Codex's computer-use question (codex-cli 0.166.0): a form with no fields, the app's bundle id in `_meta.tool_params.app`
+ * and its name in `tool_params_display`, asked again before every call. */
+function computerUseAccess(request: unknown): CodexAppAccess | null {
+  const params = plainRecord(request);
+  const meta = plainRecord(params?._meta);
+  if (params?.mode !== "form" || meta?.codex_approval_kind !== "mcp_tool_call" || meta.connector_id !== "computer-use") return null;
+  const schema = plainRecord(params.requestedSchema);
+  const properties = plainRecord(schema?.properties);
+  if (!schema || (properties && Object.keys(properties).length > 0) || (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.length > 0))) return null;
+  const toolParams = plainRecord(meta.tool_params);
+  const shown = Array.isArray(meta.tool_params_display) ? meta.tool_params_display.map(plainRecord).find((entry) => entry?.name === "app")?.value : undefined;
+  const fromMessage = typeof params.message === "string" ? /^Allow Computer Use to use "(.+)"\?$/u.exec(params.message)?.[1] : undefined;
+  const app = boundedLabel(shown) ?? boundedLabel(fromMessage) ?? boundedLabel(toolParams?.app);
+  if (!app) return null;
+  return { app, key: boundedLabel(toolParams?.app) ?? app, summary: boundedLabel(params.message) ?? `Allow Computer Use to use "${app}"?`, allowResult: { action: "accept", content: {} } };
+}
+
+/** Only an app-access question Codex's own driver would accept, or its computer-use one; anything else stays declined. */
+function codexAppAccess(request: unknown): CodexAppAccess | null {
+  const computerUse = computerUseAccess(request);
+  if (computerUse) return computerUse;
+  const form = mcpAppApprovalForm(request);
+  if (!form) return null;
+  return { app: form.tool, key: form.tool, summary: "summary" in form && typeof form.summary === "string" ? form.summary : `Let Codex use ${form.tool}?`, allowResult: form.allowResult };
+}
 
 export function createSharedComputerRoutes(deps: {
   /** For this request: the maintainer flag, a Cloud home or a moved home; or, on a server only its one owner signs in to, that owner. */
@@ -79,9 +106,12 @@ export function createSharedComputerRoutes(deps: {
       if (power?.sleeping()) return answerAsleep(res, json);
       return json(res, 200, news);
     }
-    const route = /^\/api\/shared-computers\/([\w-]+)\/(poll|lease|result|disconnect)$/.exec(path);
+    const route = /^\/api\/shared-computers\/([\w-]+)\/(poll|lease|result|disconnect|codex-app)$/.exec(path);
     if (!route) return json(res, 404, { error: "not found" });
     const [, id, action] = route;
+    if (action === "codex-app") {
+      return json(res, 200, await deps.computers.codexAppAccess(id, auth.session.id, secret, String(body?.jobId), String(body?.questionId), codexAppAccess(body?.request), responseGone(res)));
+    }
     if (action === "poll") {
       const power = deps.power();
       if (power?.sleeping()) return answerAsleep(res, json);

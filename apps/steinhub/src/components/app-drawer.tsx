@@ -1,6 +1,6 @@
 import { router, type Href } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
-import { Inbox, Monitor, Search, Settings, Zap, type LucideIcon } from "lucide-react-native";
+import { Check, Inbox, Monitor, Search, Settings, X, Zap, type LucideIcon } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,15 +9,24 @@ import { IconButton } from "@/components/icon-button";
 import { SectionLabel } from "@/components/list";
 import { CountBadge, StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
-import { bots, botById, inbox, threads, user, type SampleThread } from "@/sample/world";
+import { useConnection } from "@/state/connection";
+import { initials, type ThreadGroup } from "@/state/views";
+import { useWorld } from "@/state/world";
 import { colors, radius, size, space, type } from "@/theme";
 
-const RECENT_GROUPS: SampleThread["group"][] = ["Today", "Yesterday", "Earlier"];
+const RECENT_GROUPS: ThreadGroup[] = ["Today", "Yesterday", "Earlier"];
 
 export function AppDrawer({ navigation }: DrawerContentComponentProps) {
+  const world = useWorld();
+  const { session } = useConnection();
   const [botFilter, setBotFilter] = useState<string | null>(null);
-  const needsYou = inbox.filter((row) => row.tab === "needs-you").length;
-  const visibleThreads = botFilter ? threads.filter((thread) => thread.botId === botFilter) : threads;
+  const needsYou = world.inboxIsSample ? 0 : world.inbox.filter((row) => row.tab === "needs-you").length;
+  const visibleThreads = botFilter ? world.threads.filter((thread) => thread.botId === botFilter) : world.threads;
+  const footer = world.person ?? {
+    name: world.host.name,
+    email: session ? `This phone: ${session.device.name}` : "",
+    initials: initials(world.host.name),
+  };
 
   function go(href: Href) {
     navigation.closeDrawer();
@@ -43,7 +52,7 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
         <NavItem icon={Monitor} label="Computers" onPress={() => go("/computers")} />
 
         <SectionLabel>Bots</SectionLabel>
-        {bots.map((bot) => (
+        {world.bots.map((bot) => (
           <Pressable
             key={bot.id}
             accessibilityRole="button"
@@ -52,18 +61,47 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
             onLongPress={() => go({ pathname: "/bot/[id]", params: { id: bot.id } })}
             style={[styles.item, botFilter === bot.id && styles.itemSelected]}
           >
-            <Avatar label={bot.name} tint={bot.tint} size="sm" />
+            <Avatar label={bot.glyph} tint={bot.tint} size="sm" />
             <Txt variant="callout" style={styles.fill}>
               {bot.name}
             </Txt>
-            <StatusDot tone={bot.state.tone} />
-            <Txt variant="footnote" tone="secondary">
-              {bot.state.label}
-            </Txt>
+            {botFilter === bot.id ? (
+              <Check size={18} color={colors.text} strokeWidth={size.iconStroke} />
+            ) : (
+              <>
+                <StatusDot tone={bot.state.tone} />
+                <Txt variant="caption" weight="400" tone="tertiary">
+                  {bot.state.label}
+                </Txt>
+              </>
+            )}
           </Pressable>
         ))}
 
-        <SectionLabel>Recent</SectionLabel>
+        <SectionLabel
+          trailing={
+            botFilter ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Show every bot's chats`}
+                onPress={() => setBotFilter(null)}
+                style={styles.filterChip}
+              >
+                <Txt variant="caption" tone="inverse">
+                  {world.bot(botFilter)?.name ?? "Bot"}
+                </Txt>
+                <X size={12} color={colors.textInverse} strokeWidth={2} />
+              </Pressable>
+            ) : undefined
+          }
+        >
+          Recent
+        </SectionLabel>
+        {visibleThreads.length === 0 ? (
+          <Txt variant="footnote" tone="tertiary" style={styles.groupLabel}>
+            No conversations yet.
+          </Txt>
+        ) : null}
         {RECENT_GROUPS.map((group) => {
           const inGroup = visibleThreads.filter((thread) => thread.group === group);
           if (inGroup.length === 0) return null;
@@ -72,32 +110,35 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
               <Txt variant="footnote" tone="tertiary" style={styles.groupLabel}>
                 {group}
               </Txt>
-              {inGroup.map((thread) => (
+              {inGroup.map((thread) => {
+                const owner = world.bot(thread.botId);
+                return (
                 <Pressable
                   key={thread.id}
                   accessibilityRole="button"
                   onPress={() => go({ pathname: "/chat/[id]", params: { id: thread.id } })}
                   style={({ pressed }) => [styles.thread, pressed && styles.itemSelected]}
                 >
-                  <Avatar label={botById(thread.botId).name} tint={botById(thread.botId).tint} size="sm" />
+                  <Avatar label={owner?.glyph ?? "?"} tint={owner?.tint} size="xs" />
                   <Txt variant="callout" numberOfLines={1} style={styles.fill}>
                     {thread.title}
                   </Txt>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           );
         })}
       </ScrollView>
 
       <View style={styles.footer}>
-        <Avatar label={user.initials} size="md" />
+        <Avatar label={footer.initials} size="md" />
         <View style={styles.fill}>
-          <Txt variant="callout" weight="600">
-            {user.name}
+          <Txt variant="callout" weight="600" numberOfLines={1}>
+            {footer.name}
           </Txt>
-          <Txt variant="footnote" tone="secondary">
-            {user.email}
+          <Txt variant="footnote" tone="secondary" numberOfLines={1}>
+            {footer.email}
           </Txt>
         </View>
         <IconButton icon={Settings} label="Settings" onPress={() => go("/settings")} />
@@ -147,6 +188,15 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   itemSelected: { backgroundColor: colors.surface2 },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 24,
+    paddingHorizontal: space[2],
+    borderRadius: radius.pill,
+    backgroundColor: colors.text,
+  },
   groupLabel: { paddingHorizontal: space[4], paddingTop: space[2], paddingBottom: space[1] },
   thread: {
     minHeight: 40,

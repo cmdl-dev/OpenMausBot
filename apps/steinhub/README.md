@@ -3,8 +3,12 @@
 The iOS and Android companion app for OpenMausBot: Expo SDK 58, React Native
 0.88, Expo Router. Dark only, following the mockups in [`designs/`](designs/).
 
-This is the scaffold: every screen in the navigation map exists and uses the
-theme, but shows sample data. It does not pair with or talk to a computer yet.
+SteinHub pairs with a computer's OpenMausBot companion (six-digit code or QR)
+and talks to it over Wi-Fi, Tailscale or a hosted HTTPS address.
+[`docs/connection.md`](docs/connection.md) explains the transport, pairing and
+token storage, which screens are live, and what still needs a desktop change.
+Development builds also have a demo mode with the sample world, under
+**Settings → Development**. It is on until a phone is paired.
 
 ## Run it
 
@@ -24,10 +28,12 @@ For a native development build use `pnpm --filter @openmausbot/steinhub run:ios`
 
 | Path | What |
 |---|---|
+| `src/api/` | The client layer: transport, typed routes, event stream, pairing, secure session storage, error sentences. |
+| `src/state/` | The connection provider, the live world reducer, and the views the screens draw. |
 | `src/app/` | Routes. `(drawer)/` holds everything reached from the left drawer; `onboarding` sits outside it. |
 | `src/components/` | Top bars, composer, drawer content, list rows, buttons, avatars, badges. |
 | `src/theme/` | Typed tokens from `designs/tokens.md`: colour, type, spacing, radius, sizes, motion. |
-| `src/sample/world.ts` | The sample world from `designs/README.md`. |
+| `src/sample/world.ts` | The sample world from `designs/README.md`, shown in demo mode. |
 | `designs/` | Approved HTML mockups and tokens. Open `designs/index.html`. |
 
 Shared wire types and helpers come from

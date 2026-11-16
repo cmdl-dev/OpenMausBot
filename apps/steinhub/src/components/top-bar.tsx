@@ -50,7 +50,7 @@ export function ChatTopBar({ botName, subtitle, right, unread, onPressTitle }: C
 export interface PageTopBarProps {
   leading: "menu" | "back";
   title?: string;
-  action?: { icon: LucideIcon; label: string; onPress?: () => void };
+  action?: { icon: LucideIcon; label: string; onPress?: () => void; plain?: boolean };
 }
 
 export function PageTopBar({ leading, title, action }: PageTopBarProps) {
@@ -63,7 +63,7 @@ export function PageTopBar({ leading, title, action }: PageTopBarProps) {
         <IconButton icon={ChevronLeft} label="Back" onPress={() => (router.canGoBack() ? router.back() : router.navigate("/"))} />
       )}
       <View style={styles.center}>{title ? <Txt variant="headline">{title}</Txt> : null}</View>
-      {action ? <IconButton icon={action.icon} label={action.label} onPress={action.onPress} filled /> : <View style={styles.spacer} />}
+      {action ? <IconButton icon={action.icon} label={action.label} onPress={action.onPress} filled={!action.plain} /> : <View style={styles.spacer} />}
     </View>
   );
 }

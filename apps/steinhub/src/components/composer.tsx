@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Paperclip } from "lucide-react-native";
+import { ArrowUp, Mic, Paperclip, Square } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { IconButton } from "@/components/icon-button";
@@ -6,17 +6,30 @@ import { colors, radius, size, space, type } from "@/theme";
 
 export interface ComposerProps {
   botName: string;
-  onSend?: (text: string) => void;
+  /** A rejected promise puts the words back in the field. */
+  onSend?: (text: string) => void | Promise<unknown>;
+  text?: string;
+  onChangeText?: (text: string) => void;
+  /** A reply is streaming: an empty field offers Stop instead of Send. */
+  onStop?: () => void;
 }
 
-export function Composer({ botName, onSend }: ComposerProps) {
-  const [text, setText] = useState("");
+export function Composer({ botName, onSend, text: controlled, onChangeText, onStop }: ComposerProps) {
+  const [own, setOwn] = useState("");
+  const text = controlled ?? own;
+  const setText = onChangeText ?? setOwn;
   const canSend = text.trim().length > 0;
+  const showStop = Boolean(onStop) && !canSend;
 
-  function send() {
+  async function send() {
     if (!canSend) return;
-    onSend?.(text.trim());
+    const value = text.trim();
     setText("");
+    try {
+      await onSend?.(value);
+    } catch {
+      setText(value);
+    }
   }
 
   return (
@@ -34,15 +47,21 @@ export function Composer({ botName, onSend }: ComposerProps) {
           style={styles.input}
         />
         <IconButton icon={Mic} label="Voice" dimension={40} color={colors.text2} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Send"
-          accessibilityState={{ disabled: !canSend }}
-          onPress={send}
-          style={[styles.send, canSend ? styles.sendReady : styles.sendIdle]}
-        >
-          <ArrowUp size={size.icon} color={canSend ? colors.textInverse : colors.text3} strokeWidth={size.iconStroke} />
-        </Pressable>
+        {showStop ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={[styles.send, styles.sendReady]}>
+            <Square size={14} color={colors.textInverse} fill={colors.textInverse} strokeWidth={size.iconStroke} />
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send"
+            accessibilityState={{ disabled: !canSend }}
+            onPress={send}
+            style={[styles.send, canSend ? styles.sendReady : styles.sendIdle]}
+          >
+            <ArrowUp size={size.icon} color={canSend ? colors.textInverse : colors.text3} strokeWidth={size.iconStroke} />
+          </Pressable>
+        )}
       </View>
     </View>
   );

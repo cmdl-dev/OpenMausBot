@@ -5,17 +5,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from "@/components/avatar";
 import { Row } from "@/components/list";
 import { Txt } from "@/components/text";
-import { bots } from "@/sample/world";
+import type { BotView } from "@/state/views";
 import { colors, radius, shadowSheet, size, space } from "@/theme";
 
 export interface BotPickerProps {
   visible: boolean;
+  bots: BotView[];
   selectedId: string;
   onSelect: (botId: string) => void;
   onClose: () => void;
 }
 
-export function BotPicker({ visible, selectedId, onSelect, onClose }: BotPickerProps) {
+export function BotPicker({ visible, bots, selectedId, onSelect, onClose }: BotPickerProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable accessibilityLabel="Close bot picker" style={styles.scrim} onPress={onClose} />
@@ -24,7 +25,7 @@ export function BotPicker({ visible, selectedId, onSelect, onClose }: BotPickerP
         <View style={styles.header}>
           <Txt variant="headline">Chat with</Txt>
           <Txt variant="footnote" tone="tertiary">
-            {bots.length} bots
+            {bots.length} {bots.length === 1 ? "bot" : "bots"}
           </Txt>
         </View>
         {bots.map((bot) => (
@@ -38,7 +39,7 @@ export function BotPicker({ visible, selectedId, onSelect, onClose }: BotPickerP
             }}
             style={[styles.bot, bot.id === selectedId && styles.botSelected]}
           >
-            <Avatar label={bot.name} tint={bot.tint} />
+            <Avatar label={bot.glyph} tint={bot.tint} />
             <View style={styles.fill}>
               <Txt variant="callout" weight="600">
                 {bot.name}

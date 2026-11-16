@@ -23,6 +23,7 @@ export const colors = {
   warningBg: "rgba(245,181,68,0.12)",
   dangerBg: "rgba(255,92,92,0.12)",
   infoBg: "rgba(108,168,255,0.12)",
+  warningBorder: "rgba(245,181,68,0.25)",
 } as const;
 
 export type Status = "success" | "warning" | "danger" | "info";
@@ -104,8 +105,10 @@ export const size = {
   tap: 44,
   topbar: 52,
   composer: 52,
+  avatarXs: 20,
   avatarSm: 28,
   avatarMd: 40,
+  avatarHero: 52,
   avatarLg: 72,
   icon: 20,
   iconStroke: 1.75,

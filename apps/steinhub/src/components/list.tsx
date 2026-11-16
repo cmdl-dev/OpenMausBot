@@ -41,13 +41,8 @@ export interface RowProps {
 }
 
 export function Row({ title, subtitle, leading, trailing, value, chevron, destructive, onPress }: RowProps) {
-  return (
-    <Pressable
-      accessibilityRole={onPress ? "button" : undefined}
-      onPress={onPress}
-      disabled={!onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
+  const content = (
+    <>
       {leading}
       <View style={styles.rowText}>
         <Txt variant="callout" numberOfLines={1} style={destructive ? { color: colors.danger } : undefined}>
@@ -60,12 +55,18 @@ export function Row({ title, subtitle, leading, trailing, value, chevron, destru
         ) : null}
       </View>
       {value ? (
-        <Txt variant="callout" tone="secondary" numberOfLines={1}>
+        <Txt variant="callout" tone="secondary" numberOfLines={1} style={styles.value}>
           {value}
         </Txt>
       ) : null}
       {trailing}
       {chevron ? <ChevronRight size={16} color={colors.text3} strokeWidth={size.iconStroke} /> : null}
+    </>
+  );
+  if (!onPress) return <View style={styles.row}>{content}</View>;
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+      {content}
     </Pressable>
   );
 }
@@ -97,5 +98,6 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   pressed: { backgroundColor: colors.surface2 },
-  rowText: { flex: 1, gap: 2 },
+  rowText: { flex: 1, minWidth: 96, gap: 2 },
+  value: { flexShrink: 1, maxWidth: "55%", textAlign: "right" },
 });

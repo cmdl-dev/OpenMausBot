@@ -8,20 +8,30 @@ import { Screen } from "@/components/screen";
 import { StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { PageTopBar } from "@/components/top-bar";
-import { botById, host, threads } from "@/sample/world";
+import { useWorld } from "@/state/world";
 import { colors, size, space } from "@/theme";
 
 const iconProps = { size: size.icon, color: colors.text2, strokeWidth: size.iconStroke };
 
 export default function BotProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const bot = botById(id);
-  const botThreads = threads.filter((thread) => thread.botId === bot.id);
+  const world = useWorld();
+  const bot = world.bot(id) ?? (world.source === "demo" ? world.bots[0] : null);
+  if (!bot) {
+    return (
+      <Screen header={<PageTopBar leading="back" />}>
+        <Txt variant="subhead" tone="tertiary" style={styles.missing}>
+          This bot isn't on the computer any more.
+        </Txt>
+      </Screen>
+    );
+  }
+  const botThreads = world.threads.filter((thread) => thread.botId === bot.id);
 
   return (
     <Screen header={<PageTopBar leading="back" />}>
       <View style={styles.hero}>
-        <Avatar label={bot.name} tint={bot.tint} size="lg" />
+        <Avatar label={bot.glyph} tint={bot.tint} size="lg" />
         <Txt variant="title">{bot.name}</Txt>
         <Txt variant="callout" tone="secondary">
           {bot.role}
@@ -29,7 +39,7 @@ export default function BotProfileScreen() {
         <View style={styles.state}>
           <StatusDot tone={bot.state.tone} />
           <Txt variant="footnote" tone="secondary">
-            {bot.state.label} · {host.name}
+            {bot.state.label} · {world.host.name}
           </Txt>
         </View>
         <Button label="New chat" small onPress={() => router.navigate("/")} />
@@ -39,7 +49,7 @@ export default function BotProfileScreen() {
       <Group>
         <Row title="Model" value={bot.model} leading={<Cpu {...iconProps} />} chevron />
         <Row title="Memory" subtitle="What this bot remembers about you" leading={<Brain {...iconProps} />} chevron />
-        <Row title="Skills" value="6" leading={<Sparkles {...iconProps} />} chevron />
+        {world.source === "demo" ? <Row title="Skills" value="6" leading={<Sparkles {...iconProps} />} chevron /> : null}
       </Group>
 
       <SectionLabel>Threads</SectionLabel>
@@ -61,5 +71,6 @@ export default function BotProfileScreen() {
 
 const styles = StyleSheet.create({
   hero: { alignItems: "center", gap: space[2], paddingTop: space[4], paddingHorizontal: space[4] },
+  missing: { textAlign: "center", marginTop: space[10] },
   state: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: space[2] },
 });

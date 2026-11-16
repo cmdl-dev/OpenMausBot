@@ -1,0 +1,349 @@
+import { cronScheduleLabel } from "@openmausbot/phone-protocol/cron-label.ts";
+import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-protocol/routines.ts";
+import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
+import type { PendingSend, StreamingItem } from "@/state/live-world";
+import { tintForIndex, type BotTint, type Status } from "@/theme";
+
+export interface BotView {
+  id: string;
+  name: string;
+  glyph: string;
+  role: string;
+  tint: BotTint;
+  model: string;
+  state: { label: string; tone: Status };
+  suggestions: string[];
+}
+
+export type ThreadGroup = "Today" | "Yesterday" | "Earlier";
+
+export interface ThreadView {
+  id: string;
+  title: string;
+  botId: string;
+  group: ThreadGroup;
+  busy?: boolean;
+}
+
+export interface ApprovalView {
+  id: string;
+  from: "approval";
+  kind: "permission" | "question";
+  title: string;
+  action: string;
+  lines: Array<{ label: string; value: string }>;
+  preview?: string;
+  options: string[];
+  state: "pending" | "approved" | "denied" | "answered" | "closed";
+  answer?: string;
+  requestId?: string;
+}
+
+export type MessageView =
+  | { id: string; from: "user"; text: string; pending?: "sending" | "failed" }
+  | { id: string; from: "bot"; text: string; tools?: number; at?: number; streaming?: boolean }
+  | { id: string; from: "working"; tools: number }
+  | ApprovalView;
+
+export interface RunView {
+  id: string;
+  at: string;
+  outcome: Status;
+  summary: string;
+  duration?: string;
+}
+
+export interface AutomationView {
+  id: string;
+  name: string;
+  botId: string;
+  trigger: { kind: "schedule"; label: string; cron?: string } | { kind: "app-event"; label: string };
+  runsOn: string;
+  state: "active" | "paused" | "failed";
+  lastRun: { label: string; tone: Status } | null;
+  next?: string;
+  runs: RunView[];
+  prompt?: string;
+  timeZone?: string;
+  failureStreak?: number;
+}
+
+export interface ComputerView {
+  id: string;
+  name: string;
+  kind: "desktop" | "laptop" | "server";
+  /** OS and version line, as "macOS 26 · OpenMausBot 2.4.1". */
+  os: string;
+  isHost: boolean;
+  state: { label: string; tone: Status };
+  /** After the state: latency, or when it was last seen. */
+  note?: string;
+  botIds: string[];
+  /** Percent used, while online. */
+  metrics?: { cpu: number; mem: number; disk: number };
+}
+
+export interface HostView {
+  name: string;
+  app: string;
+  paired: string;
+}
+
+export interface PersonView {
+  name: string;
+  email: string;
+  initials: string;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_MS = 86_400_000;
+
+function startOfDay(at: number): number {
+  const date = new Date(at);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+export function clock(at: number): string {
+  const date = new Date(at);
+  return `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+export function formatDate(at: number): string {
+  const date = new Date(at);
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+/** "Today 7:00", "Yesterday 18:12", "Fri 7:00", "Nov 3": the mockups' way of saying when. */
+export function formatWhen(at: number, now = Date.now()): string {
+  const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS);
+  if (days === 0) return `Today ${clock(at)}`;
+  if (days === 1) return `Yesterday ${clock(at)}`;
+  if (days === -1) return `Tomorrow ${clock(at)}`;
+  if (days > 1 && days < 7) return `${WEEKDAYS[new Date(at).getDay()]} ${clock(at)}`;
+  const date = new Date(at);
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+}
+
+/** "9:30" today, "Sun" this week, "Nov 3" before: the inbox's message times. */
+export function shortWhen(at: number, now = Date.now()): string {
+  const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS);
+  if (days <= 0) return clock(at);
+  if (days < 7) return WEEKDAYS[new Date(at).getDay()];
+  const date = new Date(at);
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+}
+
+export function threadGroup(at: number, now = Date.now()): ThreadGroup {
+  const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS);
+  return days <= 0 ? "Today" : days === 1 ? "Yesterday" : "Earlier";
+}
+
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words.length > 1 ? (words[words.length - 1]?.[0] ?? "") : "")).toUpperCase() || "?";
+}
+
+const TINTS: Partial<Record<MausColor, BotTint>> = {
+  purple: "violet",
+  green: "green",
+  teal: "green",
+  orange: "amber",
+  yellow: "amber",
+  blue: "blue",
+  cyan: "blue",
+  red: "rose",
+  pink: "rose",
+  coral: "rose",
+};
+
+const ACTIVITY: Record<NonNullable<WireBot["activity"]>, { label: string; tone: Status }> = {
+  working: { label: "Working", tone: "info" },
+  "waiting-on-you": { label: "Waiting on you", tone: "warning" },
+  idle: { label: "Idle", tone: "success" },
+  "no-signal": { label: "No signal", tone: "danger" },
+  dead: { label: "Stopped", tone: "danger" },
+  "parked.computer": { label: "Waiting for its computer", tone: "warning" },
+};
+
+export const LIVE_SUGGESTIONS = ["What's waiting on me?", "Plan my day", "Summarize today"];
+
+export function botView(bot: WireBot, index: number, modelLabels: Record<string, string>): BotView {
+  const activity = bot.activity ?? (bot.busy ? "working" : "idle");
+  return {
+    id: bot.id,
+    name: bot.name,
+    glyph: (Array.from(bot.name.trim())[0] ?? "?").toUpperCase(),
+    role: bot.title || bot.description,
+    tint: TINTS[bot.color] ?? tintForIndex(index),
+    model: modelLabels[bot.modelSelection.model] ?? bot.modelSelection.model,
+    state: ACTIVITY[activity],
+    suggestions: LIVE_SUGGESTIONS,
+  };
+}
+
+function listed(task: WireTask, now: number): boolean {
+  return !task.routineRunId && task.archivedAt === undefined && !task.closedBy && (task.pinned === true || !isSnoozed(task, now));
+}
+
+export function threadViews(bots: readonly WireBot[], now = Date.now()): ThreadView[] {
+  const rows = bots.flatMap((bot) => (bot.tasks ?? []).filter((task) => listed(task, now)).map((task) => ({ bot, task })));
+  const order = orderedThreadList(rows.map(({ task }) => task));
+  const owner = new Map(rows.map(({ bot, task }) => [task.threadId, bot.id]));
+  return order.map((task) => ({
+    id: task.threadId,
+    title: task.title,
+    botId: owner.get(task.threadId) ?? "",
+    group: threadGroup(task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt, now),
+    busy: task.busy === true,
+  }));
+}
+
+export function taskOf(bots: readonly WireBot[], threadId: string): { bot: WireBot; task: WireTask } | null {
+  for (const bot of bots) {
+    const task = bot.tasks?.find((candidate) => candidate.threadId === threadId);
+    if (task) return { bot, task };
+  }
+  return null;
+}
+
+/** `mcp__gmail__send_email` → "Send email". */
+export function toolLabel(tool: string | undefined): string {
+  if (!tool) return "Question";
+  const name = tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/[_-]+/g, " ").trim();
+  return name ? name[0].toUpperCase() + name.slice(1) : tool;
+}
+
+export function cardView(message: WireMessage, card: OptionCardData): ApprovalView {
+  const kind = card.tool || card.requestType === "permission" ? "permission" : "question";
+  const answer = card.answeredText ?? card.answered;
+  let state: ApprovalView["state"] = card.requestId ? "pending" : "closed";
+  if (card.answered !== undefined) state = kind === "question" ? "answered" : /deny|don't|no\b/i.test(card.answered) ? "denied" : "approved";
+  else if (card.expired || card.stopped || card.dismissed) state = "closed";
+  return {
+    id: message.id,
+    from: "approval",
+    kind,
+    title: card.title,
+    action: toolLabel(card.tool),
+    lines: [],
+    preview: card.subtitle || undefined,
+    options: card.options,
+    state,
+    answer,
+    requestId: card.requestId,
+  };
+}
+
+/** Rows that aren't the bot's words: context markers, screen frames, and the harness's own work summaries. */
+const HIDDEN_KINDS = new Set<WireMessage["kind"]>(["compaction", "screen", "digest"]);
+
+export function messageViews(
+  messages: readonly WireMessage[],
+  extras: { streaming?: readonly StreamingItem[]; pending?: readonly PendingSend[]; busy?: boolean } = {},
+): MessageView[] {
+  const views: MessageView[] = [];
+  let tools = 0;
+  for (const message of messages) {
+    if (message.role === "user") {
+      if (message.kind === "text" && message.text && !message.reaction) views.push({ id: message.id, from: "user", text: message.text });
+      continue;
+    }
+    if (message.kind === "activity") {
+      tools += 1;
+      continue;
+    }
+    if (message.kind === "options" && message.card) {
+      views.push(cardView(message, message.card));
+      continue;
+    }
+    if (HIDDEN_KINDS.has(message.kind) || !message.text) continue;
+    views.push({ id: message.id, from: "bot", text: message.text, tools: tools || undefined, at: message.at });
+    tools = 0;
+  }
+  for (const send of extras.pending ?? []) {
+    views.push({ id: `send:${send.sendId}`, from: "user", text: send.text, pending: send.failed ? "failed" : "sending" });
+  }
+  const streaming = (extras.streaming ?? []).filter((item) => item.text.trim());
+  streaming.forEach((item, index) => {
+    views.push({ id: `live:${item.key}`, from: "bot", text: item.text, tools: index === 0 && tools ? tools : undefined, streaming: true });
+  });
+  if (!streaming.length && extras.busy) views.push({ id: "working", from: "working", tools });
+  return views;
+}
+
+function scheduleLabel(schedule: RoutineSchedule): string {
+  switch (schedule.type) {
+    case "cron":
+      return cronScheduleLabel(schedule);
+    case "daily": {
+      const days = schedule.weekdays;
+      const when =
+        days.length === 0 || days.length === 7
+          ? "Daily"
+          : days.join(",") === "1,2,3,4,5"
+            ? "Weekdays"
+            : days.map((day) => WEEKDAYS[day]).join(", ");
+      return `${when} at ${schedule.time.replace(/^0(\d)/, "$1")}`;
+    }
+    case "interval": {
+      const every = schedule.everyMinutes % 60 === 0 ? `Every ${schedule.everyMinutes / 60} h` : `Every ${schedule.everyMinutes} min`;
+      return schedule.window ? `${every}, ${schedule.window.start}–${schedule.window.end}` : every;
+    }
+    case "once":
+      return `Once, ${formatWhen(schedule.at)}`;
+    case "limit_reset":
+      return "When the usage limit resets";
+  }
+}
+
+const RUN_TONE: Partial<Record<RoutineRun["status"], Status>> = {
+  failed: "danger",
+  missed: "danger",
+  running: "info",
+  queued: "info",
+  waiting: "warning",
+  cancelled: "warning",
+};
+
+export function duration(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
+}
+
+function runView(run: RoutineRun, now: number): RunView {
+  const at = run.startedAt ?? run.scheduledFor;
+  const summary = run.error ?? run.attention ?? run.output?.split("\n").find((line) => line.trim()) ?? run.status;
+  return {
+    id: run.id,
+    at: formatWhen(at, now),
+    outcome: RUN_TONE[run.status] ?? "success",
+    summary: summary.slice(0, 140),
+    duration: run.startedAt && run.finishedAt ? duration(run.finishedAt - run.startedAt) : undefined,
+  };
+}
+
+export function automationView(routine: Routine, runs: readonly RoutineRun[], hostName: string, now = Date.now()): AutomationView {
+  const own = runs
+    .filter((run) => run.routineId === routine.id)
+    .sort((a, b) => (b.finishedAt ?? b.scheduledFor) - (a.finishedAt ?? a.scheduledFor));
+  const latest = own[0];
+  const state = routine.enabled ? "active" : (routine.failureStreak ?? 0) > 0 ? "failed" : "paused";
+  return {
+    id: routine.id,
+    name: routine.name,
+    botId: routine.botId,
+    trigger: { kind: "schedule", label: scheduleLabel(routine.schedule), cron: routine.schedule.type === "cron" ? routine.schedule.expression : undefined },
+    runsOn: routine.runOn === "cloud" ? "the Cloud" : hostName,
+    state,
+    lastRun: latest ? { label: runView(latest, now).at, tone: runView(latest, now).outcome } : null,
+    next: routine.enabled && routine.nextRunAt ? `Next ${formatWhen(routine.nextRunAt, now).replace(/^Today /, "").replace(/^Tomorrow/, "tomorrow")}` : undefined,
+    runs: own.slice(0, 20).map((run) => runView(run, now)),
+    prompt: routine.prompt || undefined,
+    timeZone: routine.schedule.type === "cron" ? routine.schedule.timeZone : undefined,
+    failureStreak: routine.failureStreak || undefined,
+  };
+}

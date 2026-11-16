@@ -1,45 +1,80 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Bell, MessageSquare, Monitor, Moon, Plus, ScanFace, Type } from "lucide-react-native";
-import { StyleSheet, Switch, View } from "react-native";
+import { Bell, FlaskConical, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
+import { Alert, StyleSheet, Switch, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Group, Row, SectionLabel } from "@/components/list";
 import { Screen } from "@/components/screen";
 import { StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { LargeTitle, PageTopBar } from "@/components/top-bar";
-import { bots, host, user } from "@/sample/world";
+import { useConnection } from "@/state/connection";
+import { initials } from "@/state/views";
+import { useWorld } from "@/state/world";
 import { colors, size, space } from "@/theme";
 
 const iconProps = { size: size.icon, color: colors.text2, strokeWidth: size.iconStroke };
 
 export default function SettingsScreen() {
   const version = Constants.expoConfig?.version ?? "0.0.0";
+  const world = useWorld();
+  const connection = useConnection();
+  const { session } = connection;
+  const live = world.source === "live" && session;
+
+  function unpair() {
+    Alert.alert(
+      `Unpair from ${world.host.name}?`,
+      `SteinHub forgets this computer and its key on this phone. To revoke this phone on the computer too, remove it in Settings → Phone & devices there.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unpair",
+          style: "destructive",
+          onPress: () => {
+            void connection.forget().then(() => router.replace("/onboarding"));
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <Screen header={<PageTopBar leading="back" />}>
       <LargeTitle>Settings</LargeTitle>
       <Group>
-        <Row title={user.name} subtitle={user.email} leading={<Avatar label={user.initials} />} chevron />
+        {world.person ? (
+          <Row title={world.person.name} subtitle={world.person.email} leading={<Avatar label={world.person.initials} />} chevron />
+        ) : (
+          <Row title={world.host.name} subtitle={session ? `This phone: ${session.device.name}` : undefined} leading={<Avatar label={initials(world.host.name)} />} />
+        )}
       </Group>
 
       <SectionLabel>Pairing</SectionLabel>
       <Group>
         <Row
-          title={host.name}
+          title={world.host.name}
           subtitle="Paired computer"
           leading={<Monitor {...iconProps} />}
           trailing={
             <View style={styles.online}>
-              <StatusDot tone="success" />
+              <StatusDot tone={world.host.status.tone} />
               <Txt variant="subhead" tone="secondary">
-                Online
+                {world.host.status.label}
               </Txt>
             </View>
           }
-          chevron
+          chevron={!live}
         />
-        <Row title="Pair another computer" leading={<Plus {...iconProps} />} onPress={() => router.navigate("/onboarding")} />
+        {live ? <Row title="App" value={world.host.app} /> : null}
+        {live ? <Row title="Paired" value={world.host.paired} /> : null}
+        {live ? <Row title="This phone" value={session.device.name} leading={<Smartphone {...iconProps} />} /> : null}
+        {live ? (
+          <Row title="Re-pair with QR" subtitle="Use if the connection keeps failing" leading={<QrCode {...iconProps} />} onPress={() => router.navigate("/onboarding")} />
+        ) : (
+          <Row title="Pair another computer" leading={<Plus {...iconProps} />} onPress={() => router.navigate("/onboarding")} />
+        )}
+        {live ? <Row title="Unpair this phone" destructive leading={<Unlink size={size.icon} color={colors.danger} strokeWidth={size.iconStroke} />} onPress={unpair} /> : null}
       </Group>
 
       <SectionLabel>Notifications</SectionLabel>
@@ -55,7 +90,7 @@ export default function SettingsScreen() {
 
       <SectionLabel>Bots</SectionLabel>
       <Group>
-        <Row title="Default bot" value={bots[0].name} leading={<MessageSquare {...iconProps} />} chevron />
+        <Row title="Default bot" value={world.bots[0]?.name ?? "None"} leading={<MessageSquare {...iconProps} />} chevron />
       </Group>
 
       <SectionLabel>Privacy & security</SectionLabel>
@@ -73,6 +108,28 @@ export default function SettingsScreen() {
           }
         />
       </Group>
+
+      {connection.demoAvailable ? (
+        <>
+          <SectionLabel>Development</SectionLabel>
+          <Group>
+            <Row
+              title="Demo mode"
+              subtitle={connection.mode === "demo" ? "Showing the sample world" : session ? `Showing ${session.serverName}` : "Not paired"}
+              leading={<FlaskConical {...iconProps} />}
+              trailing={
+                <Switch
+                  accessibilityLabel="Demo mode"
+                  value={connection.mode === "demo"}
+                  onValueChange={(on) => void connection.setDemo(on)}
+                  trackColor={{ false: colors.surface3, true: colors.success }}
+                  thumbColor={colors.text}
+                />
+              }
+            />
+          </Group>
+        </>
+      ) : null}
 
       <Txt variant="footnote" tone="tertiary" style={styles.about}>
         SteinHub {version}

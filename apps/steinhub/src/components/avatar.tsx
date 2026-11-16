@@ -3,8 +3,10 @@ import { Txt } from "@/components/text";
 import { botTints, colors, size, type BotTint } from "@/theme";
 
 const dimensions = {
+  xs: { box: size.avatarXs, font: 10 },
   sm: { box: size.avatarSm, font: 12 },
   md: { box: size.avatarMd, font: 15 },
+  hero: { box: size.avatarHero, font: 20 },
   lg: { box: size.avatarLg, font: 26 },
 } as const;
 

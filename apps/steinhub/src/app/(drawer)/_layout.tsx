@@ -1,12 +1,14 @@
+import { Redirect } from "expo-router";
 import { Drawer } from "expo-router/drawer";
+import { StyleSheet, View } from "react-native";
 import { AppDrawer } from "@/components/app-drawer";
+import { useConnection } from "@/state/connection";
 import { colors } from "@/theme";
 
-export const unstable_settings = {
-  anchor: "index",
-};
-
 export default function DrawerLayout() {
+  const { mode } = useConnection();
+  if (mode === "loading") return <View style={styles.loading} />;
+  if (mode === "unpaired") return <Redirect href="/onboarding" />;
   return (
     <Drawer
       backBehavior="history"
@@ -30,3 +32,7 @@ export default function DrawerLayout() {
     </Drawer>
   );
 }
+
+const styles = StyleSheet.create({
+  loading: { flex: 1, backgroundColor: colors.bg },
+});

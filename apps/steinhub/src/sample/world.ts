@@ -1,63 +1,16 @@
+import { CUSTOM_SECRET_TARGET } from "@openmausbot/phone-protocol/credential-request.ts";
 import type { InboxRow } from "@openmausbot/phone-protocol/inbox.ts";
-import type { BotTint, Status } from "@/theme";
+import type { ApprovalView, AutomationView, BotView, ComputerView, HostView, MessageView, PersonView, RunView, ThreadView } from "@/state/views";
 
-export interface SampleBot {
-  id: string;
-  name: string;
-  role: string;
-  tint: BotTint;
-  model: string;
-  state: { label: string; tone: Status };
-  suggestions: string[];
-}
+export const user: PersonView = { name: "Alex Rivera", email: "alex@example.com", initials: "AR" };
 
-export interface SampleThread {
-  id: string;
-  title: string;
-  botId: string;
-  group: "Today" | "Yesterday" | "Earlier";
-}
+export const host: HostView = { name: "Alex's Mac Studio", app: "OpenMausBot 2.4.1", paired: "Nov 12, 2026" };
 
-export type SampleMessage =
-  | { id: string; from: "user"; text: string }
-  | { id: string; from: "bot"; text: string; tools?: number }
-  | { id: string; from: "approval"; title: string; action: string; to: string; subject: string; preview: string };
-
-export interface SampleAutomation {
-  id: string;
-  name: string;
-  botId: string;
-  trigger: { kind: "schedule"; label: string; cron: string } | { kind: "app-event"; label: string };
-  runsOn: string;
-  state: "active" | "paused" | "failed";
-  lastRun: { label: string; tone: Status };
-  next?: string;
-}
-
-export interface SampleRun {
-  id: string;
-  at: string;
-  outcome: Status;
-  summary: string;
-}
-
-export interface SampleComputer {
-  id: string;
-  name: string;
-  kind: string;
-  os: string;
-  state: { label: string; tone: Status };
-  detail: string;
-}
-
-export const user = { name: "Alex Rivera", email: "alex@example.com", initials: "AR" };
-
-export const host = { name: "Alex's Mac Studio", app: "OpenMausBot 2.4.1", paired: "Nov 12, 2026" };
-
-export const bots: SampleBot[] = [
+export const bots: BotView[] = [
   {
     id: "mausbot",
     name: "MausBot",
+    glyph: "M",
     role: "Chief of Staff",
     tint: "violet",
     model: "Claude Opus 5.5",
@@ -67,6 +20,7 @@ export const bots: SampleBot[] = [
   {
     id: "mobile-app",
     name: "Mobile App",
+    glyph: "A",
     role: "Builds the SteinHub iOS app",
     tint: "green",
     model: "Claude Opus 5.5",
@@ -76,6 +30,7 @@ export const bots: SampleBot[] = [
   {
     id: "mac-helper",
     name: "Mac helper",
+    glyph: "H",
     role: "Runs tasks on the Mac",
     tint: "amber",
     model: "Claude Opus 5.5",
@@ -84,11 +39,11 @@ export const bots: SampleBot[] = [
   },
 ];
 
-export function botById(id: string | undefined): SampleBot {
+export function botById(id: string | undefined): BotView {
   return bots.find((bot) => bot.id === id) ?? bots[0];
 }
 
-export const threads: SampleThread[] = [
+export const threads: ThreadView[] = [
   { id: "lease", title: "Landlord lease renewal", botId: "mausbot", group: "Today" },
   { id: "push-crash", title: "Fix push notification crash", botId: "mobile-app", group: "Today" },
   { id: "offsite", title: "Plan Thursday offsite", botId: "mausbot", group: "Today" },
@@ -97,11 +52,11 @@ export const threads: SampleThread[] = [
   { id: "eas-profiles", title: "Set up EAS build profiles", botId: "mobile-app", group: "Earlier" },
 ];
 
-export function threadById(id: string | undefined): SampleThread {
+export function threadById(id: string | undefined): ThreadView {
   return threads.find((thread) => thread.id === id) ?? threads[0];
 }
 
-export const leaseMessages: SampleMessage[] = [
+export const leaseMessages: MessageView[] = [
   {
     id: "m1",
     from: "user",
@@ -114,18 +69,10 @@ export const leaseMessages: SampleMessage[] = [
     text: "Jordan's offer is a 5% increase. Section 4.2 of your lease caps renewal increases at 5%, so it's allowed, but there's room to negotiate.\n\nAt $2,450 on a 24-month term you'd pay $1,680 less over two years than at $2,520.",
   },
   { id: "m3", from: "user", text: "Looks good. Send it to Jordan, and hold Thursday at 3 in case they want to talk." },
-  {
-    id: "m4",
-    from: "approval",
-    title: "Send this reply to Jordan (landlord)?",
-    action: "Send email",
-    to: "Jordan Lee <jordan.lee@example.com>",
-    subject: "Re: Lease renewal, Apt 3B",
-    preview: "Hi Jordan, thanks for sending the renewal terms. I'd like to stay. Would you consider $2,450 a month if I sign for 24 months?",
-  },
+  leaseApproval(),
 ];
 
-const SAMPLE_NOW = Date.UTC(2026, 10, 16, 9, 41);
+export const SAMPLE_NOW = new Date(2026, 10, 16, 9, 41).getTime();
 
 export const inbox: InboxRow[] = [
   {
@@ -134,10 +81,11 @@ export const inbox: InboxRow[] = [
     tab: "needs-you",
     from: { name: "MausBot", botId: "mausbot" },
     origin: { botId: "mausbot", threadId: "lease", title: "Landlord lease renewal" },
-    text: "Send this reply to Jordan (landlord)?",
+    text: "Send reply to Jordan (landlord)?",
     at: SAMPLE_NOW - 10 * 60_000,
     unread: true,
     replies: true,
+    card: { title: "Send reply to Jordan (landlord)?", subtitle: "Counters at $2,450/month for a 2-year term.", options: ["Approve", "Deny"], tool: "send_email" },
   },
   {
     id: "inbox-secret",
@@ -145,32 +93,59 @@ export const inbox: InboxRow[] = [
     tab: "needs-you",
     from: { name: "Mobile App", botId: "mobile-app" },
     origin: { botId: "mobile-app", threadId: "testflight-42", title: "TestFlight build 42 notes" },
-    text: "App Store Connect API key needed to read build 43.",
+    text: "App Store Connect API key",
     at: SAMPLE_NOW - 42 * 60_000,
     unread: true,
     replies: true,
+    secret: {
+      target: CUSTOM_SECRET_TARGET,
+      label: "App Store Connect API key",
+      description: "To upload builds to TestFlight with the App Store Connect API.",
+      placeholder: "Key (.p8 contents)",
+      helpUrl: "https://appstoreconnect.apple.com/access/integrations/api",
+      requestKey: "asc-api-key",
+    },
   },
   {
     id: "inbox-sign-in",
     kind: "notice",
     tab: "needs-you",
     from: { name: "Mac helper", botId: "mac-helper" },
-    text: "Sign in to Dropbox so the weekly backup can run.",
+    text: "Sign in to GitHub on Alex's Mac Studio",
     at: SAMPLE_NOW - 3 * 60 * 60_000,
     unread: true,
+    signIn: { url: "https://github.com/login", site: "GitHub", place: "local" },
   },
   {
     id: "inbox-brief",
     kind: "result",
     tab: "info",
     from: { name: "MausBot", botId: "mausbot" },
-    text: "Morning brief is ready. Two items need you: an approval and a secret request.",
-    at: SAMPLE_NOW - 2 * 60 * 60_000,
+    text: "Morning brief\n4 meetings today, 3 emails need replies, 1 approval waiting.",
+    at: SAMPLE_NOW - 2 * 60 * 60_000 - 41 * 60_000,
+    unread: true,
+  },
+  {
+    id: "inbox-build",
+    kind: "message",
+    tab: "info",
+    from: { name: "Mobile App", botId: "mobile-app" },
+    text: "Build 43 uploaded to TestFlight\nProcessing finished and 4 testers were notified. Release notes are in the thread.",
+    at: SAMPLE_NOW - 89 * 60_000,
+    unread: true,
+  },
+  {
+    id: "inbox-backup",
+    kind: "notice",
+    tab: "done",
+    from: { name: "Mac helper", botId: "mac-helper" },
+    text: "Weekly backup skipped — MacBook Pro was asleep",
+    at: SAMPLE_NOW - 5 * 86_400_000,
     unread: false,
   },
 ];
 
-export const automations: SampleAutomation[] = [
+export const automations: AutomationView[] = [
   {
     id: "weekly-backup",
     name: "Weekly backup",
@@ -178,15 +153,24 @@ export const automations: SampleAutomation[] = [
     trigger: { kind: "schedule", label: "Sundays at 2:00", cron: "0 2 * * 0" },
     runsOn: "MacBook Pro",
     state: "failed",
+    failureStreak: 2,
+    runs: [
+      { id: "b1", at: "Sun 15 Nov, 2:00", outcome: "danger", summary: "MacBook Pro asleep", duration: "10 min" },
+      { id: "b2", at: "Sun 8 Nov, 2:00", outcome: "danger", summary: "MacBook Pro asleep", duration: "10 min" },
+      { id: "b3", at: "Sun 1 Nov, 2:00", outcome: "success", summary: "Backed up 38 GB", duration: "24 min" },
+    ],
     lastRun: { label: "Sun 2:00 · MacBook Pro asleep", tone: "danger" },
   },
   {
     id: "morning-brief",
     name: "Morning brief",
     botId: "mausbot",
+    prompt: "Every weekday at 7:00, send me a brief of today's calendar, unread email needing replies, and anything waiting on me.",
+    timeZone: "Europe/Berlin",
     trigger: { kind: "schedule", label: "Weekdays at 7:00", cron: "0 7 * * 1-5" },
     runsOn: "Alex's Mac Studio",
     state: "active",
+    runs: [],
     lastRun: { label: "Today 7:00", tone: "success" },
     next: "Next tomorrow 7:00",
   },
@@ -197,6 +181,7 @@ export const automations: SampleAutomation[] = [
     trigger: { kind: "schedule", label: "Every 30 min, 8:00–20:00", cron: "*/30 8-20 * * *" },
     runsOn: "Alex's Mac Studio",
     state: "active",
+    runs: [],
     lastRun: { label: "9:30", tone: "success" },
     next: "Next 10:00",
   },
@@ -207,6 +192,7 @@ export const automations: SampleAutomation[] = [
     trigger: { kind: "app-event", label: "TestFlight build processed" },
     runsOn: "Alex's Mac Studio",
     state: "active",
+    runs: [],
     lastRun: { label: "Yesterday 18:12 · build 43", tone: "success" },
   },
   {
@@ -216,44 +202,71 @@ export const automations: SampleAutomation[] = [
     trigger: { kind: "schedule", label: "Daily at 12:00", cron: "0 12 * * *" },
     runsOn: "vps-fra-1",
     state: "active",
+    runs: [],
     lastRun: { label: "Yesterday 12:00", tone: "success" },
     next: "Next today 12:00",
   },
 ];
 
-export function automationById(id: string | undefined): SampleAutomation {
+export function automationById(id: string | undefined): AutomationView {
   return automations.find((automation) => automation.id === id) ?? automations[0];
 }
 
-export const runs: SampleRun[] = [
-  { id: "r1", at: "Today 7:00", outcome: "success", summary: "Brief sent · 4 calendar items, 2 replies needed" },
-  { id: "r2", at: "Fri 7:00", outcome: "success", summary: "Brief sent · 3 calendar items" },
-  { id: "r3", at: "Thu 7:00", outcome: "danger", summary: "Mac Studio was asleep · retried for 10 min" },
+export const runs: RunView[] = [
+  { id: "r1", at: "Today, 7:00", outcome: "success", summary: "Brief sent · 5 items", duration: "42 s" },
+  { id: "r2", at: "Fri 13 Nov, 7:00", outcome: "success", summary: "Brief sent · 7 items", duration: "38 s" },
+  { id: "r3", at: "Thu 12 Nov, 7:00", outcome: "danger", summary: "Gmail token expired", duration: "6 s" },
+  { id: "r4", at: "Wed 11 Nov, 7:00", outcome: "success", summary: "Brief sent · 4 items", duration: "45 s" },
 ];
 
-export const computers: SampleComputer[] = [
+export const computers: ComputerView[] = [
   {
     id: "mac-studio",
     name: "Alex's Mac Studio",
-    kind: "Desktop host",
-    os: "macOS",
+    kind: "desktop",
+    os: "macOS 26 · OpenMausBot 2.4.1",
+    isHost: true,
     state: { label: "Online", tone: "success" },
-    detail: "OpenMausBot 2.4.1 · 3 bots",
+    note: "8 ms",
+    botIds: ["mausbot", "mobile-app", "mac-helper"],
+    metrics: { cpu: 12, mem: 41, disk: 62 },
   },
   {
     id: "macbook-pro",
     name: "MacBook Pro",
-    kind: "Laptop",
-    os: "macOS",
+    kind: "laptop",
+    os: "macOS 26",
+    isHost: false,
     state: { label: "Asleep", tone: "warning" },
-    detail: "Last seen 2 h ago",
+    note: "last seen 3 h ago",
+    botIds: ["mac-helper"],
   },
   {
     id: "vps-fra-1",
     name: "vps-fra-1",
-    kind: "VPS",
-    os: "Ubuntu 24.04",
+    kind: "server",
+    os: "Ubuntu 24.04 · Frankfurt",
+    isHost: false,
     state: { label: "Online", tone: "success" },
-    detail: "Runs Price check: Mac mini",
+    note: "31 ms",
+    botIds: ["mac-helper"],
+    metrics: { cpu: 4, mem: 28, disk: 35 },
   },
 ];
+
+function leaseApproval(): ApprovalView {
+  return {
+    id: "m4",
+    from: "approval",
+    kind: "permission",
+    title: "Send this reply to Jordan (landlord)?",
+    action: "Send email",
+    lines: [
+      { label: "To", value: "Jordan Lee <jordan.lee@example.com>" },
+      { label: "Subject", value: "Re: Lease renewal, Apt 3B" },
+    ],
+    preview: "Hi Jordan, thanks for sending the renewal terms. I'd like to stay. Would you consider $2,450 a month if I sign for 24 months?",
+    options: ["Approve", "Deny"],
+    state: "pending",
+  };
+}

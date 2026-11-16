@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, ChevronDown, ChevronRight, CornerDownLeft, Send, ShieldAlert, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
+import { attachmentUrlPath, type SentAttachment } from "@/api/attachments";
 import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -152,6 +153,27 @@ function ReplyHeader({ bot, note, live }: { bot: BotView; note?: string; live?: 
   );
 }
 
+function SentFiles({ files }: { files: SentAttachment[] }) {
+  const { attachmentSource } = useConnection();
+  return (
+    <View style={styles.sentFiles}>
+      {files.map((file) => {
+        const source = file.kind === "image" ? attachmentSource(attachmentUrlPath(file.path)) : null;
+        return source ? (
+          <Image key={file.path} accessibilityLabel={file.name} source={source} style={styles.sentImage} />
+        ) : (
+          <View key={file.path} style={styles.sentFile}>
+            <FileText size={16} color={colors.text2} strokeWidth={size.iconStroke} />
+            <Txt variant="footnote" numberOfLines={1} style={styles.shrink}>
+              {file.name}
+            </Txt>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function Handoff({ handoff, teammate }: { handoff: HandoffView; teammate: BotView | null }) {
   const [open, setOpen] = useState(false);
   const Icon = handoff.result ? CornerDownLeft : Send;
@@ -220,7 +242,8 @@ function Message({
     case "user":
       return (
         <View style={[styles.userBubble, message.pending === "sending" && styles.sending]}>
-          <Txt>{message.text}</Txt>
+          {message.attachments ? <SentFiles files={message.attachments} /> : null}
+          {message.text ? <Txt>{message.text}</Txt> : null}
           {message.pending === "failed" ? (
             <Txt variant="footnote" style={styles.errorText}>
               Not sent.
@@ -356,6 +379,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   sending: { opacity: 0.6 },
+  sentFiles: { gap: space[2], marginBottom: space[1] },
+  sentImage: { width: 200, height: 150, borderRadius: radius.md, backgroundColor: colors.surface3 },
+  sentFile: { flexDirection: "row", alignItems: "center", gap: space[2], maxWidth: 240 },
+  shrink: { flexShrink: 1 },
   reply: { gap: space[2] },
   replyHeader: { flexDirection: "row", alignItems: "center", gap: space[2] },
   handoff: { alignItems: "flex-start", gap: space[1] },

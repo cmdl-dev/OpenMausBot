@@ -72,7 +72,7 @@ export function fakeFetch(routes: Record<string, Handler | ResponseLike>) {
       url,
       path: parsed.pathname,
       headers: init.headers,
-      body: init.body ? JSON.parse(init.body) : undefined,
+      body: typeof init.body === "string" ? JSON.parse(init.body) : init.body,
     };
     calls.push(call);
     const route = routes[`${init.method} ${parsed.origin}${parsed.pathname}`] ?? routes[`${init.method} ${parsed.pathname}`];

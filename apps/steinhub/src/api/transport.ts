@@ -14,13 +14,15 @@ export interface ResponseLike {
 
 export type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
+  init: { method: string; headers: Record<string, string>; body?: string | Uint8Array<ArrayBuffer>; signal?: AbortSignal },
 ) => Promise<ResponseLike>;
 
 /** What the client layer needs from the network; tests swap in a fake. */
 export interface Transport {
   readonly baseUrl: string;
   request<T>(method: string, path: string, body?: unknown): Promise<T>;
+  /** Raw bytes in the body, as the attachment routes take them. */
+  upload<T>(path: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<T>;
   /** Resolves when the server ends the stream; rejects with a DesktopError when it can't open or breaks. */
   stream(path: string, onText: (text: string) => void, signal: AbortSignal): Promise<void>;
 }
@@ -66,14 +68,14 @@ export function httpTransport({
 }): Transport {
   const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
 
-  async function send(method: string, path: string, init: { body?: string; signal?: AbortSignal; accept?: string }) {
+  async function send(method: string, path: string, init: { body?: string | Uint8Array<ArrayBuffer>; signal?: AbortSignal; accept?: string; type?: string }) {
     try {
       return await fetch(joinUrl(baseUrl, path), {
         method,
         headers: {
           ...headers,
           ...(init.accept ? { accept: init.accept } : {}),
-          ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+          ...(init.body !== undefined ? { "content-type": init.type ?? "application/json" } : {}),
         },
         body: init.body,
         signal: init.signal,
@@ -104,6 +106,13 @@ export function httpTransport({
       } finally {
         clearTimeout(timer);
       }
+    },
+    async upload<T>(path: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<T> {
+      const response = await send("POST", path, { body: bytes, type: mime });
+      const parsed = readJson(await response.text(), response.status);
+      if (response.status < 200 || response.status >= 300) throw refusal(response.status, errorField(parsed));
+      // SAFETY: the shape is the server's contract for this route, typed at the call site.
+      return parsed as T;
     },
     async stream(path, onText, signal) {
       const response = await send("GET", path, { signal, accept: "text/event-stream" });

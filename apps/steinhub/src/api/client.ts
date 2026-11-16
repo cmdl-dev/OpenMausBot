@@ -70,6 +70,10 @@ export function desktopClient(transport: Transport) {
       transport.request<unknown>("POST", `/api/bots/${id(botId)}/interrupt`, { threadId }),
     respond: (threadId: string, answer: { requestId: string; behavior: "allow" | "deny" | "answer"; message?: string }) =>
       transport.request<unknown>("POST", `/api/threads/${id(threadId)}/respond`, answer),
+    uploadImage: (bytes: Uint8Array<ArrayBuffer>, mime: string, uploadId: string) =>
+      transport.upload<{ path: string; mime: string; bytes: number }>(`/api/attachments?uploadId=${id(uploadId)}`, bytes, mime),
+    uploadFile: (bytes: Uint8Array<ArrayBuffer>, mime: string, name: string, uploadId: string) =>
+      transport.upload<{ path: string; name: string; bytes: number }>(`/api/files?name=${id(name)}&uploadId=${id(uploadId)}`, bytes, mime),
     routines: () => transport.request<RoutinesReply>("GET", "/api/routines"),
     setRoutineEnabled: (routineId: string, enabled: boolean) =>
       transport.request<{ routine: Routine }>("PATCH", `/api/routines/${id(routineId)}`, { enabled }),

@@ -119,6 +119,8 @@ don't have it.
 |---|---|---|
 | Onboarding: welcome, scan QR, typed code, confirm | **Live** | `POST /api/pair` |
 | Home: bots, greeting, new chat | **Live** (no person's name; see gaps) | `GET /api/bots`, `GET /api/instances` (model labels), `POST /api/bots/:id/tasks`, `POST /api/bots/:id/messages` |
+| Composer: attach (Camera, Photos, Files) and dictation | **Live** for attachments: `POST /api/attachments` (photos) and `POST /api/files?name=` (files) as raw bytes, then `<attached-image/>` / `<attached-file/>` tags in the message, as the desktop composer writes them. Dictation runs on the phone (`expo-speech-recognition`, on-device when the phone supports it) and only fills in the message field. | |
+| Drawer bot menu: new thread, new folder (name, emoji), pin, mark as read, copy conversation ID, delete | **Live** | `POST /api/bots/:id/tasks` (`projectId`), `POST /api/bots/:id/projects`, `PATCH /api/bots/:id {pinned}`, `POST /api/bots/:id/read`, `DELETE /api/bots/:id` |
 | Bot picker, drawer bots (in the computer's sidebar sections, each drawn as its mascot or picture) and recent threads | **Live** | `GET /api/bots` (`sections`), `GET /api/attachments/:file` (pictures), `bot` / `bot.deleted` / `bots.order` / `sections` frames |
 | Chat thread: history (Markdown through `react-native-enriched-markdown`, hand-off chips with their replies), send, streamed reply, Stop | **Live** | `GET /api/threads/:id/messages`, `POST /api/bots/:id/messages`, `POST /api/bots/:id/interrupt`, `message` / `message.patch` / `runtime` (`content.delta`) frames |
 | Chat approval and question cards | **Live** | `POST /api/threads/:id/respond` `{requestId, behavior: allow, deny or answer}` |
@@ -171,7 +173,15 @@ These are proposals. Nothing here changes desktop or server code.
    through a hosted HTTPS endpoint.
 8. **Desktop-side Allow.** See the pairing section above. Adding it would be a
    companion change.
-9. **App-event automations.** App-event triggers arrive as `app-trigger`
+9. **Attachment tags.** `composeMessage` and the transcript reader that turn
+   uploads into `<attached-image/>` and `<attached-file/>` tags live in the
+   desktop's `src/lib/composer-attachments.ts`. SteinHub has its own copy in
+   `src/api/attachments.ts`. Proposal: move both into phone-protocol so every
+   client writes and reads the same format.
+10. **Desktop-only bot actions.** Make Chief of Staff, Move to department,
+    Duplicate, Archive and New thread in a working folder are refused to a
+    paired device, so the phone's menu leaves them out.
+11. **App-event automations.** App-event triggers arrive as `app-trigger`
    frames, but no allowlisted GET lists them, so the list shows scheduled
    routines only.
 

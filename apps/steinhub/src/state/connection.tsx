@@ -1,4 +1,7 @@
+import { FILE_MAX_BYTES, limitMegabytes } from "@openmausbot/phone-protocol/upload-limits.ts";
 import * as Crypto from "expo-crypto";
+import { File } from "expo-file-system";
+import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { desktopClient, type DesktopClient } from "@/api/client";
@@ -29,6 +32,8 @@ export interface Connection {
   stop(botId: string, threadId: string): Promise<void>;
   respond(threadId: string, requestId: string, answer: { behavior: "allow" | "deny" | "answer"; message?: string }): Promise<void>;
   setRoutineEnabled(routineId: string, enabled: boolean): Promise<void>;
+  /** Stores a picked photo or file on the computer, ready to send with a message. */
+  upload(pick: { uri: string; name: string; mime: string; kind: "image" | "file" }): Promise<SentAttachment>;
   /** A new conversation with the bot, in a folder when given. Resolves to its thread. */
   newThread(botId: string, folderId?: string): Promise<string>;
   newFolder(botId: string, folder: { name: string; emoji?: string }): Promise<void>;
@@ -244,6 +249,24 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => live.current?.retryNow(), []);
 
+  const upload = useCallback<Connection["upload"]>(
+    async (pick) => {
+      const bytes = await new File(pick.uri).bytes();
+      if (bytes.byteLength > FILE_MAX_BYTES) {
+        throw new Error(`${pick.name} is larger than ${limitMegabytes(FILE_MAX_BYTES)} MB.`);
+      }
+      const api = client();
+      const uploadId = Crypto.randomUUID();
+      if (pick.kind === "image") {
+        const saved = await api.uploadImage(bytes, pick.mime, uploadId);
+        return { kind: "image", path: saved.path, name: pick.name };
+      }
+      const saved = await api.uploadFile(bytes, pick.mime, pick.name, uploadId);
+      return { kind: "file", path: saved.path, name: saved.name || pick.name };
+    },
+    [client],
+  );
+
   const newThread = useCallback(
     async (botId: string, folderId?: string) => {
       const created = await client().newThread(botId, folderId);
@@ -313,13 +336,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setRoutineEnabled,
       runRoutine,
       attachmentSource,
+      upload,
       newThread,
       newFolder,
       setPinned,
       markRead,
       deleteBot,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource, newThread, newFolder, setPinned, markRead, deleteBot],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource, upload, newThread, newFolder, setPinned, markRead, deleteBot],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

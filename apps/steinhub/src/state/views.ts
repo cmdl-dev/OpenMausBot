@@ -3,6 +3,7 @@ import { cronScheduleLabel } from "@openmausbot/phone-protocol/cron-label.ts";
 import { botMascotBody, type MascotBodyId } from "@openmausbot/phone-protocol/mascot-bodies.ts";
 import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-protocol/routines.ts";
 import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
+import { readMessageAttachments, type SentAttachment } from "@/api/attachments";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
 import { tintForIndex, type BotTint, type Status } from "@/theme";
 
@@ -86,7 +87,7 @@ export interface HandoffView {
 }
 
 export type MessageView =
-  | { id: string; from: "user"; text: string; pending?: "sending" | "failed" }
+  | { id: string; from: "user"; text: string; attachments?: SentAttachment[]; pending?: "sending" | "failed" }
   | { id: string; from: "bot"; text: string; at?: number; streaming?: boolean }
   | { id: string; from: "working" }
   | HandoffView
@@ -326,7 +327,7 @@ export function messageViews(
   const views: MessageView[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      if (message.kind === "text" && message.text && !message.reaction) views.push({ id: message.id, from: "user", text: message.text });
+      if (message.kind === "text" && message.text && !message.reaction) views.push({ id: message.id, from: "user", ...userLine(message.text) });
       continue;
     }
     if (message.kind === "activity") {
@@ -342,12 +343,17 @@ export function messageViews(
     views.push({ id: message.id, from: "bot", text: message.text, at: message.at });
   }
   for (const send of extras.pending ?? []) {
-    views.push({ id: `send:${send.sendId}`, from: "user", text: send.text, pending: send.failed ? "failed" : "sending" });
+    views.push({ id: `send:${send.sendId}`, from: "user", ...userLine(send.text), pending: send.failed ? "failed" : "sending" });
   }
   const streaming = (extras.streaming ?? []).filter((item) => item.text.trim());
   for (const item of streaming) views.push({ id: `live:${item.key}`, from: "bot", text: item.text, streaming: true });
   if (!streaming.length && extras.busy) views.push({ id: "working", from: "working" });
   return views;
+}
+
+function userLine(text: string): { text: string; attachments?: SentAttachment[] } {
+  const read = readMessageAttachments(text);
+  return read.attachments.length ? read : { text };
 }
 
 function handoffView(message: WireMessage): HandoffView | null {

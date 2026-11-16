@@ -14,6 +14,10 @@ function recordingTransport(reply: unknown = {}) {
       calls.push({ method, path, body });
       return reply as T;
     },
+    upload: async <T,>(path: string, _bytes: Uint8Array<ArrayBuffer>, mime: string) => {
+      calls.push({ method: "UPLOAD", path, body: mime });
+      return reply as T;
+    },
     stream: async () => undefined,
   };
   return { transport, calls };
@@ -68,6 +72,22 @@ describe("desktopClient", () => {
       { frame: { kind: "bot.deleted", botId: "b1" }, cursor: "abc:5" },
     ]);
   });
+});
+
+test("uploads photos and files as raw bytes with a retry-safe id", async () => {
+  const { fetch, calls } = fakeFetch({
+    "POST /api/attachments": jsonResponse(201, { path: "/a/1.jpg", mime: "image/jpeg", bytes: 3 }),
+    "POST /api/files": jsonResponse(201, { path: "/f/q.pdf", name: "q.pdf", bytes: 3 }),
+  });
+  const client = desktopClient(httpTransport({ baseUrl: BASE, token: "tok", fetch }));
+  const bytes = new Uint8Array([1, 2, 3]);
+  await client.uploadImage(bytes, "image/jpeg", "u-1");
+  await client.uploadFile(bytes, "application/pdf", "Q4 report.pdf", "u-2");
+  expect(calls[0].url).toBe(`${BASE}/api/attachments?uploadId=u-1`);
+  expect(calls[0].headers["content-type"]).toBe("image/jpeg");
+  expect(calls[0].body).toBe(bytes);
+  expect(calls[1].url).toBe(`${BASE}/api/files?name=Q4%20report.pdf&uploadId=u-2`);
+  expect(calls[1].headers["content-type"]).toBe("application/pdf");
 });
 
 describe("httpTransport", () => {

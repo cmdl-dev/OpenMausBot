@@ -260,16 +260,24 @@ function Message({
       );
     case "bot":
       return (
-        <View style={styles.reply}>
-          <ReplyHeader bot={bot} note={message.streaming ? "Writing" : message.at ? clock(message.at) : "9:40"} live={message.streaming} />
-          <Markdown>{message.text}</Markdown>
-        </View>
+        <BotReply message={message} bot={bot} />
       );
     case "handoff":
       return <Handoff handoff={message} teammate={findBot(message.botId)} />;
     case "approval":
       return <ApprovalCard card={message} onAnswer={onAnswer} hostName={hostName} />;
   }
+}
+
+function BotReply({ message, bot }: { message: Extract<MessageView, { from: "bot" }>; bot: BotView }) {
+  const [streamed] = useState(Boolean(message.streaming));
+  return (
+    <View style={styles.reply}>
+      <ReplyHeader bot={bot} note={message.streaming ? "Writing" : message.at ? clock(message.at) : "9:40"} live={message.streaming} />
+      <Markdown fadesIn={streamed}>{message.text}</Markdown>
+      {message.text ? null : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
+    </View>
+  );
 }
 
 function ApprovalCard({ card, onAnswer, hostName }: { card: ApprovalView; onAnswer: Answer; hostName: string }) {

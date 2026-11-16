@@ -117,7 +117,7 @@ test("sends a line into the thread and shows the computer's echo", async () => {
   expect(await screen.findByText("Make it 24 months")).toBeTruthy();
 });
 
-test("streams a reply as it arrives, then swaps in the saved message", async () => {
+test("streams a reply a finished paragraph at a time, then swaps in the saved message", async () => {
   const { events } = await openChat();
   const delta = (eventId: string, piece: string) =>
     events.frame({
@@ -127,16 +127,18 @@ test("streams a reply as it arrives, then swaps in the saved message", async () 
 
   await act(async () => {
     delta("e1", "Jordan usually ");
-    delta("e2", "says yes.");
+    delta("e2", "says yes.\n\nAsk for **24");
   });
   expect(await screen.findByText("Jordan usually says yes.")).toBeTruthy();
   expect(screen.getByText("Writing")).toBeTruthy();
+  expect(screen.queryByText(/Ask for/)).toBeNull();
 
+  const whole = "Jordan usually says yes.\n\nAsk for **24 months**.";
   await act(async () =>
-    events.frame({ kind: "message", threadId: "t1", message: { id: "m5", role: "bot", kind: "text", text: "Jordan usually says yes.", itemId: "i1", at: AT + 5 } }),
+    events.frame({ kind: "message", threadId: "t1", message: { id: "m5", role: "bot", kind: "text", text: whole, itemId: "i1", at: AT + 5 } }),
   );
   await waitFor(() => expect(screen.queryByText("Writing")).toBeNull());
-  expect(screen.getAllByText("Jordan usually says yes.")).toHaveLength(1);
+  expect(screen.getAllByText(whole)).toHaveLength(1);
 });
 
 test("approves an inline approval card, which collapses once the computer settles it", async () => {

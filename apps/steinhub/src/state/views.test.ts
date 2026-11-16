@@ -95,11 +95,12 @@ test("streamed text shows until the saved message with its item id arrives", () 
     },
   });
   const streaming = run(emptyWorld, delta("Hel"), delta("lo"));
-  expect(messageViews([], { streaming: streaming.streaming.t1 })).toEqual([{ id: "live:i1", from: "bot", text: "Hello", streaming: true }]);
+  expect(messageViews([], { streaming: streaming.streaming.t1 })).toEqual([{ id: "item:i1", from: "bot", text: "", streaming: true }]);
 
   const saved = run(streaming, { type: "frame", frame: { kind: "message", threadId: "t1", message: text("m9", "bot", "Hello", { itemId: "i1" }) } });
   expect(saved.streaming.t1).toEqual([]);
   expect(saved.threads.t1.messages.map((message) => message.id)).toEqual(["m9"]);
+  expect(messageViews(saved.threads.t1.messages)).toEqual([{ id: "item:i1", from: "bot", text: "Hello", at: NOW }]);
 });
 
 test("a sent line stays pending until its echo carries the same send id", () => {

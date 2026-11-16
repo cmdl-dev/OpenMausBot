@@ -68,11 +68,15 @@ const markdownStyle: MarkdownStyle = {
   },
 };
 
-/** A bot's words as the desktop draws them: GitHub-flavored Markdown with tables, lists and links. */
-export function Markdown({ children }: { children: string }) {
+/**
+ * A bot's words as the desktop draws them: GitHub-flavored Markdown with tables, lists and links.
+ * `fadesIn` fades in text appended after the first draw, for a reply that streams.
+ */
+export function Markdown({ children, fadesIn = false }: { children: string; fadesIn?: boolean }) {
   return (
     <EnrichedMarkdownText
       markdown={children}
+      streamingAnimation={fadesIn}
       markdownStyle={markdownStyle}
       flavor="github"
       selectable

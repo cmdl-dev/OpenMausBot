@@ -5,6 +5,7 @@ import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-pr
 import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
 import { readMessageAttachments, type SentAttachment } from "@/api/attachments";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
+import { settledMarkdown } from "@/state/settled-markdown";
 import { tintForIndex, type BotTint, type Status } from "@/theme";
 
 /** How a bot looks on the desktop: its mascot, or the picture it was given instead. */
@@ -340,15 +341,20 @@ export function messageViews(
       continue;
     }
     if (HIDDEN_KINDS.has(message.kind) || !message.text) continue;
-    views.push({ id: message.id, from: "bot", text: message.text, at: message.at });
+    views.push({ id: message.itemId ? replyKey(message.itemId) : message.id, from: "bot", text: message.text, at: message.at });
   }
   for (const send of extras.pending ?? []) {
     views.push({ id: `send:${send.sendId}`, from: "user", ...userLine(send.text), pending: send.failed ? "failed" : "sending" });
   }
   const streaming = (extras.streaming ?? []).filter((item) => item.text.trim());
-  for (const item of streaming) views.push({ id: `live:${item.key}`, from: "bot", text: item.text, streaming: true });
+  for (const item of streaming) views.push({ id: replyKey(item.key), from: "bot", text: settledMarkdown(item.text), streaming: true });
   if (!streaming.length && extras.busy) views.push({ id: "working", from: "working" });
   return views;
+}
+
+/** One key for a reply while it streams and once it is saved, so its row stays on screen between the two. */
+function replyKey(itemId: string): string {
+  return `item:${itemId}`;
 }
 
 function userLine(text: string): { text: string; attachments?: SentAttachment[] } {

@@ -3,7 +3,7 @@ import { Smartphone } from "lucide-react";
 
 import { t } from "@/lib/i18n";
 import type { CompanionState, PhoneDevice, PhoneSetupController } from "./PhoneSetupFlow";
-import { SIMPLE_CARD, Switch } from "./SettingsPrimitives";
+import { SIMPLE_CARD } from "./SettingsPrimitives";
 import { cn } from "@/lib/cn";
 import { relative } from "./PhoneDevicesSection";
 
@@ -101,30 +101,6 @@ export function PhoneRow({ device, connected, state, c, onRemoved, onPairAgain, 
               </div>
             </div>
           )}
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[13px] leading-[18px] text-ink">{t("remote.devices.allowView")}</div>
-              <div className="text-[12px] leading-4 text-ink-secondary">{t("remote.devices.allowViewDetail")}</div>
-            </div>
-            <Switch
-              checked={device.cloudDesktopAccess}
-              aria-label={t("remote.devices.viewAria", { name: device.name })}
-              disabled={c.busy}
-              onClick={() => void c.act((companion) => companion.cloudDesktop(device.id, !device.cloudDesktopAccess))}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[13px] leading-[18px] text-ink">{t("remote.devices.allowBrowser")}</div>
-              <div className="text-[12px] leading-4 text-ink-secondary">{t("remote.devices.allowBrowserDetail")}</div>
-            </div>
-            <Switch
-              checked={device.browserControlAccess === true}
-              aria-label={t("remote.devices.browserAria", { name: device.name })}
-              disabled={c.busy}
-              onClick={() => void c.act((companion) => companion.browserControl(device.id, !device.browserControlAccess))}
-            />
-          </div>
         </div>
       )}
     </li>

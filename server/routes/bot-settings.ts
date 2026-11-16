@@ -17,7 +17,6 @@ import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord, GroupRecord, Store } from "../store.ts";
 import type { ModelSelectionCheck } from "./bots-create.ts";
 import { PASS, type RouteHandler } from "./table.ts";
-import { pinnedClientThreadGuard } from "./pinned-client-thread.ts";
 import { sawThread } from "../thread-presence.ts";
 import { refusalBody } from "../user-errors.ts";
 import { readThreadNotifications, type NotificationListed } from "./notifications.ts";
@@ -64,10 +63,8 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
     requestedTaskBot, threadBusy, activeGroupTurnForBot, checkedModelSelection, engineSwitchNeedsAsk, readCursor,
     canManageCommandAllowlist, commandAllowlistResponse, cardAnswerRefusal,
   } = deps;
-  const pinnedClientThread = pinnedClientThreadGuard(store);
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
     m = path.match(/^\/api\/bots\/([\w-]+)\/avatar\/generate$/);
     if (m && method === "POST") {
       const existing = store.bot(m[1]);
@@ -133,7 +130,6 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
       }
       const existing = store.bot(m[1]);
       if (!existing) return json(res, 404, { error: "no such bot" });
-      requirePinnedClientThread(existing.id, undefined);
       const selected = requestedTaskBot(existing.id, undefined);
       if (existing.approvalGrant) {
         return json(res, 409, { error: "wait for the approval-level change to finish before changing models" });
@@ -166,7 +162,6 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
     m = path.match(/^\/api\/bots\/([\w-]+)\/read$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const current = requestedTaskBot(m[1], body?.threadId);
       sawThread(current.threadId);
       deps.threadRead?.(auth, current.threadId);
@@ -206,7 +201,6 @@ export function createBotSettingsRoutes(deps: BotSettingsRouteDeps): RouteHandle
     m = path.match(/^\/api\/bots\/([\w-]+)\/always-allow$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const allowKey = typeof body.allowKey === "string" ? body.allowKey : "";
       const bot = requestedTaskBot(m[1], body.threadId);
       if (!allowKey) return json(res, 400, { error: "allowKey required" });

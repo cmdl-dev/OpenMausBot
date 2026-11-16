@@ -256,18 +256,12 @@ describe("the sidecar in front of an unmodified harness", () => {
     expect((await device("GET", "/api/companion/endpoints")).body).toEqual({ serverName: "Test computer", endpoints: [], version: DESKTOP_VERSION });
   });
 
-  it("refuses what a device has no business doing, by default", async () => {
-    expect((await device("PUT", "/api/config", { body: { xai: { apiKey: "x" } } })).status).toBe(403);
-    expect((await device("GET", "/api/devices")).status).toBe(403);
-    expect((await device("GET", "/api/companion")).status).toBe(403);
-    expect((await device("POST", "/api/local-computer/start")).status).toBe(403);
-    expect((await device("GET", "/api/internal/peers")).status).toBe(404);
-    expect((await device("GET", "/")).status).toBe(404);
+  it("passes everything a paired device asks for to the harness, as the app would", async () => {
     expect((await device("GET", "/api/config")).status).toBe(200);
-
     const { body } = await device("GET", "/api/bots");
     const botId = body.bots[0].id;
-    expect((await device("PATCH", `/api/bots/${botId}`, { body: { autoApprove: true } })).status).toBe(403);
+    const changed = await device("PATCH", `/api/bots/${botId}`, { body: { autoApprove: true } });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
     expect((await device("PATCH", `/api/groups/not-a-room`, { body: { unread: false } })).status).toBe(404);
   });
 
@@ -304,7 +298,7 @@ describe("the sidecar in front of an unmodified harness", () => {
       .toMatchObject(appearance);
   });
 
-  it("refuses unauthenticated appearance saves and protected fields without changing the bot", async () => {
+  it("refuses an unpaired appearance save, and saves any field from a paired device", async () => {
     const { body } = await device("GET", "/api/bots");
     const bot = body.bots[0];
     const path = `/api/bots/${bot.id}`;
@@ -312,47 +306,16 @@ describe("the sidecar in front of an unmodified harness", () => {
     for (const token of [null, "omb_wrong"]) {
       expect((await device("PATCH", path, { token, body: appearance })).status).toBe(401);
     }
-    for (const protectedPatch of [
-      { autoApprove: true },
-      { approvalMode: "full" },
-      { soul: "not permitted" },
-      { computer: "local" },
-      { modelSelection: { instanceId: "ghost", model: "other" } },
-      { unexpected: true },
-    ]) {
-      const refused = await device("PATCH", path, { body: { ...appearance, ...protectedPatch } });
-      expect(refused.status, JSON.stringify(protectedPatch)).toBe(403);
-      expect(refused.body.error).toContain(Object.keys(protectedPatch)[0]);
-      expect(refused.body.error).toContain("host computer");
-      const refreshed = await device("GET", "/api/bots");
-      expect(refreshed.body.bots.find((candidate: { id: string }) => candidate.id === bot.id)).toEqual(bot);
+    for (const patch of [{ autoApprove: true }, { approvalMode: "full" }, { soul: "Plans trips from the phone." }]) {
+      const saved = await device("PATCH", path, { body: { ...appearance, ...patch } });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+      expect(saved.body.bot).toMatchObject(appearance);
     }
   });
 
-  it("refuses a new bot's protected settings from a paired device without making the bot", async () => {
-    const ids = async () => ((await device("GET", "/api/bots")).body.bots as Array<{ id: string }>).map((bot) => bot.id);
-    const before = await ids();
-    const settings: Array<[string, unknown]> = [
-      ["approvalMode", "full"], ["approvalMode", "ask"], ["alwaysAllow", ["Bash(*)"]], ["chiefOfStaff", true], ["computer", "local"],
-      ["cwd", "/"], ["peers", []], ["approvePeerComms", false], ["mcpServers", ["github"]], ["browserProfile", "guest"],
-      ["toolScope", { allow: ["native:*"] }], ["composio", true], ["browser", true],
-    ];
-    const fields: Array<[string, unknown]> = [
-      ["section", "Ops"], ["preset", "chief-of-staff"], ["visibility", { audience: "members" }], ["reportsTo", "someone@example.test"], ["unexpected", true],
-    ];
-    for (const [field, body] of [
-      ...settings.map(([field, value]) => [field, { name: "From the phone", settings: { [field]: value } }] as const),
-      ...fields.map(([field, value]) => [field, { name: "From the phone", [field]: value }] as const),
-    ]) {
-      const refused = await device("POST", "/api/bots", { body });
-      expect(refused.status, JSON.stringify(body)).toBe(403);
-      expect(refused.body.error).toContain(field);
-      expect(refused.body.error).toContain("host computer");
-    }
-    expect(await ids()).toEqual(before);
-
+  it("makes a bot with any settings from a paired device", async () => {
     const made = await device("POST", "/api/bots", {
-      body: { name: "From the phone", settings: { soul: "Plans trips.", color: "teal", mascotBody: "star" } },
+      body: { name: "From the phone", settings: { soul: "Plans trips.", color: "teal", mascotBody: "star", approvalMode: "full" } },
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     expect(made.body.bot).toMatchObject({ name: "From the phone", color: "teal", mascotBody: "star" });
@@ -396,19 +359,6 @@ describe("the sidecar in front of an unmodified harness", () => {
     }
   });
 
-  it("does not let a device suppress the companion marker to change protected fields", async () => {
-    const { body } = await device("GET", "/api/bots");
-    const bot = body.bots[0];
-    const refused = await device("PATCH", `/api/bots/${bot.id}`, {
-      headers: { "x-openmausbot-companion": "0" },
-      body: { color: "coral", autoApprove: true },
-    });
-    expect(refused.status).toBe(403);
-    expect(refused.body.error).toContain("autoApprove");
-    const refreshed = await device("GET", "/api/bots");
-    expect(refreshed.body.bots.find((candidate: { id: string }) => candidate.id === bot.id)).toEqual(bot);
-  });
-
   it("files bots through only the narrow atomic organizer route", async () => {
     const listed = await device("GET", "/api/bots");
     const first = listed.body.bots[0];
@@ -442,7 +392,7 @@ describe("the sidecar in front of an unmodified harness", () => {
     expect(smuggled.status).toBe(400);
   });
 
-  it("creates a bot through companion pairing without host defaults or settings access", async () => {
+  it("creates a bot through companion pairing and changes its settings", async () => {
     const before = (await device("GET", "/api/bots")).body.bots;
     const created = await device("POST", "/api/bots");
     expect(created.status).toBe(201);
@@ -451,8 +401,8 @@ describe("the sidecar in front of an unmodified harness", () => {
     const after = (await device("GET", "/api/bots")).body.bots;
     expect(after).toHaveLength(before.length + 1);
     expect(after.some((bot: { id: string }) => bot.id === id)).toBe(true);
-    expect((await device("GET", "/api/bot-defaults")).status).toBe(404);
-    expect((await device("PATCH", `/api/bots/${id}`, { body: { soul: "not permitted" } })).status).toBe(403);
+    expect((await device("GET", "/api/bot-defaults")).status).toBe(200);
+    expect((await device("PATCH", `/api/bots/${id}`, { body: { soul: "Plans trips." } })).status).toBe(200);
   });
 
   it("only remembers an always-allow key carried by a pending card", async () => {

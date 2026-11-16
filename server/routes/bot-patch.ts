@@ -35,7 +35,6 @@ import { sectionKey, type BotRecord, type GroupRecord, type Store, type TaskReco
 import * as vps from "../vps-computer.ts";
 import { vpsSshAliasForBot } from "../vps-hosts.ts";
 import { refusalBody, userError } from "../user-errors.ts";
-import { pinnedClientThreadGuard } from "./pinned-client-thread.ts";
 import type { ModelSelectionCheck } from "./bots-create.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -96,27 +95,22 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
     checkedModelSelection, engineSwitchNeedsAsk, currentBrowserSession, interruptAllDirectThreads, cancelGroupTurnOperations,
     revokeInternalCapabilitiesForThread, runningTurnInstance, closeOpenApprovals, assertTeamComputerChangeIdle, forgetTemporaryBrowser,
   } = deps;
-  const pinnedClientThread = pinnedClientThreadGuard(store);
   return async ({ req, res, path, method, auth, json, readBody }) => {
     let m: RegExpMatchArray | null = null;
     const routines = deps.routines();
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
     m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
       if (!body || typeof body !== "object" || Array.isArray(body)) {
         return json(res, 400, { error: "body must be a JSON object" });
       }
-      const pairedDevice = req.headers["x-openmausbot-companion"] === "1";
-      if ((auth.kind === "session" && !auth.scopes.includes("admin")) || pairedDevice) {
-        const session = auth.kind === "session" ? auth.session : undefined;
-        const level = pairedDevice ? "chat" : deps.levelOf(auth, m[1]);
+      if (auth.kind === "session" && !auth.scopes.includes("admin")) {
+        const session = auth.session;
+        const level = deps.levelOf(auth, m[1]);
         const field = memberBotPatchViolation(body, level === "none" ? "chat" : level, ownsDefaultBot(store.bot(m[1]), session?.email), session?.membershipAuthority === "team");
         if (field) {
           return json(res, 403, {
-            error: pairedDevice
-              ? `forbidden: a paired device may change how a bot looks, not "${field}"; change it on the host computer`
-              : level === "edit" ? `forbidden: "${field}" is an admin's to change`
+            error: level === "edit" ? `forbidden: "${field}" is an admin's to change`
                 : level === "view" ? `forbidden: you can view this bot, not change "${field}"`
                   : `forbidden: this session may change how a bot looks, not "${field}" (needs the admin scope)`,
           });
@@ -142,7 +136,6 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (body.threadId !== undefined && rawSelection === undefined) {
         return json(res, 400, { error: "threadId goes with modelSelection" });
       }
-      if (rawSelection !== undefined) requirePinnedClientThread(m[1], body.threadId);
       const selectedTask = existingBot ? requestedTaskBot(existingBot.id, body.threadId) : null;
       const beforeProfile = existingBot ? profileSnapshot(existingBot) : undefined;
       const beforeVisibility = existingBot?.visibility;

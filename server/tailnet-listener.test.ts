@@ -133,8 +133,13 @@ describe("the listeners", () => {
     await share.start();
     await share.apply({ name: NAME, addresses: "interface" });
     expect(share.state()).toEqual({ origin: null, listening: [], error: "Tailscale's interface has no address on this computer" });
+    expect(share.servedTo(NAME)).toBe(false);
     await share.apply({ name: NAME, served: `https://${NAME}` });
     expect(share.state()).toEqual({ origin: `https://${NAME}`, listening: [], error: null });
+    // `tailscale serve` hands its requests to the loopback listener: the tailnet name says they crossed the tailnet.
+    expect(share.servedTo(NAME.toUpperCase())).toBe(true);
+    expect(share.servedTo(`127.0.0.1:${port}`)).toBe(false);
+    expect(share.servedTo(undefined)).toBe(false);
   });
 
   it("answers the desktop app's message with the state it applied, and ignores other messages", async () => {

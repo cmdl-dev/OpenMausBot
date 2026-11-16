@@ -86,6 +86,7 @@ export function createTailnetShare(options: TailnetShareOptions) {
   const interfaces = options.interfaces ?? networkInterfaces;
   let started = false;
   let desired: TailnetShareConfig | null = null;
+  let servedHosts: ReadonlySet<string> = new Set();
   let listeners = new Map<string, Server>();
   const connections = new WeakMap<Server, Set<Socket>>();
   let allowed: ReadonlySet<string> = new Set();
@@ -184,6 +185,7 @@ export function createTailnetShare(options: TailnetShareOptions) {
     /** Takes effect once the main listener is up; until then it is remembered. */
     apply(config: TailnetShareConfig | null): Promise<void> {
       desired = config;
+      servedHosts = new Set(config && "served" in config ? [new URL(config.served).host] : []);
       follow(config);
       return reconcile();
     },
@@ -197,6 +199,10 @@ export function createTailnetShare(options: TailnetShareOptions) {
       if (!desired) return null;
       if ("served" in desired) return desired.served;
       return listeners.size ? tailnetOrigin(desired.name, options.port) : null;
+    },
+    /** Whether `host` names the HTTPS origin `tailscale serve` gives this server: that request crossed the tailnet. */
+    servedTo(host: string | string[] | undefined): boolean {
+      return hostAllowed(host, servedHosts);
     },
     state(): TailnetShareState {
       return { origin: share.origin(), listening: [...listeners.keys()], error: desired && "served" in desired ? null : error };

@@ -7,7 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { json } from "./http.ts";
-import { acceptsGzip, GZIP_MIN_BYTES, gzipCandidate, gzipTunnelReplies, varyOnEncoding } from "./tunnel-gzip.ts";
+import { acceptsGzip, GZIP_MIN_BYTES, gzipCandidate, gzipRemoteReplies, varyOnEncoding } from "./tunnel-gzip.ts";
 
 const LARGE = { messages: Array.from({ length: 200 }, (_, i) => ({ id: `m${i}`, text: `message ${i} — ünïcode 😀` })) };
 const SMALL = { ok: true };
@@ -36,7 +36,7 @@ describe("gzipCandidate", () => {
   const reply = (method = "GET", onTunnel = true) => {
     const req = Object.assign(new IncomingMessage(new Socket()), { method });
     const res = new ServerResponse(req);
-    if (onTunnel) gzipTunnelReplies(() => undefined)(req, res);
+    if (onTunnel) gzipRemoteReplies(() => undefined)(req, res);
     return res;
   };
   const JSON_HEADERS = { "content-type": "application/json" };
@@ -106,7 +106,7 @@ let socketDir = "";
 beforeAll(async () => {
   socketDir = mkdtempSync(join(tmpdir(), "omb-gzip-"));
   tunnelPath = process.platform === "win32" ? `\\\\.\\pipe\\omb-gzip-test-${process.pid}-${Date.now()}` : join(socketDir, "t.sock");
-  tunnel = upgradeWith(createServer(gzipTunnelReplies(handler)));
+  tunnel = upgradeWith(createServer(gzipRemoteReplies(handler)));
   local = upgradeWith(createServer(handler));
   await new Promise<void>((resolve) => tunnel.listen(tunnelPath, resolve));
   await new Promise<void>((resolve) => local.listen(0, "127.0.0.1", resolve));

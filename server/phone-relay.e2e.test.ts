@@ -7,6 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from "vitest";
 
 import { verificationServerArgs, verificationServerEnvironment } from "../scripts/control-omb.ts";
@@ -121,6 +122,11 @@ describe("serve --relay", () => {
 
     const session = await waitFor(() => phone(reply.token).catch(() => null), 8_000);
     expect(json(await http(session, "GET", "/api/auth/session", { token: reply.token }))).toMatchObject({ kind: "session", id: reply.device.id, scopes: ["client"] });
+    // The relay hop is the home's upload: a large reply goes gzipped to a phone that takes it.
+    const bots = await http(session, "GET", "/api/bots?messages=200", { token: reply.token, headers: { "accept-encoding": "gzip" } });
+    expect(bots.status).toBe(200);
+    expect(bots.headers["content-encoding"]).toBe("gzip");
+    expect(JSON.parse(gunzipSync(bots.body).toString("utf8")).bots).toEqual(expect.any(Array));
     // No session, a loopback Host and the CLI's owner header: still a remote request through the relay.
     const spoofed = await http(session, "GET", "/api/auth/session", { headers: { host: base.slice("http://".length), "x-openmausbot-cli": "1" } });
     expect(spoofed.status).toBe(403);

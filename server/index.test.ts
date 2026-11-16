@@ -14555,8 +14555,11 @@ describe("message pages", () => {
 });
 
 describe("resumable event stream", () => {
+  // A bot frame that repeats its bot's last state is never sent, so each nudge flips the mark.
+  let nudged = false;
   const nudge = async (botId: string) => {
-    const res = await api("PATCH", `/api/bots/${botId}`, { unread: true });
+    nudged = !nudged;
+    const res = await api("PATCH", `/api/bots/${botId}`, { unread: nudged });
     expect(res.status).toBe(200);
   };
 

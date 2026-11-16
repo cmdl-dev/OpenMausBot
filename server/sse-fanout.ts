@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export interface SseFanoutClient {
   res: {
     write(chunk: string): boolean;
@@ -66,4 +68,24 @@ export function openSseHeartbeat(res: SseHeartbeatStream, options: { everyMs: nu
   // Node reports a failed write, such as one after end, as an asynchronous 'error' event on the response; unhandled, it exits the process.
   res.on("error", close);
   return close;
+}
+
+/** A digest of the bot frame one stream was last sent for each bot, without its `id:` line and `seq`, the parts every frame
+ * has its own of. */
+export type SentBotFrames = Map<string, string>;
+
+/** Whether `frame`, the `bot` frame this stream is about to be sent, repeats the one it was last sent for that bot: the
+ * stream already holds that state, and applying it again changes nothing. Judged on what this stream is sent, so a change
+ * in what it may see (a shared conversation, a narrowed frame) is never mistaken for a repeat. */
+export function repeatsSentBot(sent: SentBotFrames, payload: Record<string, unknown>, frame: string | null): boolean {
+  if (payload.kind === "bot.deleted") {
+    sent.delete(String(payload.botId));
+    return false;
+  }
+  const id = payload.kind === "bot" ? (payload.bot as { id?: unknown } | undefined)?.id : undefined;
+  if (typeof id !== "string" || frame === null) return false;
+  const state = createHash("sha256").update(frame.slice(frame.indexOf("\ndata: "), frame.lastIndexOf(',"seq":'))).digest("base64url");
+  if (sent.get(id) === state) return true;
+  sent.set(id, state);
+  return false;
 }

@@ -3,7 +3,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { duplexPair, type Duplex } from "node:stream";
 
-import { gzipTunnelReplies } from "../tunnel-gzip.ts";
+import { gzipRemoteReplies } from "../tunnel-gzip.ts";
 import type { E2EContext } from "./registry.ts";
 
 const contexts = new WeakMap<object, E2EContext>();
@@ -94,7 +94,7 @@ export function createE2EOrigin(
   deadlines?: E2EOriginDeadlines,
 ): E2EOrigin {
   // Gzipped like the tunnel listener: the relay hop is the person's home upload too.
-  const server = createServer(gzipTunnelReplies(handle));
+  const server = createServer(gzipRemoteReplies(handle, { sealedHop: true }));
   server.on("upgrade", upgrade);
   const guard = deadlines ? enforceDeadlines(server, deadlines) : null;
   return {

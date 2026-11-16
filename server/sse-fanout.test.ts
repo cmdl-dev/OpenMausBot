@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deliverSseFrame, openSseHeartbeat, SSE_MAX_BUFFERED_BYTES, type SseFanoutClient } from "./sse-fanout.ts";
+import { deliverSseFrame, repeatsSentBot, openSseHeartbeat, SSE_MAX_BUFFERED_BYTES, type SseFanoutClient } from "./sse-fanout.ts";
 
 type TestClient = SseFanoutClient & { drains: (() => void)[] };
 
@@ -198,5 +198,43 @@ describe("openSseHeartbeat", () => {
     expect(stream.res.writableFinished).toBe(false);
     expect(stream.writesAfterEnd).toEqual([]);
     expect(stream.errors).toEqual([]);
+  });
+});
+
+describe("repeatsSentBot", () => {
+  const frame = (seq: number, payload: Record<string, unknown>) => `id: s:${seq}\ndata: ${JSON.stringify({ ...payload, seq })}\n\n`;
+  const bot = (busy: boolean, tasks: string[] = ["t1"]) => ({ kind: "bot", bot: { id: "b1", busy, tasks: tasks.map((threadId) => ({ threadId })) } });
+
+  it("skips a bot frame only when this stream was last sent that same state for that bot", () => {
+    const sent = new Map<string, string>();
+    expect(repeatsSentBot(sent, bot(false), frame(1, bot(false)))).toBe(false);
+    expect(repeatsSentBot(sent, bot(false), frame(2, bot(false))), "a new seq is still a repeat").toBe(true);
+    expect(repeatsSentBot(sent, bot(true), frame(10, bot(true)))).toBe(false);
+    expect(repeatsSentBot(sent, bot(false), frame(11, bot(false)))).toBe(false);
+    const other = { kind: "bot", bot: { id: "b2", busy: false } };
+    expect(repeatsSentBot(sent, other, frame(12, other))).toBe(false);
+    const message = { kind: "message", threadId: "t1" };
+    expect(repeatsSentBot(sent, message, frame(13, message))).toBe(false);
+    expect(repeatsSentBot(sent, message, frame(14, message))).toBe(false);
+  });
+
+  it("judges what this stream is sent: the same payload narrowed differently, as when a conversation is shared, is new", () => {
+    const sent = new Map<string, string>();
+    const payload = bot(false, ["t1", "t2"]);
+    expect(repeatsSentBot(sent, payload, frame(1, bot(false, ["t1"])))).toBe(false);
+    expect(repeatsSentBot(sent, payload, frame(2, payload))).toBe(false);
+    expect(repeatsSentBot(new Map(), payload, frame(2, payload)), "another stream keeps its own record").toBe(false);
+  });
+
+  it("forgets a deleted bot, also on a stream that is not sent the deletion", () => {
+    const sent = new Map<string, string>();
+    repeatsSentBot(sent, bot(false), frame(1, bot(false)));
+    const deleted = { kind: "bot.deleted", botId: "b1" };
+    expect(repeatsSentBot(sent, deleted, frame(2, deleted))).toBe(false);
+    expect(repeatsSentBot(sent, bot(false), frame(3, bot(false)))).toBe(false);
+    expect(repeatsSentBot(sent, deleted, null)).toBe(false);
+    expect(sent.size).toBe(0);
+    expect(repeatsSentBot(sent, bot(false), null), "a frame this stream is not sent is never recorded").toBe(false);
+    expect(sent.size).toBe(0);
   });
 });

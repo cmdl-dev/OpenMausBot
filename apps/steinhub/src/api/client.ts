@@ -25,6 +25,41 @@ export interface RoutinesReply {
   runs: RoutineRun[];
 }
 
+/** One app on GET /api/connectors/catalog. phone-protocol has no type for this reply yet. */
+export interface AppCard {
+  slug: string;
+  label: string;
+  blurb: string;
+  logo: string | null;
+  /** Apps such as public search need no sign-in. */
+  noAuth?: boolean;
+  categories?: string[];
+}
+
+export interface AppCatalogReply {
+  /** False until the computer has connected apps set up. */
+  configured: boolean;
+  cards: AppCard[];
+}
+
+export interface AppAccount {
+  id: string;
+  alias?: string | null;
+  status?: string;
+}
+
+/** One app's sign-in state on GET /api/connectors/connected and GET /api/connectors?services=. */
+export interface AppConnection {
+  connected: boolean;
+  pending?: boolean;
+  accounts?: AppAccount[];
+}
+
+export interface AppConnectionsReply {
+  configured: boolean;
+  services: Record<string, AppConnection>;
+}
+
 export interface StreamFrame {
   frame: ServerFrame;
   /** The SSE `id`, the cursor a reconnect resumes from. */
@@ -75,6 +110,12 @@ export function desktopClient(transport: Transport) {
     uploadFile: (bytes: Uint8Array<ArrayBuffer>, mime: string, name: string, uploadId: string) =>
       transport.upload<{ path: string; name: string; bytes: number }>(`/api/files?name=${id(name)}&uploadId=${id(uploadId)}`, bytes, mime),
     routines: () => transport.request<RoutinesReply>("GET", "/api/routines"),
+    appCatalog: () => transport.request<AppCatalogReply>("GET", "/api/connectors/catalog"),
+    connectedApps: () => transport.request<AppConnectionsReply>("GET", "/api/connectors/connected"),
+    appStatus: (slug: string) => transport.request<AppConnectionsReply>("GET", `/api/connectors?services=${id(slug)}`),
+    /** The sign-in page for a new account of `slug`; `alias` names it when the app already has one. */
+    connectApp: (slug: string, alias?: string) =>
+      transport.request<{ url?: string }>("POST", `/api/connectors/${id(slug)}/authorize`, alias ? { alias } : {}),
     setRoutineEnabled: (routineId: string, enabled: boolean) =>
       transport.request<{ routine: Routine }>("PATCH", `/api/routines/${id(routineId)}`, { enabled }),
     runRoutine: (routineId: string) => transport.request<unknown>("POST", `/api/routines/${id(routineId)}/run`, {}),

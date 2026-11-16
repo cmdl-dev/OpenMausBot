@@ -4,7 +4,7 @@ import { File } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
-import { desktopClient, type DesktopClient } from "@/api/client";
+import { desktopClient, type AppCatalogReply, type AppConnection, type AppConnectionsReply, type DesktopClient } from "@/api/client";
 import { asDesktopError, type DesktopError } from "@/api/errors";
 import { startLiveEvents, type LiveEvents, type LinkState } from "@/api/live-events";
 import { pair, type PairingInvite } from "@/api/pairing";
@@ -43,11 +43,30 @@ export interface Connection {
   /** An `/api/attachments/…` path as an image source on the paired computer, with this device's token. */
   attachmentSource(path: string): { uri: string; headers: Record<string, string> } | null;
   runRoutine(routineId: string): Promise<void>;
+  /** Every app the computer can connect, and the ones it has. */
+  apps(): Promise<{ catalog: AppCatalogReply; connected: AppConnectionsReply }>;
+  appStatus(slug: string): Promise<AppConnection | null>;
+  /** Starts a sign-in on the computer and resolves to the page the person finishes it on. */
+  connectApp(slug: string, alias?: string): Promise<string>;
 }
 
 const ConnectionContext = createContext<Connection | null>(null);
 
 const DEMO_AVAILABLE = __DEV__;
+
+/** The demo world's apps, named as in `designs/README.md`'s sample world. */
+const SAMPLE_APPS: { catalog: AppCatalogReply; connected: AppConnectionsReply } = {
+  catalog: {
+    configured: true,
+    cards: [
+      { slug: "gmail", label: "Gmail", blurb: "Read, search and draft email.", logo: null, categories: ["email"] },
+      { slug: "googlecalendar", label: "Google Calendar", blurb: "See and plan events.", logo: null, categories: ["calendar"] },
+      { slug: "slack", label: "Slack", blurb: "Read and post in channels.", logo: null, categories: ["chat"] },
+      { slug: "github", label: "GitHub", blurb: "Issues, pull requests and code.", logo: null, categories: ["developer tools"] },
+    ],
+  },
+  connected: { configured: true, services: { gmail: { connected: true, accounts: [{ id: "a1", alias: "Personal", status: "ACTIVE" }] } } },
+};
 const PAGE_SIZE = 60;
 
 function startingMode(session: Session | null, demoChoice: boolean | null): Mode {
@@ -240,6 +259,28 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [client],
   );
 
+  const apps = useCallback(async () => {
+    if (mode === "demo") return SAMPLE_APPS;
+    const api = client();
+    const [catalog, connected] = await Promise.all([api.appCatalog(), api.connectedApps()]);
+    return { catalog, connected };
+  }, [mode, client]);
+
+  const appStatus = useCallback(
+    async (slug: string) => (mode === "demo" ? (SAMPLE_APPS.connected.services[slug] ?? null) : ((await client().appStatus(slug)).services[slug] ?? null)),
+    [mode, client],
+  );
+
+  const connectApp = useCallback(
+    async (slug: string, alias?: string) => {
+      if (mode === "demo") throw new Error("Connecting apps needs a paired computer.");
+      const { url } = await client().connectApp(slug, alias);
+      if (!url?.startsWith("https://")) throw new Error("The computer didn't send a sign-in page.");
+      return url;
+    },
+    [mode, client],
+  );
+
   const runRoutine = useCallback(
     async (routineId: string) => {
       await client().runRoutine(routineId);
@@ -335,6 +376,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       respond,
       setRoutineEnabled,
       runRoutine,
+      apps,
+      appStatus,
+      connectApp,
       attachmentSource,
       upload,
       newThread,
@@ -343,7 +387,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       markRead,
       deleteBot,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource, upload, newThread, newFolder, setPinned, markRead, deleteBot],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, markRead, deleteBot],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

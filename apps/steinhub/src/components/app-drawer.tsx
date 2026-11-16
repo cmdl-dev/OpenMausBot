@@ -2,6 +2,7 @@ import * as Clipboard from "expo-clipboard";
 import { router, type Href } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import {
+  Blocks,
   ChevronDown,
   ChevronRight,
   Ellipsis,
@@ -160,6 +161,7 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
       <View style={styles.bottomNav}>
         <NavItem icon={Zap} label="Automations" onPress={() => go("/automations")} />
         <NavItem icon={Monitor} label="Computers" onPress={() => go("/computers")} />
+        <NavItem icon={Blocks} label="Apps" onPress={() => go("/apps")} />
       </View>
 
       <View style={styles.footer}>

@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
+import { ArrowDown, Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from "react-native";
 import { attachmentUrlPath, type SentAttachment } from "@/api/attachments";
 import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
+import { IconButton } from "@/components/icon-button";
 import { Composer } from "@/components/composer";
 import { Markdown } from "@/components/markdown";
 import { Screen } from "@/components/screen";
@@ -27,11 +28,24 @@ export default function ChatScreen() {
   const [loadFailure, setLoadFailure] = useState<unknown>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const scroller = useRef<ScrollViewInstance>(null);
+  const following = useRef(true);
+  const [scrolledUp, setScrolledUp] = useState(false);
   const live = world.source === "live";
   const { loadThread } = connection;
   const streaming = messages.some((message) => (message.from === "bot" && message.streaming) || message.from === "working");
 
   const loadError = loadFailure ? problemText(loadFailure, world.host.name) : null;
+
+  function onScroll({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }: NativeSyntheticEvent<NativeScrollEvent>) {
+    following.current = contentSize.height - contentOffset.y - layoutMeasurement.height < NEAR_BOTTOM;
+    setScrolledUp(!following.current);
+  }
+
+  function toBottom() {
+    following.current = true;
+    setScrolledUp(false);
+    scroller.current?.scrollToEnd({ animated: true });
+  }
 
   useEffect(() => {
     if (!live || !id) return;
@@ -96,42 +110,54 @@ export default function ChatScreen() {
         </View>
       }
     >
-      <ScrollView
-        ref={scroller}
-        style={styles.fill}
-        contentContainerStyle={styles.thread}
-        keyboardDismissMode="interactive"
-        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
-      >
-        {hasMore ? (
-          <View style={styles.older}>
-            <Button label="Show earlier messages" variant="secondary" small onPress={() => void loadThread(thread.id, { older: true }).catch(setLoadFailure)} />
-          </View>
-        ) : null}
-        {loadError ? (
-          <View style={styles.inlineError}>
-            <Txt variant="footnote" style={styles.errorText}>
-              {loadError}
+      <View style={styles.fill}>
+        <ScrollView
+          ref={scroller}
+          testID="thread"
+          style={styles.fill}
+          contentContainerStyle={styles.thread}
+          keyboardDismissMode="interactive"
+          scrollEventThrottle={64}
+          onScroll={onScroll}
+          onContentSizeChange={() => {
+            if (following.current) scroller.current?.scrollToEnd({ animated: false });
+          }}
+        >
+          {hasMore ? (
+            <View style={styles.older}>
+              <Button label="Show earlier messages" variant="secondary" small onPress={() => void loadThread(thread.id, { older: true }).catch(setLoadFailure)} />
+            </View>
+          ) : null}
+          {loadError ? (
+            <View style={styles.inlineError}>
+              <Txt variant="footnote" style={styles.errorText}>
+                {loadError}
+              </Txt>
+              <Button
+                label="Try again"
+                variant="secondary"
+                small
+                onPress={() => {
+                  setLoadFailure(null);
+                  loadThread(thread.id).catch(setLoadFailure);
+                }}
+              />
+            </View>
+          ) : null}
+          {messages.length === 0 && !loadError ? (
+            <Txt variant="subhead" tone="tertiary" style={styles.placeholder}>
+              {live && !loaded ? "Loading…" : "Messages in this thread will appear here."}
             </Txt>
-            <Button
-              label="Try again"
-              variant="secondary"
-              small
-              onPress={() => {
-                setLoadFailure(null);
-                loadThread(thread.id).catch(setLoadFailure);
-              }}
-            />
+          ) : (
+            messages.map((message) => <Message key={message.id} message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />)
+          )}
+        </ScrollView>
+        {scrolledUp ? (
+          <View style={styles.toBottom}>
+            <IconButton icon={ArrowDown} label="Scroll to the latest message" dimension={40} filled onPress={toBottom} />
           </View>
         ) : null}
-        {messages.length === 0 && !loadError ? (
-          <Txt variant="subhead" tone="tertiary" style={styles.placeholder}>
-            {live && !loaded ? "Loading…" : "Messages in this thread will appear here."}
-          </Txt>
-        ) : (
-          messages.map((message) => <Message key={message.id} message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />)
-        )}
-      </ScrollView>
+      </View>
     </Screen>
   );
 }
@@ -370,8 +396,19 @@ function ApprovalCard({ card, onAnswer, hostName }: { card: ApprovalView; onAnsw
   );
 }
 
+/** How close to the end still counts as reading the latest message, so new text keeps it in view. */
+const NEAR_BOTTOM = 80;
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  toBottom: {
+    position: "absolute",
+    bottom: space[3],
+    alignSelf: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
   thread: { paddingHorizontal: space[4], paddingTop: space[4], paddingBottom: space[4], gap: space[5] },
   placeholder: { textAlign: "center", marginTop: space[12] },
   older: { alignItems: "center" },

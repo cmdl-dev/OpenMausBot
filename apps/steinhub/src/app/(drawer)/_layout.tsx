@@ -28,6 +28,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="automations/index" options={{ title: "Automations" }} />
       <Drawer.Screen name="automations/[id]" options={{ title: "Automation" }} />
       <Drawer.Screen name="computers" options={{ title: "Computers" }} />
+      <Drawer.Screen name="apps" options={{ title: "Apps" }} />
       <Drawer.Screen name="settings" options={{ title: "Settings" }} />
     </Drawer>
   );

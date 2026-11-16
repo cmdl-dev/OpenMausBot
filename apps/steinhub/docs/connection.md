@@ -125,6 +125,7 @@ don't have it.
 | Chat thread: history (Markdown through `react-native-enriched-markdown`, hand-off chips with their replies), send, streamed reply, Stop | **Live** | `GET /api/threads/:id/messages`, `POST /api/bots/:id/messages`, `POST /api/bots/:id/interrupt`, `message` / `message.patch` / `runtime` (`content.delta`) frames |
 | Chat approval and question cards | **Live** | `POST /api/threads/:id/respond` `{requestId, behavior: allow, deny or answer}` |
 | Automations list and detail (switch, Run now, Pause/Resume, run history) | **Live** | `GET /api/routines` (routines and runs), `PATCH /api/routines/:id {enabled}`, `POST /api/routines/:id/run`, `routine` / `routine.run` frames |
+| Apps: connected apps with their accounts, then every app that can be added, searchable; Connect, Add account (named) | **Live**. The sign-in itself finishes in the phone's browser, and the row waits for the new account | `GET /api/connectors/catalog`, `GET /api/connectors/connected`, `GET /api/connectors?services=`, `POST /api/connectors/:slug/authorize {alias?}` |
 | Computers | **Partly live**: the paired computer (name, version, bot count, connection state) | `GET /api/companion/endpoints` |
 | Settings, Pairing section | **Live**: computer, app version, pairing date, this phone, re-pair, unpair (forgets locally) | stored session |
 | Bot profile | **Live** header, model and threads | `GET /api/bots` |

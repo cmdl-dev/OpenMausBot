@@ -177,3 +177,18 @@ test("the field stays empty after Send when the keyboard writes its correction b
   clock.mockRestore();
   expect(screen.getByLabelText("Message").props.value).toBe("Thanks");
 });
+
+test("scrolled up, an arrow takes the thread back to the latest message", async () => {
+  await openChat();
+  const thread = screen.getByTestId("thread");
+  const scrollTo = (y: number) =>
+    fireEvent.scroll(thread, { nativeEvent: { contentOffset: { y }, contentSize: { height: 2000, width: 400 }, layoutMeasurement: { height: 600, width: 400 } } });
+  expect(screen.queryByLabelText("Scroll to the latest message")).toBeNull();
+
+  await scrollTo(200);
+  await fireEvent.press(screen.getByLabelText("Scroll to the latest message"));
+  expect(screen.queryByLabelText("Scroll to the latest message")).toBeNull();
+
+  await scrollTo(1360);
+  expect(screen.queryByLabelText("Scroll to the latest message")).toBeNull();
+});

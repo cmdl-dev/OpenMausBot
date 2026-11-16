@@ -22,7 +22,7 @@ import {
   isMessageFileDownload,
 } from "./routes.ts";
 import { createJsonScrubber } from "./json-scrub.ts";
-import { acceptsGzip, gzipCandidate, sendTunnelJson, varyOnEncoding } from "./tunnel-gzip.ts";
+import { acceptsGzip, gzipCandidate, openEventStream, sendTunnelJson, varyOnEncoding } from "./tunnel-gzip.ts";
 import { CompanionViewerRelay, requestTarget } from "./viewer-relay.ts";
 import { createSseScrubber, isJson, scrub } from "./wire.ts";
 
@@ -190,6 +190,7 @@ function streamScrubbedJson(harness: IncomingMessage, res: ServerResponse, held:
   delete headers["content-length"];
   delete headers["content-encoding"];
   delete headers["transfer-encoding"];
+  delete headers.etag;
   const reply = privateHeaders(headers);
   let zip: Gzip | null = null;
   // A phone tunnel gzips a whole JSON reply; this one is gzipped as it goes.
@@ -599,8 +600,17 @@ export function createProxyHandler(options: ProxyOptions) {
           }
           // The scrubber hands on whole events only, so an event written here never splits one of the harness's.
           const pushTo = tracksDeviceConnection && currentDevice?.id ? currentDevice.id : undefined;
+          // content-length is meaningless here, and the harness's content-encoding would be a lie once the bytes are
+          // rewritten; the stream this sidecar gzips itself says so on its own.
+          const body = openEventStream(res, harness.statusCode ?? 200, {
+            "content-type": "text/event-stream",
+            ...PRIVATE_RESPONSE_HEADERS,
+            "cache-control": "private, no-store, no-transform",
+            connection: "keep-alive",
+            "x-accel-buffering": "no",
+          });
           const push = (event: string) => {
-            if (!res.destroyed && !res.writableEnded) res.write(event);
+            if (!body.destroyed && !body.writableEnded) body.write(event);
           };
           if (pushTo) {
             const open = eventStreams.get(pushTo) ?? new Set<(event: string) => void>();
@@ -621,15 +631,6 @@ export function createProxyHandler(options: ProxyOptions) {
               if (open && open.size === 0) capabilityStreams.delete(capabilityOwner);
             }
           };
-          // content-length is meaningless here, and content-encoding would be a
-          // lie once the bytes are rewritten.
-          res.writeHead(harness.statusCode ?? 200, {
-            "content-type": "text/event-stream",
-            ...PRIVATE_RESPONSE_HEADERS,
-            "cache-control": "private, no-store, no-transform",
-            connection: "keep-alive",
-            "x-accel-buffering": "no",
-          });
           res.flushHeaders?.();
           res.socket?.setNoDelay(true);
           // TCP keepalive, so a vanished phone cannot leave the desktop
@@ -646,17 +647,17 @@ export function createProxyHandler(options: ProxyOptions) {
               // Over the buffer ceiling: half an event cannot be forwarded safely.
               release();
               harness.destroy();
-              res.end();
+              body.end();
               return;
             }
             if (!rewritten) return;
             // Backpressure, or a slow phone buffers unbounded in this process.
-            if (!res.write(rewritten)) harness.pause();
+            if (!body.write(rewritten)) harness.pause();
           });
-          res.on("drain", () => harness.resume());
+          body.on("drain", () => harness.resume());
           harness.on("end", () => {
             release();
-            res.end();
+            body.end();
           });
           harness.on("error", () => {
             release();
@@ -750,6 +751,8 @@ export function createProxyHandler(options: ProxyOptions) {
           delete headers["content-length"];
           delete headers["content-encoding"];
           delete headers["transfer-encoding"];
+          // The harness tagged the body before it was scrubbed, and these replies are never stored to revalidate.
+          delete headers.etag;
           const reply = privateHeaders(headers);
           if (sendTunnelJson(res, status, reply, text)) return;
           res.writeHead(status, { ...reply, "content-length": Buffer.byteLength(text) });

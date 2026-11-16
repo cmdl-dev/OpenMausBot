@@ -5,7 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createProxyHandler, type ProxyOptions } from "../src/proxy.ts";
-import { gzipTunnelReplies } from "../src/tunnel-gzip.ts";
+import { gzipRemoteReplies } from "../src/tunnel-gzip.ts";
 import { scrub } from "../src/wire.ts";
 
 const TOKEN = "omb_test_token";
@@ -105,7 +105,7 @@ beforeAll(async () => {
   };
   ports.real = await make(real);
   ports.lan = await make(lowered);
-  ports.origin = await make(gzipTunnelReplies(lowered));
+  ports.origin = await make(gzipRemoteReplies(lowered));
 });
 
 afterAll(async () => {

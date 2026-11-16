@@ -1,8 +1,9 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
+import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from "node:http";
 
-import { sendTunnelJson } from "./tunnel-gzip.ts";
+import { notModified, sendTunnelJson } from "./tunnel-gzip.ts";
 
-export { gzipTunnelReplies } from "./tunnel-gzip.ts";
+export { gzipRemoteReplies, openEventStream, type EventStreamBody, type RemoteReplies } from "./tunnel-gzip.ts";
 
 const jsonHooks = new WeakMap<ServerResponse, (body: unknown) => unknown>();
 const parsedBodies = new WeakMap<IncomingMessage, unknown>();
@@ -29,10 +30,34 @@ export function onParsedBody(req: IncomingMessage, check: (body: unknown) => { s
 export function json(res: ServerResponse, status: number, body: unknown) {
   const hook = jsonHooks.get(res);
   const data = JSON.stringify(hook ? hook(body) : body);
-  const headers = { "content-type": "application/json" };
+  const headers: OutgoingHttpHeaders = { "content-type": "application/json" };
+  const tag = status === 200 && res.req?.method === "GET" && typeof data === "string" ? jsonTag(data) : null;
+  if (tag) {
+    headers.etag = tag;
+    // Always asked again, and never kept by a shared cache; a route's own cache-control stands.
+    if (!res.hasHeader("cache-control")) headers["cache-control"] = "private, no-cache";
+    if (revalidates(res.req.headers["if-none-match"], tag)) {
+      const { "content-type": _type, ...validators } = headers;
+      return notModified(res, validators, Buffer.byteLength(data));
+    }
+  }
   if (sendTunnelJson(res, status, headers, data)) return;
   res.writeHead(status, headers);
   res.end(data);
+}
+
+/** Weak, since the same body may go out gzipped or not. A 304 only ever says "what you hold is exactly what this request
+ * would be sent now", so it reveals nothing the body would not. */
+export function jsonTag(data: string): string {
+  return `W/"${createHash("sha256").update(data).digest("base64url").slice(0, 27)}"`;
+}
+
+/** If-None-Match's weak comparison (RFC 9110 §13.1.2): `*`, or any listed tag with the same opaque value. */
+export function revalidates(header: string | string[] | undefined, tag: string): boolean {
+  if (header === undefined) return false;
+  const opaque = (value: string) => value.trim().replace(/^W\//, "");
+  const want = opaque(tag);
+  return [header].flat().join(",").split(",").some((entry) => entry.trim() === "*" || opaque(entry) === want);
 }
 
 export function readBody(req: IncomingMessage, limit = 1_000_000): Promise<any> {

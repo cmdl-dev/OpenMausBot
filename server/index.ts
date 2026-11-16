@@ -579,10 +579,10 @@ import {
   type Viewer,
 } from "./bot-visibility.ts";
 import { describeBrand, loadBrand } from "./brand.ts";
-import { deliverSseFrame, openSseHeartbeat } from "./sse-fanout.ts";
+import { deliverSseFrame, openSseHeartbeat, repeatsSentBot, type SentBotFrames } from "./sse-fanout.ts";
 import { PhoneSecretBridge, PhoneSecretSubmissionRegistry } from "./phone-secret.ts";
 // Keep these two last, so loading the route table leaves module start-up order as is.
-import { gzipTunnelReplies, json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts";
+import { gzipRemoteReplies, json, onJsonBody, openEventStream, parsedBodyOf, readBody, type EventStreamBody } from "./harness/http.ts";
 import { holdBodyDeadline } from "./body-deadline.ts";
 import { createNoAiNotice } from "./host/no-ai-notice.ts"; import { PASS, ROUTES, dispatchRoutes } from "./routes/table.ts"; import { createSecretCards } from "./host/secret-cards.ts"; import { createInternalCredentialRequestRoutes, createSecretCardRoutes } from "./routes/secret-cards.ts"; import { applyIncludedPagesMessage } from "./pages/access.ts"; import { createPublishedPages } from "./pages/service.ts"; import { createInternalToolRoutes } from "./routes/internal-tools.ts"; import { createHelperSuggestionRoutes } from "./routes/helper-suggestion.ts"; import { createXConnectorRoutes } from "./routes/x-connector.ts"; import { createMoveFreeze, switchAutomationsOff } from "./move-freeze.ts"; import { createMoveFreezeRoutes } from "./routes/move-freeze.ts"; import { createMoveWaits } from "./move-waits.ts"; import { assertBotHere, createBotMoves } from "./bot-moves.ts"; import { createBotMoveRoutes } from "./routes/bot-moves.ts"; import { createTeamMoveIn, moveInRefusal } from "./team-move-in.ts";
 import { createHostedSlackRoutes } from "./routes/hosted-slack.ts";
@@ -786,7 +786,7 @@ delete process.env.OMB_CLI_OWNER_STDIN;
 // Empty is a deny-all bootstrap state; only Electron's private utility-process port replaces it.
 let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
 let companionMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
-const FALLBACK_PUBLIC_URL = process.env.OMB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null; const tailnetShare = createTailnetShare({ port: PORT, handle: (req, res) => handleRequest(req, res), attach: (listener, handle) => upgrades.attach(listener, handle), log: (line) => console.log(line) });
+const FALLBACK_PUBLIC_URL = process.env.OMB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null; const tailnetShare = createTailnetShare({ port: PORT, handle: gzipRemoteReplies((req, res) => handleRequest(req, res)), attach: (listener, handle) => upgrades.attach(listener, handle), log: (line) => console.log(line) });
 const cfg = loadConfig();
 const hostedModels = hostedModelPolicy(DATA_DIR);
 const providerConfigs = () => hostedModels ? hostedModels.configs() : instanceConfigs(cfg);
@@ -4626,7 +4626,7 @@ function settleTrackedRequest(threadId: string, incoming: ReadonlySet<string> = 
 }
 
 interface SseClient {
-  res: ServerResponse;
+  res: EventStreamBody;
   admin: boolean;
   /** On a Team Cloud, who the stream is for: its config frames carry that person's own profile. */
   person?: SessionRecord;
@@ -4635,6 +4635,7 @@ interface SseClient {
   /** Revoking or expiring this session must end the stream, not just future requests. */
   sessionId?: string;
   backpressured: boolean;
+  sentBots: SentBotFrames;
   viewer: Viewer;
   seen: StreamSeen;
   ask: AskViewer;
@@ -4753,7 +4754,7 @@ function broadcast(payload: Record<string, unknown>, options: { adminOnly?: bool
     // Admin-only frames (clientFrame null) never reach members, and a member never falls back to the admin frame.
     const out = CLOUD_TEAM && kind === "config" && clientFrame !== null ? teamConfigFrame(client, seq, payload)
       : memberFrame(client, seq, payload, client.admin ? frame : clientFrame, ownGroups);
-    if (out === null) continue;
+    if (repeatsSentBot(client.sentBots, payload, out) || out === null) continue;
     if (deliverSseFrame(client, kind, out) === "disconnected") client.close();
   }
 }
@@ -14629,25 +14630,20 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
 
     if (method === "GET" && path === "/api/events") {
       const pushKey = phoneKey(auth);
+      // x-accel-buffering is honoured by nginx-compatible reverse proxies; harmless elsewhere.
+      const body = openEventStream(res, 200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no" });
       const client: SseClient = {
-        res, ...streamView(auth, viewer), ...(pushKey ? { pushKey } : {}),
+        res: body, ...streamView(auth, viewer), ...(pushKey ? { pushKey } : {}),
         screens: url.searchParams.get("screens") !== "off", appWindow: url.searchParams.get("window") === "1",
-        backpressured: false,
+        backpressured: false, sentBots: new Map(),
         // A comment frame keeps intermediaries from idling the connection; a data frame resets EventSource's own liveness watchdog. Heartbeats carry no id.
-        close: openSseHeartbeat(res, {
+        close: openSseHeartbeat(body, {
           everyMs: SSE_HEARTBEAT_MS,
           live: () => !client.sessionId || sessions.isLive(client.sessionId),
           onClose: () => sseClients.delete(client),
         }),
       };
       if (auth.kind === "session") client.sessionId = auth.session.id;
-      res.writeHead(200, {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-        // Honoured by nginx-compatible reverse proxies; harmless elsewhere.
-        "x-accel-buffering": "no",
-      });
 
       // EventSource reconnects with a newer Last-Event-ID while the URL keeps an older ?since=: prefer the header, or the stale query replays forever.
       const since =
@@ -14660,7 +14656,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         replayBuffer.covers(since, lastSeq) &&
         // A replay is judged by today's audience and cannot withdraw what an audience change hid: snapshot instead.
         !(viewer.kind === "member" && audienceChangedAt > 0 && since <= audienceChangedAt);
-      res.write(
+      body.write(
         `data: ${JSON.stringify({
           kind: "hello",
           cursor: `${STREAM_ID}:${lastSeq}`,
@@ -14677,7 +14673,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
               : client.admin
                 ? buffered.frame
                 : buffered.clientFrame;
-          if (frame) res.write(frame);
+          if (frame) body.write(frame);
         }
       }
 
@@ -15230,7 +15226,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
   }
 };
 
-const server = createServer(IDLE_HTTP_SERVER, handleRequest);
+const server = createServer(IDLE_HTTP_SERVER, gzipRemoteReplies(handleRequest, { when: isProxied }));
 upgrades.attach(server, handleRequest);
 
 moveFreeze.hold(() => calendarCalls.start(), () => calendarCalls.stop());
@@ -15331,14 +15327,14 @@ const TUNNEL_SOCKET = process.env.OMB_TUNNEL_SOCKET?.trim() || null;
 let tunnelListener: ReturnType<typeof createServer> | null = null;
 if (TUNNEL_SOCKET) {
   if (process.platform !== "win32") rmSync(TUNNEL_SOCKET, { force: true });
-  tunnelListener = createServer(IDLE_HTTP_SERVER, gzipTunnelReplies(handleRequest));
+  tunnelListener = createServer(IDLE_HTTP_SERVER, gzipRemoteReplies(handleRequest));
   upgrades.attach(tunnelListener, handleRequest);
   tunnelListener.listen(TUNNEL_SOCKET, () => {
     console.log(`openmausbot tunnel listener on ${TUNNEL_SOCKET}`);
   });
 }
 // `serve --relay`: phones through MausBot Relay, each encrypted stream answered here as a remote request.
-const phoneRelay = startPhoneRelay({ env: process.env, dataDir: DATA_DIR, sessions, handle: handleRequest, version: serverVersion(), publicOrigin: publicUrl,
+const phoneRelay = startPhoneRelay({ env: process.env, dataDir: DATA_DIR, sessions, handle: gzipRemoteReplies(handleRequest, { sealedHop: true }), version: serverVersion(), publicOrigin: publicUrl,
   serverName: () => cfg.computerName || environmentDescriptor({ environmentId: ENVIRONMENT_ID, ...TEAM_LABEL, desktopManaged: DESKTOP_MANAGED }).label,
   refusal: CLOUD_HOME ? "a MausBot Cloud home" : HOSTED_WORKSPACE ? "a hosted workspace" : DESKTOP_MANAGED ? "the desktop app, whose companion carries phones" : null });
 

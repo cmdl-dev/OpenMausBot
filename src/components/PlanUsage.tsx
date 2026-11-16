@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { Card, SIMPLE_CARD, SettingsEmptyRow, SettingsGroup, SettingsLook, SettingsRows } from "./SettingsPrimitives";
 import { UsageSummaryCard } from "./CloudUsageMeter";
 import { formatPlanSpend, type PlanSpend } from "@/lib/plan-spend";
+import { UsageHubs } from "./UsageHubs";
 
 interface PlanWindow {
   available: boolean;
@@ -246,6 +247,7 @@ export function PlanUsage() {
         </button>}
         footnote={error ? <span role="alert" className="text-danger">{error}</span> : undefined}>
         <SettingsRows><SettingsEmptyRow>{loading && !report ? t("planUsage.loading") : t("planUsage.emptyShort")}</SettingsEmptyRow></SettingsRows>
+        <UsageHubs onChange={() => void load(true)} />
       </SettingsGroup>
     );
   }
@@ -328,6 +330,7 @@ export function PlanUsage() {
           ))}
         </div>
       )}
+      <UsageHubs onChange={() => void load(true)} />
     </Card>
   );
 }

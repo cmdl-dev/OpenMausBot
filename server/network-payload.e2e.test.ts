@@ -114,6 +114,17 @@ describe.skipIf(!standIn)("what a remote client is sent", () => {
       const again = await dial(port, "/api/bots?messages=200", { ...auth, "accept-encoding": "gzip", "if-none-match": String(first.headers.etag) });
       expect(again.status).toBe(304);
       expect(again.body).toBe("");
+
+      // `tailscale serve` hands a tailnet peer's request to the loopback listener with X-Forwarded-For: still remote.
+      const served = await new Promise<{ encoding: unknown }>((resolve, reject) => {
+        const call = request({ host: "127.0.0.1", port, path: "/api/bots?messages=200", headers: { ...auth, "x-forwarded-for": "100.101.102.103", "accept-encoding": "gzip" } }, (res) => {
+          res.resume();
+          res.on("end", () => resolve({ encoding: res.headers["content-encoding"] }));
+        });
+        call.on("error", reject);
+        call.end();
+      });
+      expect(served.encoding).toBe("gzip");
     } finally {
       remote?.stop();
       resumed?.stop();

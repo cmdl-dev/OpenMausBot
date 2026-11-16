@@ -6,7 +6,9 @@
   `Accept-Encoding: gzip`. Remote replies are the ones on:
   - the phone tunnel;
   - MausBot Relay;
-  - a LAN or tailnet peer, including `tailscale serve`;
+  - a LAN or tailnet peer;
+  - any request a proxy forwarded to the loopback listener, such as
+    `tailscale serve`, which keeps the Host and sets `X-Forwarded-For`;
   - the companion's own listeners.
 
   The stream is flushed after every event. On TLS hops all events share one

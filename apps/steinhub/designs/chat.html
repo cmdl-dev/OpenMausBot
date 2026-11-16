@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SteinHub · Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== SteinHub shared base (copy verbatim into every page; add page CSS below the marker) ===== */
+:root{
+  --bg:#000;--bg-raised:#0A0A0A;--surface-1:#151515;--surface-2:#1F1F1F;--surface-3:#2A2A2A;
+  --border:#242424;--border-strong:#333;--scrim:rgba(0,0,0,.6);
+  --text:#fff;--text-2:#A1A1A1;--text-3:#6B6B6B;--text-inverse:#000;
+  --success:#3DD68C;--warning:#F5B544;--danger:#FF5C5C;--info:#6CA8FF;
+  --success-bg:rgba(61,214,140,.12);--warning-bg:rgba(245,181,68,.12);--danger-bg:rgba(255,92,92,.12);--info-bg:rgba(108,168,255,.12);
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:24px;--r-pill:999px;
+  --font:Inter,-apple-system,"SF Pro Text",Roboto,system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+  --shadow-sheet:0 -8px 32px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0E0E0E;color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding:32px 24px 64px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:default}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.lg{width:24px;height:24px}
+
+/* page chrome (outside the phone) */
+.page-head{max-width:1280px;margin:0 auto 28px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:baseline;justify-content:space-between}
+.page-head h1{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.page-head p{color:var(--text-2);font-size:14px;line-height:20px;max-width:640px;margin-top:4px}
+.page-head a{color:var(--text-2);font-size:13px;text-decoration:none}
+.page-head a:hover{color:var(--text)}
+.sample-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--warning);background:var(--warning-bg);border:1px solid rgba(245,181,68,.25);padding:4px 10px;border-radius:var(--r-pill)}
+.frames{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
+.frame-label{font-size:13px;color:var(--text-2);font-weight:500}
+.frame-note{font-size:12px;color:var(--text-3);max-width:390px;text-align:center;line-height:17px}
+
+/* phone frame */
+.phone{position:relative;width:390px;height:844px;border-radius:52px;background:var(--bg);overflow:hidden;
+  box-shadow:0 0 0 10px #1A1A1A,0 0 0 11px #2C2C2C,0 30px 60px rgba(0,0,0,.6);flex:none}
+.phone .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:50}
+.statusbar{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 30px 0 40px;font-size:16px;font-weight:600;z-index:40;pointer-events:none}
+.statusbar .sb-icons{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:#fff;z-index:60}
+.screen{position:absolute;inset:0;padding-top:54px;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.safe-bottom{padding-bottom:34px}
+
+/* top bar */
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;flex:none}
+.topbar .title{font-size:17px;font-weight:600;display:flex;align-items:center;gap:6px}
+.topbar .title .sub{color:var(--text-3);font-weight:500}
+.icon-btn{width:44px;height:44px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;color:var(--text);position:relative}
+.icon-btn.filled{background:var(--surface-2)}
+.dot-badge{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--bg)}
+.count-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--text);color:var(--text-inverse);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.large-title{font-size:30px;line-height:36px;font-weight:600;letter-spacing:-.02em;padding:4px 16px 12px}
+
+/* composer */
+.composer-wrap{padding:8px 12px 34px;flex:none;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.composer{min-height:52px;border-radius:26px;background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:4px;padding:4px 6px 4px 4px}
+.composer .placeholder{flex:1;color:var(--text-3);font-size:15px;padding:0 6px}
+.composer .typed{flex:1;color:var(--text);font-size:15px;padding:0 6px}
+.send-btn{width:40px;height:40px;border-radius:50%;background:var(--text);color:var(--text-inverse);display:inline-flex;align-items:center;justify-content:center}
+.send-btn.disabled{background:var(--surface-3);color:var(--text-3)}
+.composer .icon-btn{width:40px;height:40px;color:var(--text-2)}
+
+/* chips, buttons, badges */
+.chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font-size:14px;font-weight:500;color:var(--text);white-space:nowrap}
+.chip.selected{background:var(--text);color:var(--text-inverse);border-color:var(--text)}
+.chip svg.i{width:16px;height:16px;color:var(--text-2)}
+.btn{height:48px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;padding:0 20px;white-space:nowrap}
+.btn.sm{height:36px;font-size:14px;padding:0 14px}
+.btn.block{width:100%}
+.btn-primary{background:var(--text);color:var(--text-inverse)}
+.btn-secondary{background:var(--surface-2);color:var(--text)}
+.btn-outline{border:1px solid var(--border-strong);color:var(--text)}
+.btn-danger{background:var(--danger-bg);color:var(--danger)}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r-sm);font-size:12px;font-weight:500;background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+.badge.success{background:var(--success-bg);color:var(--success)}
+.badge.warning{background:var(--warning-bg);color:var(--warning)}
+.badge.danger{background:var(--danger-bg);color:var(--danger)}
+.badge.info{background:var(--info-bg);color:var(--info)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-3);flex:none}
+.status-dot.success{background:var(--success)}.status-dot.warning{background:var(--warning)}.status-dot.danger{background:var(--danger)}.status-dot.info{background:var(--info)}
+
+/* avatars (bot tints) */
+.avatar{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:none;background:var(--surface-2);color:var(--text)}
+.avatar.sm{width:28px;height:28px;font-size:12px}
+.avatar.lg{width:72px;height:72px;font-size:26px}
+.avatar.violet{background:#262040;color:#C8B8FF}
+.avatar.green{background:#1B3024;color:#9FE0B5}
+.avatar.amber{background:#33291A;color:#F2C98A}
+.avatar.blue{background:#1A2A3D;color:#9CC4FF}
+.avatar.rose{background:#3A1F27;color:#FFB3C4}
+.avatar.user{background:var(--surface-3);color:var(--text)}
+
+/* lists and groups */
+.section-label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding:20px 16px 8px}
+.group{margin:0 16px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px}
+.group .row + .row{border-top:1px solid var(--border)}
+.row .row-main{flex:1;min-width:0}
+.row .row-title{font-size:15px;line-height:20px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-sub{font-size:13px;line-height:18px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-meta{font-size:13px;color:var(--text-3);white-space:nowrap}
+.row .chev{color:var(--text-3)}
+.card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px}
+
+/* toggle */
+.toggle{width:51px;height:31px;border-radius:16px;background:var(--surface-3);position:relative;flex:none}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+.toggle.on{background:var(--success)}
+.toggle.on::after{left:22px}
+
+/* segmented control */
+.segmented{display:flex;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px;gap:2px}
+.segmented > span{flex:1;height:32px;border-radius:var(--r-pill);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:var(--text-2)}
+.segmented > span.on{background:var(--surface-3);color:var(--text)}
+
+/* search field */
+.search{height:40px;border-radius:var(--r-md);background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:15px}
+
+/* bottom sheet over scrim */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg-raised);border-top:1px solid var(--border);border-radius:24px 24px 0 0;box-shadow:var(--shadow-sheet);z-index:30;padding:8px 0 34px}
+.sheet .grabber{width:36px;height:5px;border-radius:3px;background:var(--surface-3);margin:0 auto 12px}
+
+/* SteinHub mark */
+.mark{color:var(--text)}
+.wordmark{font-weight:600;letter-spacing:-.02em}
+/* ===== end shared base ===== */
+
+/* ===== page CSS ===== */
+/* top bar: bot name + thread title */
+.title-stack{display:flex;flex-direction:column;align-items:center}
+.title-stack .t{font-size:17px;line-height:22px;font-weight:600;display:flex;align-items:center;gap:4px}
+.title-stack .s{font-size:12px;line-height:16px;color:var(--text-3);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* thread: anchored to the bottom, older content clips off the top */
+.thread{position:absolute;left:0;right:0;bottom:0;padding:0 16px 12px;display:flex;flex-direction:column;gap:20px}
+.turn-user{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.msg-user{max-width:80%;background:var(--surface-2);border-radius:20px;padding:10px 14px;font-size:16px;line-height:24px}
+.msg-img{width:176px;height:128px;border-radius:var(--r-lg);background:var(--surface-2);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--text-3);font-size:12px;line-height:16px}
+.turn-bot{display:flex;flex-direction:column;gap:10px}
+.bot-head{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px;font-weight:600}
+.bot-head .avatar{width:24px;height:24px;font-size:11px}
+.bot-head .meta{font-weight:400;color:var(--text-3);font-size:13px}
+.live{display:inline-flex;align-items:center;gap:6px;font-weight:400;font-size:13px;color:var(--text-2)}
+.live .status-dot{width:6px;height:6px}
+
+/* collapsed tool activity */
+.tools-sum{display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;color:var(--text-2);height:24px}
+.tools-sum .ico3{display:inline-flex;gap:2px;color:var(--text-3)}
+.tools-sum .ico3 svg.i{width:14px;height:14px}
+.tools-sum .chev{color:var(--text-3);width:14px;height:14px}
+.tool-live{display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;color:var(--text-2);height:24px}
+.spin{width:16px;height:16px;color:var(--info);transform:rotate(30deg)}
+
+/* expanded tool activity */
+.tools{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-1);overflow:hidden}
+.tools-head{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;font-size:13px;color:var(--text-2);border-bottom:1px solid var(--border)}
+.tools-head .grow{flex:1}
+.tools-head .meta{color:var(--text-3)}
+.tool{display:flex;gap:10px;padding:10px 12px;align-items:flex-start}
+.tool + .tool{border-top:1px solid var(--border)}
+.tool .st{width:18px;height:18px;border-radius:50%;background:var(--success-bg);color:var(--success);display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px}
+.tool .st svg.i{width:11px;height:11px;stroke-width:3}
+.tool .tm{flex:1;min-width:0}
+.tool .tn{display:flex;align-items:center;gap:6px;font-size:13px;line-height:20px;color:var(--text)}
+.tool .tn svg.i{width:14px;height:14px;color:var(--text-3)}
+.tool .ta{font-family:var(--mono);font-size:12px;line-height:16px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool .td{font-size:12px;line-height:20px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.view-out{display:inline-flex;align-items:center;gap:2px;margin-top:8px;font-size:12px;font-weight:500;color:var(--text);height:26px;padding:0 8px 0 10px;border-radius:var(--r-pill);background:var(--surface-2)}
+.view-out svg.i{width:14px;height:14px;color:var(--text-3)}
+
+/* assistant text */
+.answer{font-size:16px;line-height:24px;color:var(--text)}
+.answer p + p,.answer p + .quote,.answer .quote + p{margin-top:12px}
+.answer b{font-weight:600}
+.quote{border-left:2px solid var(--border-strong);padding:2px 0 2px 12px;color:var(--text)}
+.caret{display:inline-block;width:9px;height:18px;background:var(--text);vertical-align:-3px;margin-left:3px;border-radius:2px}
+
+/* file card */
+.file-card{display:flex;align-items:center;gap:12px;padding:10px 8px 10px 10px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-1);width:300px}
+.file-card .fi{width:40px;height:40px;border-radius:var(--r-sm);background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-2);flex:none}
+.file-card .fm{flex:1;min-width:0}
+.file-card .fn{font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-card .fs{font-size:12px;line-height:16px;color:var(--text-3)}
+.file-card .icon-btn{width:36px;height:36px;color:var(--text-2)}
+
+/* approval card */
+.approval{border:1px solid rgba(245,181,68,.25);border-radius:var(--r-lg);background:var(--surface-1)}
+.ap-head{display:flex;align-items:center;gap:8px;padding:12px 14px 0}
+.ap-head .badge svg.i{width:14px;height:14px}
+.ap-head .meta{margin-left:auto;font-size:12px;color:var(--text-3)}
+.ap-q{padding:10px 14px 12px;font-size:16px;line-height:22px;font-weight:600}
+.ap-preview{margin:0 14px;padding:10px 12px;border-radius:var(--r-md);background:var(--bg);border:1px solid var(--border);font-size:13px;line-height:18px}
+.ap-preview .kv{display:flex;gap:8px;white-space:nowrap;overflow:hidden}
+.ap-preview .kv + .kv{margin-top:2px}
+.ap-preview .k{color:var(--text-3);width:52px;flex:none}
+.ap-preview .v{overflow:hidden;text-overflow:ellipsis}
+.ap-preview .body{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--text-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ap-preview .att{margin-top:8px;display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:12px}
+.ap-preview .att svg.i{width:14px;height:14px;color:var(--text-3)}
+.ap-actions{display:flex;gap:8px;padding:12px 14px 0}
+.ap-actions .btn{flex:1;height:44px}
+.ap-edit{display:block;text-align:center;font-size:14px;line-height:20px;color:var(--text-2);padding:10px 0 12px}
+.resolved{display:flex;align-items:center;gap:10px;height:44px;padding:0 10px 0 12px;border:1px solid var(--border);border-radius:var(--r-lg);font-size:14px;color:var(--text-2);white-space:nowrap}
+.resolved .ok{width:20px;height:20px;border-radius:50%;background:var(--success-bg);color:var(--success);display:flex;align-items:center;justify-content:center;flex:none}
+.resolved .ok svg.i{width:12px;height:12px;stroke-width:3}
+.resolved .rt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.resolved b{color:var(--text);font-weight:500}
+.resolved .meta{color:var(--text-3);font-size:12px}
+.resolved .chev{color:var(--text-3)}
+
+/* message actions (long press) */
+.lifted{position:absolute;left:16px;right:16px;top:118px;z-index:30;background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--r-lg);padding:14px 16px 16px}
+.lifted .bot-head{margin-bottom:10px}
+.ctx-menu{position:absolute;left:16px;width:256px;top:420px;z-index:30;background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--r-lg);overflow:hidden}
+.ctx-row{display:flex;align-items:center;justify-content:space-between;height:46px;padding:0 16px;font-size:16px}
+.ctx-row + .ctx-row{border-top:1px solid var(--border)}
+.ctx-row svg.i{color:var(--text-2)}
+.ctx-sep{height:6px;background:var(--bg-raised);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.ctx-sep + .ctx-row{border-top:0}
+
+.scrim.blur{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+/* soft fade where older messages scroll under the top bar */
+.scroll.fade::after{content:"";position:absolute;left:0;right:0;top:0;height:44px;background:linear-gradient(var(--bg) 20%,transparent);z-index:2}
+</style>
+</head>
+<body>
+<!-- Icon sprite: copy verbatim. Use with <svg class="i"><use href="#i-menu"/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></symbol>
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4z"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+    <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 6.6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 20.5h8M12 16.5v4"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h3M21 17v4h-1"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 6.5H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5M12 19h8"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8A4 4 0 0 0 6 18a3 3 0 0 0 6 0z"/><path d="M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8A4 4 0 0 1 18 18a3 3 0 0 1-6 0z"/><path d="M12 5v13"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m3 6 9 7 9-7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.8a15 15 0 0 1 20 0M5 12.9a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0M12 20h.01"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 11v2"/><rect x="4" y="9" width="12" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M3 20h.01M8 20v-4M13 20v-8M18 20V8" stroke-width="2.5"/></symbol>
+    <!-- SteinHub mark (original): hexagonal stone, center hub, three spokes -->
+    <symbol id="steinhub-mark" viewBox="0 0 32 32"><path d="M16 2.8 27.4 9.4v13.2L16 29.2 4.6 22.6V9.4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M16 16V8.6M16 16l-6.4 3.7M16 16l6.4 3.7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="16" r="3" fill="currentColor"/></symbol>
+    <!-- page additions (home, chat) -->
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></symbol>
+    <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4M12 2v13"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+    <symbol id="i-shield-alert" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></symbol>
+  </defs>
+</svg>
+
+<header class="page-head">
+  <div>
+    <h1>Chat thread</h1>
+    <p>A conversation with one bot. Replies stream as plain text, tool use folds into one line, and anything that acts on Alex's behalf waits for approval inside the thread. Reached from Home or any thread in the drawer.</p>
+  </div>
+  <div style="display:flex;gap:16px;align-items:center">
+    <span class="sample-tag">Sample data</span>
+    <a href="index.html">← All pages</a>
+  </div>
+</header>
+
+<main class="frames">
+
+  <!-- 1 · Streaming reply -->
+  <section class="frame-wrap">
+    <div class="frame-label">1 · Streaming reply</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn" aria-label="Open drawer"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title-stack"><div class="t">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div><div class="s">Landlord lease renewal</div></div>
+          <button class="icon-btn" aria-label="New chat"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll fade">
+          <div class="thread">
+            <div class="turn-user">
+              <div class="msg-user">Jordan sent the renewal offer. Rent goes from $2,400 to $2,520 on March 1. I want to counter at $2,450 if I sign for 2 years. Can you draft a reply?</div>
+            </div>
+            <div class="turn-bot">
+              <div class="bot-head"><span class="avatar violet">M</span>MausBot <span class="live"><span class="status-dot info"></span>Writing</span></div>
+              <div class="tools-sum">
+                <svg class="i sm"><use href="#i-tool"/></svg>Used 3 tools
+                <span class="ico3"><svg class="i"><use href="#i-mail"/></svg><svg class="i"><use href="#i-file"/></svg><svg class="i"><use href="#i-calendar"/></svg></span>
+                <svg class="i chev"><use href="#i-chev-right"/></svg>
+              </div>
+              <div class="answer">
+                <p>Jordan's offer is a 5% increase. Section 4.2 of your lease caps renewal increases at 5%, so it's allowed, but there's room to negotiate.</p>
+                <p>At $2,450 on a 24-month term you'd pay $1,680 less over two years than at $2,520. Jordan gets two years of guaranteed rent and no vacancy, which is usually worth more than $70 a month.</p>
+                <p>Here's a draft:</p>
+                <div class="quote">Hi Jordan, thanks for sending the renewal terms. I'd like to stay. Would you consider $2,450 a month if I sign for 24 months<span class="caret"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn" aria-label="Attach"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn" aria-label="Voice"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn" aria-label="Stop"><svg class="i"><use href="#i-stop"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">User messages are bubbles; replies are plain full-width text. Tool calls collapse into one line above the reply. While streaming, the send button becomes stop, and the caret blinks at 1s.</div>
+  </section>
+
+  <!-- 2 · Tool activity expanded -->
+  <section class="frame-wrap">
+    <div class="frame-label">2 · Tool activity expanded</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn" aria-label="Open drawer"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title-stack"><div class="t">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div><div class="s">Landlord lease renewal</div></div>
+          <button class="icon-btn" aria-label="New chat"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll fade">
+          <div class="thread">
+            <div class="turn-bot">
+              <div class="answer">
+                <div class="quote">…and I'm happy to talk it through if that's easier.<br>Thanks, Alex</div>
+                <p>I saved the draft as a Word file too.</p>
+              </div>
+              <div class="file-card">
+                <span class="fi"><svg class="i"><use href="#i-file"/></svg></span>
+                <div class="fm"><div class="fn">Lease-renewal-reply.docx</div><div class="fs">18 KB · Word document</div></div>
+                <button class="icon-btn" aria-label="Download"><svg class="i"><use href="#i-download"/></svg></button>
+              </div>
+            </div>
+            <div class="turn-user">
+              <div class="msg-img"><svg class="i lg"><use href="#i-image"/></svg>IMG_2214.jpg</div>
+              <div class="msg-user">Page 2 of Jordan's letter. Does the parking fee change anything?</div>
+            </div>
+            <div class="turn-bot">
+              <div class="bot-head"><span class="avatar violet">M</span>MausBot <span class="live"><span class="status-dot info"></span>Working</span></div>
+              <div class="tools">
+                <div class="tools-head"><svg class="i sm"><use href="#i-tool"/></svg>Using 3 tools<span class="grow"></span><svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-up"/></svg></div>
+                <div class="tool">
+                  <span class="st"><svg class="i"><use href="#i-check"/></svg></span>
+                  <div class="tm"><div class="tn"><svg class="i"><use href="#i-image"/></svg>Read image</div><div class="ta">IMG_2214.jpg · 214 words</div></div>
+                  <span class="td">0.9s</span>
+                </div>
+                <div class="tool">
+                  <span class="st"><svg class="i"><use href="#i-check"/></svg></span>
+                  <div class="tm">
+                    <div class="tn"><svg class="i"><use href="#i-file"/></svg>Read Lease-2026.pdf</div>
+                    <div class="ta">§7 Parking · page 5</div>
+                    <span class="view-out">View output<svg class="i"><use href="#i-chev-right"/></svg></span>
+                  </div>
+                  <span class="td">1.2s</span>
+                </div>
+                <div class="tool">
+                  <svg class="i spin" style="margin-top:2px;margin-right:2px"><use href="#i-loader"/></svg>
+                  <div class="tm"><div class="tn"><svg class="i"><use href="#i-edit"/></svg>Editing Lease-renewal-reply.docx</div><div class="ta">add parking line · Alex's Mac Studio</div></div>
+                  <span class="td">0:02</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn" aria-label="Attach"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn" aria-label="Voice"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn" aria-label="Stop"><svg class="i"><use href="#i-stop"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Tap the tool line to expand it. Each call shows status, short arguments, and duration; long results open in a sheet via View output. The running call shows a spinner and a live timer.</div>
+  </section>
+
+  <!-- 3 · Inline approval -->
+  <section class="frame-wrap">
+    <div class="frame-label">3 · Approval in the thread</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn" aria-label="Open drawer"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title-stack"><div class="t">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div><div class="s">Landlord lease renewal</div></div>
+          <button class="icon-btn" aria-label="New chat"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll fade">
+          <div class="thread">
+            <div class="turn-bot">
+              <div class="answer">
+                <p>Yes. Parking goes from $75 to $90, so the total increase is $135 a month, not $120. I added a line asking Jordan to keep parking at $75.</p>
+              </div>
+            </div>
+            <div class="turn-user">
+              <div class="msg-user">Looks good. Send it to Jordan, and hold Thursday at 3 in case they want to talk.</div>
+            </div>
+            <div class="turn-bot">
+              <div class="bot-head"><span class="avatar violet">M</span>MausBot <span class="meta">9:40</span></div>
+              <div class="tools-sum">
+                <svg class="i sm"><use href="#i-tool"/></svg>Used 2 tools
+                <span class="ico3"><svg class="i"><use href="#i-mail"/></svg><svg class="i"><use href="#i-calendar"/></svg></span>
+                <svg class="i chev"><use href="#i-chev-right"/></svg>
+              </div>
+              <div class="approval">
+                <div class="ap-head"><span class="badge warning"><svg class="i"><use href="#i-shield-alert"/></svg>Approval needed</span><span class="meta">Send email</span></div>
+                <div class="ap-q">Send this reply to Jordan (landlord)?</div>
+                <div class="ap-preview">
+                  <div class="kv"><span class="k">To</span><span class="v">Jordan Lee &lt;jordan.lee@example.com&gt;</span></div>
+                  <div class="kv"><span class="k">Subject</span><span class="v">Re: Lease renewal, Apt 3B</span></div>
+                  <div class="body">Hi Jordan, thanks for sending the renewal terms. I'd like to stay. Would you consider $2,450 a month on a 24-month term, with parking staying at $75?</div>
+                  <div class="att"><svg class="i"><use href="#i-paperclip"/></svg>Lease-renewal-reply.docx</div>
+                </div>
+                <div class="ap-actions">
+                  <span class="btn btn-secondary">Deny</span>
+                  <span class="btn btn-primary">Approve</span>
+                </div>
+                <span class="ap-edit">Edit first</span>
+              </div>
+              <div class="resolved">
+                <span class="ok"><svg class="i"><use href="#i-check"/></svg></span>
+                <span class="rt"><b>Approved</b> · Calendar hold for Thu 3 PM</span>
+                <svg class="i sm chev"><use href="#i-chev-right"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn" aria-label="Attach"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn" aria-label="Voice"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled" aria-label="Send"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Actions that leave Alex's accounts pause here and also land in Inbox. Approve sends as-is; Edit first opens the email in a sheet. Once decided, the card collapses to one line.</div>
+  </section>
+
+  <!-- 4 · Message actions -->
+  <section class="frame-wrap">
+    <div class="frame-label">4 · Message actions</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn" aria-label="Open drawer"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title-stack"><div class="t">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div><div class="s">Landlord lease renewal</div></div>
+          <button class="icon-btn" aria-label="New chat"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll fade">
+          <div class="thread">
+            <div class="turn-user">
+              <div class="msg-user">Jordan sent the renewal offer. Rent goes from $2,400 to $2,520 on March 1. I want to counter at $2,450 if I sign for 2 years. Can you draft a reply?</div>
+            </div>
+            <div class="turn-bot">
+              <div class="bot-head"><span class="avatar violet">M</span>MausBot <span class="meta">9:32</span></div>
+              <div class="tools-sum"><svg class="i sm"><use href="#i-tool"/></svg>Used 3 tools<svg class="i chev"><use href="#i-chev-right"/></svg></div>
+              <div class="answer">
+                <p>Jordan's offer is a 5% increase. Section 4.2 of your lease caps renewal increases at 5%, so it's allowed, but there's room to negotiate.</p>
+                <p>At $2,450 on a 24-month term you'd pay $1,680 less over two years than at $2,520.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn" aria-label="Attach"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn" aria-label="Voice"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled" aria-label="Send"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+        <div class="scrim blur"></div>
+        <div class="lifted">
+          <div class="bot-head"><span class="avatar violet">M</span>MausBot <span class="meta">9:32</span></div>
+          <div class="answer">
+            <p>Jordan's offer is a 5% increase. Section 4.2 of your lease caps renewal increases at 5%, so it's allowed, but there's room to negotiate.</p>
+            <p>At $2,450 on a 24-month term you'd pay $1,680 less over two years than at $2,520. Jordan gets two years of guaranteed rent and no vacancy, which is usually worth more than $70 a month.</p>
+          </div>
+        </div>
+        <div class="ctx-menu">
+          <div class="ctx-row">Copy<svg class="i"><use href="#i-copy"/></svg></div>
+          <div class="ctx-row">Regenerate<svg class="i"><use href="#i-refresh"/></svg></div>
+          <div class="ctx-row">Read aloud<svg class="i"><use href="#i-volume"/></svg></div>
+          <div class="ctx-row">Share<svg class="i"><use href="#i-share"/></svg></div>
+          <div class="ctx-sep"></div>
+          <div class="ctx-row">Branch into new thread<svg class="i"><use href="#i-branch"/></svg></div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Long-press any reply. The message lifts above the scrim with a menu below it. Branch starts a new thread with everything up to this message.</div>
+  </section>
+
+</main>
+</body>
+</html>

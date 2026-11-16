@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SteinHub · Computers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== SteinHub shared base (copy verbatim into every page; add page CSS below the marker) ===== */
+:root{
+  --bg:#000;--bg-raised:#0A0A0A;--surface-1:#151515;--surface-2:#1F1F1F;--surface-3:#2A2A2A;
+  --border:#242424;--border-strong:#333;--scrim:rgba(0,0,0,.6);
+  --text:#fff;--text-2:#A1A1A1;--text-3:#6B6B6B;--text-inverse:#000;
+  --success:#3DD68C;--warning:#F5B544;--danger:#FF5C5C;--info:#6CA8FF;
+  --success-bg:rgba(61,214,140,.12);--warning-bg:rgba(245,181,68,.12);--danger-bg:rgba(255,92,92,.12);--info-bg:rgba(108,168,255,.12);
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:24px;--r-pill:999px;
+  --font:Inter,-apple-system,"SF Pro Text",Roboto,system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+  --shadow-sheet:0 -8px 32px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0E0E0E;color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding:32px 24px 64px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:default}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.lg{width:24px;height:24px}
+
+/* page chrome (outside the phone) */
+.page-head{max-width:1280px;margin:0 auto 28px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:baseline;justify-content:space-between}
+.page-head h1{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.page-head p{color:var(--text-2);font-size:14px;line-height:20px;max-width:640px;margin-top:4px}
+.page-head a{color:var(--text-2);font-size:13px;text-decoration:none}
+.page-head a:hover{color:var(--text)}
+.sample-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--warning);background:var(--warning-bg);border:1px solid rgba(245,181,68,.25);padding:4px 10px;border-radius:var(--r-pill)}
+.frames{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
+.frame-label{font-size:13px;color:var(--text-2);font-weight:500}
+.frame-note{font-size:12px;color:var(--text-3);max-width:390px;text-align:center;line-height:17px}
+
+/* phone frame */
+.phone{position:relative;width:390px;height:844px;border-radius:52px;background:var(--bg);overflow:hidden;
+  box-shadow:0 0 0 10px #1A1A1A,0 0 0 11px #2C2C2C,0 30px 60px rgba(0,0,0,.6);flex:none}
+.phone .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:50}
+.statusbar{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 30px 0 40px;font-size:16px;font-weight:600;z-index:40;pointer-events:none}
+.statusbar .sb-icons{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:#fff;z-index:60}
+.screen{position:absolute;inset:0;padding-top:54px;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.safe-bottom{padding-bottom:34px}
+
+/* top bar */
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;flex:none}
+.topbar .title{font-size:17px;font-weight:600;display:flex;align-items:center;gap:6px}
+.topbar .title .sub{color:var(--text-3);font-weight:500}
+.icon-btn{width:44px;height:44px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;color:var(--text);position:relative}
+.icon-btn.filled{background:var(--surface-2)}
+.dot-badge{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--bg)}
+.count-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--text);color:var(--text-inverse);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.large-title{font-size:30px;line-height:36px;font-weight:600;letter-spacing:-.02em;padding:4px 16px 12px}
+
+/* composer */
+.composer-wrap{padding:8px 12px 34px;flex:none;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.composer{min-height:52px;border-radius:26px;background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:4px;padding:4px 6px 4px 4px}
+.composer .placeholder{flex:1;color:var(--text-3);font-size:15px;padding:0 6px}
+.composer .typed{flex:1;color:var(--text);font-size:15px;padding:0 6px}
+.send-btn{width:40px;height:40px;border-radius:50%;background:var(--text);color:var(--text-inverse);display:inline-flex;align-items:center;justify-content:center}
+.send-btn.disabled{background:var(--surface-3);color:var(--text-3)}
+.composer .icon-btn{width:40px;height:40px;color:var(--text-2)}
+
+/* chips, buttons, badges */
+.chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font-size:14px;font-weight:500;color:var(--text);white-space:nowrap}
+.chip.selected{background:var(--text);color:var(--text-inverse);border-color:var(--text)}
+.chip svg.i{width:16px;height:16px;color:var(--text-2)}
+.btn{height:48px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;padding:0 20px;white-space:nowrap}
+.btn.sm{height:36px;font-size:14px;padding:0 14px}
+.btn.block{width:100%}
+.btn-primary{background:var(--text);color:var(--text-inverse)}
+.btn-secondary{background:var(--surface-2);color:var(--text)}
+.btn-outline{border:1px solid var(--border-strong);color:var(--text)}
+.btn-danger{background:var(--danger-bg);color:var(--danger)}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r-sm);font-size:12px;font-weight:500;background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+.badge.success{background:var(--success-bg);color:var(--success)}
+.badge.warning{background:var(--warning-bg);color:var(--warning)}
+.badge.danger{background:var(--danger-bg);color:var(--danger)}
+.badge.info{background:var(--info-bg);color:var(--info)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-3);flex:none}
+.status-dot.success{background:var(--success)}.status-dot.warning{background:var(--warning)}.status-dot.danger{background:var(--danger)}.status-dot.info{background:var(--info)}
+
+/* avatars (bot tints) */
+.avatar{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:none;background:var(--surface-2);color:var(--text)}
+.avatar.sm{width:28px;height:28px;font-size:12px}
+.avatar.lg{width:72px;height:72px;font-size:26px}
+.avatar.violet{background:#262040;color:#C8B8FF}
+.avatar.green{background:#1B3024;color:#9FE0B5}
+.avatar.amber{background:#33291A;color:#F2C98A}
+.avatar.blue{background:#1A2A3D;color:#9CC4FF}
+.avatar.rose{background:#3A1F27;color:#FFB3C4}
+.avatar.user{background:var(--surface-3);color:var(--text)}
+
+/* lists and groups */
+.section-label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding:20px 16px 8px}
+.group{margin:0 16px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px}
+.group .row + .row{border-top:1px solid var(--border)}
+.row .row-main{flex:1;min-width:0}
+.row .row-title{font-size:15px;line-height:20px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-sub{font-size:13px;line-height:18px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-meta{font-size:13px;color:var(--text-3);white-space:nowrap}
+.row .chev{color:var(--text-3)}
+.card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px}
+
+/* toggle */
+.toggle{width:51px;height:31px;border-radius:16px;background:var(--surface-3);position:relative;flex:none}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+.toggle.on{background:var(--success)}
+.toggle.on::after{left:22px}
+
+/* segmented control */
+.segmented{display:flex;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px;gap:2px}
+.segmented > span{flex:1;height:32px;border-radius:var(--r-pill);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:var(--text-2)}
+.segmented > span.on{background:var(--surface-3);color:var(--text)}
+
+/* search field */
+.search{height:40px;border-radius:var(--r-md);background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:15px}
+
+/* bottom sheet over scrim */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg-raised);border-top:1px solid var(--border);border-radius:24px 24px 0 0;box-shadow:var(--shadow-sheet);z-index:30;padding:8px 0 34px}
+.sheet .grabber{width:36px;height:5px;border-radius:3px;background:var(--surface-3);margin:0 auto 12px}
+
+/* SteinHub mark */
+.mark{color:var(--text)}
+.wordmark{font-weight:600;letter-spacing:-.02em}
+/* ===== end shared base ===== */
+
+/* ===== page CSS ===== */
+
+.topbar .title.center{position:absolute;left:50%;transform:translateX(-50%)}
+.topbar{position:relative}
+.topbar .right{display:flex;align-items:center;gap:4px}
+.topbar .btn.sm{margin-right:8px}
+.back{color:var(--text)}
+.link{color:var(--info);font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:4px}
+.muted{color:var(--text-3)}
+.mono{font-family:var(--mono);font-size:12px}
+.footnote{font-size:12px;line-height:16px;color:var(--text-3);padding:12px 20px 0}
+.section-label .count{color:var(--text-3);margin-left:4px}
+.section-row{display:flex;justify-content:space-between;align-items:baseline;padding-right:16px}
+.section-row .link{font-size:13px}
+
+/* compact toggle for list rows */
+.toggle.compact{width:40px;height:24px;border-radius:12px}
+.toggle.compact::after{top:2px;left:2px;width:20px;height:20px}
+.toggle.compact.on::after{left:18px}
+
+/* filter chips */
+.filters{display:flex;gap:8px;padding:0 16px 4px;overflow:hidden}
+.chip .n{color:var(--text-3);font-weight:500}
+.chip.selected .n{color:var(--text-3)}
+.chip.selected .n{color:#555}
+
+/* automation rows */
+.auto-row{display:flex;gap:12px;padding:14px;align-items:flex-start}
+.group .auto-row + .auto-row{border-top:1px solid var(--border)}
+.auto-main{flex:1;min-width:0}
+.auto-title{font-size:15px;line-height:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trig{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;color:var(--text-2);margin-top:2px;white-space:nowrap}
+.trig svg.i{width:14px;height:14px;color:var(--text-3)}
+.meta{display:flex;align-items:center;gap:6px;font-size:12px;line-height:16px;color:var(--text-3);margin-top:6px;white-space:nowrap}
+.meta .status-dot{width:6px;height:6px}
+.auto-side{display:flex;flex-direction:column;align-items:flex-end;gap:12px;flex:none}
+
+/* forms in sheet */
+.sheet.tall{top:112px;display:flex;flex-direction:column}
+.sheet-head{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:relative;flex:none}
+.sheet-head .t{position:absolute;left:50%;transform:translateX(-50%);font-size:17px;font-weight:600}
+.sheet-head .cancel{font-size:15px;color:var(--text-2)}
+.sheet-body{flex:1;overflow:hidden}
+.sheet-foot{padding:12px 16px 0;flex:none}
+.sheet .section-label{padding:16px 16px 8px}
+.seg-wrap{padding:8px 16px 0}
+.segmented > span svg.i{width:16px;height:16px;margin-right:6px}
+.textarea{margin:0 16px;background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:12px 14px 10px;font-size:15px;line-height:22px;color:var(--text)}
+.textarea .count{font-size:12px;color:var(--text-3);text-align:right;margin-top:6px}
+.row-ic{width:28px;height:28px;border-radius:8px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;color:var(--text-2);flex:none}
+.row-ic svg.i{width:16px;height:16px}
+.row .row-value{font-size:15px;color:var(--text-2);white-space:nowrap}
+
+/* empty state */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 32px 8px}
+.empty .big-ic{width:64px;height:64px;border-radius:20px;background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.empty .big-ic svg.i{width:28px;height:28px}
+.empty h2{font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em}
+.empty p{font-size:15px;line-height:20px;color:var(--text-2);margin:8px 0 24px}
+
+/* detail header */
+.dhead{display:flex;align-items:center;gap:12px;padding:4px 16px 16px}
+.dhead .dh-main{flex:1;min-width:0}
+.dhead h2{font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .sub{font-size:13px;line-height:18px;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-top:2px}
+.pad{padding:0 16px}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px}
+.kv .k{font-size:12px;line-height:16px;color:var(--text-3)}
+.kv .v{font-size:15px;line-height:20px;margin-top:3px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.kv .v .avatar{width:20px;height:20px;font-size:10px}
+.actions{display:flex;gap:8px;padding:12px 16px 0}
+.actions .btn{flex:1}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.card-head .h{font-size:13px;line-height:18px;color:var(--text-2);font-weight:500;display:flex;align-items:center;gap:6px}
+.prompt{font-size:15px;line-height:22px;color:var(--text)}
+.run-row .row-title{font-variant-numeric:tabular-nums}
+.run-row .row-meta{font-variant-numeric:tabular-nums}
+.run-row .row-sub.err{color:var(--danger)}
+
+/* banners and tinted cards */
+.banner{margin:0 16px;display:flex;gap:10px;padding:12px 14px;border-radius:var(--r-lg);background:var(--warning-bg);border:1px solid rgba(245,181,68,.25);color:var(--warning)}
+.banner .b-main{flex:1}
+.banner .b-title{font-size:15px;line-height:20px;font-weight:600}
+.banner .b-sub{font-size:13px;line-height:18px;color:var(--text-2);margin-top:2px}
+.card.danger-edge{border-color:rgba(255,92,92,.35)}
+.card.info-edge{border-color:rgba(108,168,255,.3)}
+.err-title{display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;color:var(--danger);font-weight:500}
+.err-body{font-size:15px;line-height:22px;margin-top:6px}
+.err-detail{font-size:13px;line-height:18px;color:var(--text-2);margin-top:6px}
+.trigger-big{display:flex;gap:12px;align-items:flex-start}
+.trigger-big .t1{font-size:15px;line-height:20px}
+.trigger-big .t2{font-size:13px;line-height:18px;color:var(--text-2);margin-top:2px}
+
+/* run timeline */
+.tl{padding:4px 16px 0}
+.step{display:flex;gap:12px;position:relative;padding-bottom:14px}
+.step .node{width:32px;height:32px;border-radius:50%;background:var(--surface-1);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;color:var(--text-2);flex:none;position:relative;z-index:1}
+.step .node svg.i{width:16px;height:16px}
+.step:not(:last-child)::before{content:"";position:absolute;left:16px;top:32px;bottom:0;width:1px;background:var(--border-strong)}
+.step .s-main{flex:1;min-width:0;padding-top:5px}
+.step .s-title{font-size:15px;line-height:20px;display:flex;align-items:center;gap:6px}
+.step .s-title .status-dot{width:6px;height:6px}
+.step .s-sub{font-size:13px;line-height:18px;color:var(--text-2)}
+.step .s-dur{font-size:12px;color:var(--text-3);padding-top:7px;font-variant-numeric:tabular-nums}
+.output{font-size:14px;line-height:20px;color:var(--text)}
+.output ul{list-style:none;margin-top:6px}
+.output li{padding-left:14px;position:relative;color:var(--text-2);margin-top:4px}
+.output li::before{content:"";position:absolute;left:2px;top:8px;width:4px;height:4px;border-radius:50%;background:var(--text-3)}
+.fade{position:relative}
+.fade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to top,var(--surface-1),transparent);border-radius:0 0 var(--r-lg) var(--r-lg)}
+
+/* computers */
+.comp-card{margin:0 16px 12px}
+.comp-top{display:flex;gap:12px;align-items:flex-start}
+.dev-ic{width:44px;height:44px;border-radius:12px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;color:var(--text);flex:none}
+.dev-ic.lg{width:56px;height:56px;border-radius:16px}
+.dev-ic.lg svg.i{width:28px;height:28px}
+.comp-main{flex:1;min-width:0}
+.comp-name{font-size:17px;line-height:22px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.comp-sub{font-size:13px;line-height:18px;color:var(--text-2);margin-top:2px;white-space:nowrap}
+.comp-status{display:flex;align-items:center;gap:6px;font-size:13px;line-height:18px;margin-top:6px;white-space:nowrap}
+.comp-status .muted{margin-left:2px}
+.comp-badges{display:flex;gap:6px;margin-top:8px}
+.stack{display:flex;flex:none;padding-top:2px}
+.stack .avatar{width:24px;height:24px;font-size:11px;box-shadow:0 0 0 2px var(--surface-1)}
+.stack .avatar + .avatar{margin-left:-6px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.metric .m-top{display:flex;justify-content:space-between;font-size:12px;line-height:16px;color:var(--text-3)}
+.metric .m-top b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.bar{height:4px;border-radius:2px;background:var(--surface-3);margin-top:6px;overflow:hidden}
+.bar > i{display:block;height:100%;background:var(--text);border-radius:2px}
+.bar.thick{height:6px;border-radius:3px}
+.res{padding:12px 14px}
+.res + .res{border-top:1px solid var(--border)}
+.res .r-top{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;line-height:20px}
+.res .r-top .r-val{font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.res .r-top .r-val b{color:var(--text);font-weight:500}
+.running{display:flex;gap:12px;align-items:center}
+.running .r-main{flex:1;min-width:0}
+.running .r-title{font-size:15px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.running .r-sub{font-size:13px;line-height:18px;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.row.danger .row-title{color:var(--danger)}
+.row.danger .row-ic{background:var(--danger-bg);color:var(--danger)}
+.row.disabled .row-title{color:var(--text-3)}
+.row.disabled .row-ic{color:var(--text-3)}
+.topbar.scrolled{border-bottom:1px solid var(--border)}
+.scroll.scrolled .section-label:first-child{padding-top:12px}
+</style>
+</head>
+<body>
+<!-- Icon sprite: copy verbatim. Use with <svg class="i"><use href="#i-menu"/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></symbol>
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4z"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+    <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 6.6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 20.5h8M12 16.5v4"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h3M21 17v4h-1"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 6.5H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5M12 19h8"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8A4 4 0 0 0 6 18a3 3 0 0 0 6 0z"/><path d="M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8A4 4 0 0 1 18 18a3 3 0 0 1-6 0z"/><path d="M12 5v13"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m3 6 9 7 9-7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.8a15 15 0 0 1 20 0M5 12.9a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0M12 20h.01"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 11v2"/><rect x="4" y="9" width="12" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M3 20h.01M8 20v-4M13 20v-8M18 20V8" stroke-width="2.5"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2.5" y="16.5" width="6" height="5" rx="1"/><rect x="15.5" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5v4.5M5.5 16.5V12h13v4.5"/></symbol>
+    <!-- SteinHub mark (original): hexagonal stone, center hub, three spokes -->
+    <symbol id="steinhub-mark" viewBox="0 0 32 32"><path d="M16 2.8 27.4 9.4v13.2L16 29.2 4.6 22.6V9.4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M16 16V8.6M16 16l-6.4 3.7M16 16l6.4 3.7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="16" r="3" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<header class="page-head">
+  <div>
+    <h1>Computers</h1>
+    <p>Machines your bots can run tasks on, with live status and resources. Reached from the Computers row in the left drawer.</p>
+  </div>
+  <div style="display:flex;gap:16px;align-items:center">
+    <span class="sample-tag">Sample data</span>
+    <a href="index.html">← All pages</a>
+  </div>
+</header>
+
+<main class="frames">
+  <section class="frame-wrap">
+    <div class="frame-label">1 · Computers list</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn" aria-label="Open drawer"><svg class="i "><use href="#i-menu"/></svg></button>
+          <div class="right"><button class="btn btn-secondary sm"><svg class="i sm"><use href="#i-plus"/></svg>Add</button></div>
+        </div>
+        <div class="scroll">
+          <div class="large-title">Computers</div>
+          <div class="card comp-card">
+            <div class="comp-top">
+              <span class="dev-ic"><svg class="i "><use href="#i-monitor"/></svg></span>
+              <div class="comp-main">
+                <div class="comp-name">Alex's Mac Studio</div>
+                <div class="comp-sub">macOS 26 · OpenMausBot 2.4.1</div>
+                <div class="comp-status"><span class="status-dot success"></span>Online<span class="muted">· 8 ms</span></div>
+              </div>
+              <div class="stack"><span class="avatar violet">M</span><span class="avatar green">A</span><span class="avatar amber">H</span></div>
+            </div>
+            <div class="comp-badges"><span class="badge"><svg class="i sm"><use href="#i-network"/></svg>Desktop host</span></div>
+            <div class="metrics"><div class="metric"><div class="m-top"><span>CPU</span><b>12%</b></div><div class="bar"><i style="width:12%"></i></div></div><div class="metric"><div class="m-top"><span>Mem</span><b>41%</b></div><div class="bar"><i style="width:41%"></i></div></div><div class="metric"><div class="m-top"><span>Disk</span><b>62%</b></div><div class="bar"><i style="width:62%"></i></div></div></div>
+          </div>
+          <div class="card comp-card">
+            <div class="comp-top">
+              <span class="dev-ic"><svg class="i "><use href="#i-laptop"/></svg></span>
+              <div class="comp-main">
+                <div class="comp-name">MacBook Pro</div>
+                <div class="comp-sub">macOS 26</div>
+                <div class="comp-status"><span class="status-dot warning"></span>Asleep<span class="muted">· last seen 3 h ago</span></div>
+              </div>
+              <div class="stack"><span class="avatar amber">H</span></div>
+            </div>
+          </div>
+          <div class="card comp-card">
+            <div class="comp-top">
+              <span class="dev-ic"><svg class="i "><use href="#i-server"/></svg></span>
+              <div class="comp-main">
+                <div class="comp-name">vps-fra-1</div>
+                <div class="comp-sub">Ubuntu 24.04 · Frankfurt</div>
+                <div class="comp-status"><span class="status-dot success"></span>Online<span class="muted">· 31 ms</span></div>
+              </div>
+              <div class="stack"><span class="avatar amber">H</span></div>
+            </div>
+            <div class="metrics"><div class="metric"><div class="m-top"><span>CPU</span><b>4%</b></div><div class="bar"><i style="width:4%"></i></div></div><div class="metric"><div class="m-top"><span>Mem</span><b>28%</b></div><div class="bar"><i style="width:28%"></i></div></div><div class="metric"><div class="m-top"><span>Disk</span><b>35%</b></div><div class="bar"><i style="width:35%"></i></div></div></div>
+          </div>
+          <div class="footnote">Bots run tasks on these computers. The desktop host runs OpenMausBot and relays to the others.</div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Add pairs a new computer with a code from the desktop app. Metrics only show for online computers.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">2 · Detail: Alex's Mac Studio</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn back" aria-label="Back"><svg class="i "><use href="#i-chev-left"/></svg></button>
+          
+          <button class="icon-btn" aria-label="More"><svg class="i "><use href="#i-more"/></svg></button>
+        </div>
+        <div class="scroll">
+          <div class="dhead">
+            <span class="dev-ic lg"><svg class="i "><use href="#i-monitor"/></svg></span>
+            <div class="dh-main"><h2>Alex's Mac Studio</h2><div class="sub">macOS 26 · Desktop host</div></div>
+          </div>
+          <div class="group">
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-wifi"/></svg></span><div class="row-main"><div class="row-title">Status</div></div><span class="row-value" style="display:flex;align-items:center;gap:6px"><span class="status-dot success"></span>Online</span></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-network"/></svg></span><div class="row-main"><div class="row-title">Connection</div></div><span class="row-value">Local network · 8 ms</span></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-refresh"/></svg></span><div class="row-main"><div class="row-title">Fallback</div></div><span class="row-value">Relay, ready</span></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-terminal"/></svg></span><div class="row-main"><div class="row-title">OpenMausBot 2.4.1</div></div><span class="badge success">Up to date</span></div>
+          </div>
+          <div class="section-label">Running now</div>
+          <div class="pad"><div class="card info-edge"><div class="running">
+            <span class="avatar sm amber">H</span>
+            <div class="r-main"><div class="r-title">Clean up Downloads folder</div><div class="r-sub"><span class="status-dot info"></span>Mac helper · 2 min</div></div>
+            <button class="btn btn-secondary sm"><svg class="i sm"><use href="#i-stop"/></svg>Stop</button>
+          </div></div></div>
+          <div class="section-label">Resources</div>
+          <div class="group">
+            <div class="res"><div class="r-top"><span>CPU</span><span class="r-val"><b>12%</b> · 20 cores</span></div><div class="bar thick"><i style="width:12%"></i></div></div>
+            <div class="res"><div class="r-top"><span>Memory</span><span class="r-val"><b>41%</b> · 26 of 64 GB</span></div><div class="bar thick"><i style="width:41%"></i></div></div>
+            <div class="res"><div class="r-top"><span>Disk</span><span class="r-val"><b>62%</b> · 1.2 of 2 TB</span></div><div class="bar thick"><i style="width:62%"></i></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Desktop host. Connection prefers the local network and falls back to the relay when away from home.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">3 · Detail, scrolled</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar scrolled">
+          <button class="icon-btn back" aria-label="Back"><svg class="i "><use href="#i-chev-left"/></svg></button>
+          <div class="title center">Alex's Mac Studio</div>
+          <button class="icon-btn" aria-label="More"><svg class="i "><use href="#i-more"/></svg></button>
+        </div>
+        <div class="scroll scrolled"><div class="inner">
+          <div class="section-label">Bots on this computer</div>
+          <div class="group">
+            <div class="row"><span class="avatar sm violet">M</span><div class="row-main"><div class="row-title">MausBot</div><div class="row-sub">Chief of Staff</div></div><span class="row-meta">2 automations</span><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+            <div class="row"><span class="avatar sm green">A</span><div class="row-main"><div class="row-title">Mobile App</div><div class="row-sub">Builds the SteinHub iOS app</div></div><span class="row-meta">1 automation</span><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+            <div class="row"><span class="avatar sm amber">H</span><div class="row-main"><div class="row-title">Mac helper</div><div class="row-sub">Runs tasks on the Mac</div></div><span class="row-meta">1 running</span><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+          </div>
+          <div class="section-label">Actions</div>
+          <div class="group">
+            <div class="row disabled"><span class="row-ic"><svg class="i "><use href="#i-power"/></svg></span><div class="row-main"><div class="row-title">Wake</div><div class="row-sub">Already awake</div></div></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-refresh"/></svg></span><div class="row-main"><div class="row-title">Restart OpenMausBot</div><div class="row-sub">Stops the running task. Takes about 20 s.</div></div></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-history"/></svg></span><div class="row-main"><div class="row-title">Activity log</div></div><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+          </div>
+          <div class="group" style="margin-top:24px">
+            <div class="row danger"><span class="row-ic"><svg class="i "><use href="#i-trash"/></svg></span><div class="row-main"><div class="row-title">Remove computer</div><div class="row-sub">Bots lose access. You can pair it again later.</div></div></div>
+          </div>
+          <div class="footnote">Paired Mar 2 · ID <span class="mono">mstd-7f3a</span></div>
+        </div></div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Wake is disabled while the computer is online. Remove is separated and shown in danger color; it asks for confirmation.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">4 · Asleep: MacBook Pro</div>
+    <div class="phone">
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn back" aria-label="Back"><svg class="i "><use href="#i-chev-left"/></svg></button>
+          
+          <button class="icon-btn" aria-label="More"><svg class="i "><use href="#i-more"/></svg></button>
+        </div>
+        <div class="scroll">
+          <div class="dhead">
+            <span class="dev-ic lg"><svg class="i "><use href="#i-laptop"/></svg></span>
+            <div class="dh-main"><h2>MacBook Pro</h2><div class="sub">macOS 26</div></div>
+          </div>
+          <div class="group">
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-moon"/></svg></span><div class="row-main"><div class="row-title">Status</div></div><span class="row-value" style="display:flex;align-items:center;gap:6px"><span class="status-dot warning"></span>Asleep</span></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-clock"/></svg></span><div class="row-main"><div class="row-title">Last seen</div></div><span class="row-value">3 h ago</span></div>
+            <div class="row"><span class="row-ic"><svg class="i "><use href="#i-network"/></svg></span><div class="row-main"><div class="row-title">Last connection</div></div><span class="row-value">Local network</span></div>
+          </div>
+          <div class="pad" style="padding-top:16px"><button class="btn btn-primary block"><svg class="i sm"><use href="#i-power"/></svg>Wake on LAN</button></div>
+          <div class="footnote" style="padding-top:8px;text-align:center">Sent through Alex's Mac Studio on the same network.</div>
+          <div class="section-label">Waiting on this computer</div>
+          <div class="pad"><div class="banner" style="margin:0"><svg class="i "><use href="#i-alert"/></svg><div class="b-main"><div class="b-title">Automations that need this computer will wait or fail</div><div class="b-sub">They retry for 10 min, then count as failed.</div></div></div></div>
+          <div class="group" style="margin-top:8px">
+            <div class="row"><span class="avatar sm amber">H</span><div class="row-main"><div class="row-title">Weekly backup</div><div class="row-sub">Sundays at 2:00 · paused</div></div><span class="badge danger">Failed</span><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+          </div>
+          <div class="section-label">Bots on this computer</div>
+          <div class="group">
+            <div class="row"><span class="avatar sm amber">H</span><div class="row-main"><div class="row-title">Mac helper</div><div class="row-sub">Runs tasks on the Mac</div></div><span class="row-meta">Idle</span><span class="chev"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Chose the asleep state over the VPS. vps-fra-1 uses the same layout with SSH host, region (Frankfurt) and uptime (23 d), and no Wake.</div>
+  </section>
+</main>
+</body>
+</html>

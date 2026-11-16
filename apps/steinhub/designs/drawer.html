@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SteinHub · Drawer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== SteinHub shared base (copy verbatim into every page; add page CSS below the marker) ===== */
+:root{
+  --bg:#000;--bg-raised:#0A0A0A;--surface-1:#151515;--surface-2:#1F1F1F;--surface-3:#2A2A2A;
+  --border:#242424;--border-strong:#333;--scrim:rgba(0,0,0,.6);
+  --text:#fff;--text-2:#A1A1A1;--text-3:#6B6B6B;--text-inverse:#000;
+  --success:#3DD68C;--warning:#F5B544;--danger:#FF5C5C;--info:#6CA8FF;
+  --success-bg:rgba(61,214,140,.12);--warning-bg:rgba(245,181,68,.12);--danger-bg:rgba(255,92,92,.12);--info-bg:rgba(108,168,255,.12);
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:24px;--r-pill:999px;
+  --font:Inter,-apple-system,"SF Pro Text",Roboto,system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,monospace;
+  --shadow-sheet:0 -8px 32px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0E0E0E;color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding:32px 24px 64px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:default}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.lg{width:24px;height:24px}
+
+/* page chrome (outside the phone) */
+.page-head{max-width:1280px;margin:0 auto 28px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:baseline;justify-content:space-between}
+.page-head h1{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.page-head p{color:var(--text-2);font-size:14px;line-height:20px;max-width:640px;margin-top:4px}
+.page-head a{color:var(--text-2);font-size:13px;text-decoration:none}
+.page-head a:hover{color:var(--text)}
+.sample-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--warning);background:var(--warning-bg);border:1px solid rgba(245,181,68,.25);padding:4px 10px;border-radius:var(--r-pill)}
+.frames{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
+.frame-wrap{display:flex;flex-direction:column;gap:14px;align-items:center}
+.frame-label{font-size:13px;color:var(--text-2);font-weight:500}
+.frame-note{font-size:12px;color:var(--text-3);max-width:390px;text-align:center;line-height:17px}
+
+/* phone frame */
+.phone{position:relative;width:390px;height:844px;border-radius:52px;background:var(--bg);overflow:hidden;
+  box-shadow:0 0 0 10px #1A1A1A,0 0 0 11px #2C2C2C,0 30px 60px rgba(0,0,0,.6);flex:none}
+.phone .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:50}
+.statusbar{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 30px 0 40px;font-size:16px;font-weight:600;z-index:40;pointer-events:none}
+.statusbar .sb-icons{display:flex;gap:6px;align-items:center}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:#fff;z-index:60}
+.screen{position:absolute;inset:0;padding-top:54px;display:flex;flex-direction:column}
+.scroll{flex:1;overflow:hidden;position:relative}
+.safe-bottom{padding-bottom:34px}
+
+/* top bar */
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;flex:none}
+.topbar .title{font-size:17px;font-weight:600;display:flex;align-items:center;gap:6px}
+.topbar .title .sub{color:var(--text-3);font-weight:500}
+.icon-btn{width:44px;height:44px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;color:var(--text);position:relative}
+.icon-btn.filled{background:var(--surface-2)}
+.dot-badge{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--bg)}
+.count-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--text);color:var(--text-inverse);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.large-title{font-size:30px;line-height:36px;font-weight:600;letter-spacing:-.02em;padding:4px 16px 12px}
+
+/* composer */
+.composer-wrap{padding:8px 12px 34px;flex:none;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.composer{min-height:52px;border-radius:26px;background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:4px;padding:4px 6px 4px 4px}
+.composer .placeholder{flex:1;color:var(--text-3);font-size:15px;padding:0 6px}
+.composer .typed{flex:1;color:var(--text);font-size:15px;padding:0 6px}
+.send-btn{width:40px;height:40px;border-radius:50%;background:var(--text);color:var(--text-inverse);display:inline-flex;align-items:center;justify-content:center}
+.send-btn.disabled{background:var(--surface-3);color:var(--text-3)}
+.composer .icon-btn{width:40px;height:40px;color:var(--text-2)}
+
+/* chips, buttons, badges */
+.chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--r-pill);background:var(--surface-1);border:1px solid var(--border);font-size:14px;font-weight:500;color:var(--text);white-space:nowrap}
+.chip.selected{background:var(--text);color:var(--text-inverse);border-color:var(--text)}
+.chip svg.i{width:16px;height:16px;color:var(--text-2)}
+.btn{height:48px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;padding:0 20px;white-space:nowrap}
+.btn.sm{height:36px;font-size:14px;padding:0 14px}
+.btn.block{width:100%}
+.btn-primary{background:var(--text);color:var(--text-inverse)}
+.btn-secondary{background:var(--surface-2);color:var(--text)}
+.btn-outline{border:1px solid var(--border-strong);color:var(--text)}
+.btn-danger{background:var(--danger-bg);color:var(--danger)}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r-sm);font-size:12px;font-weight:500;background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+.badge.success{background:var(--success-bg);color:var(--success)}
+.badge.warning{background:var(--warning-bg);color:var(--warning)}
+.badge.danger{background:var(--danger-bg);color:var(--danger)}
+.badge.info{background:var(--info-bg);color:var(--info)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-3);flex:none}
+.status-dot.success{background:var(--success)}.status-dot.warning{background:var(--warning)}.status-dot.danger{background:var(--danger)}.status-dot.info{background:var(--info)}
+
+/* avatars (bot tints) */
+.avatar{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:none;background:var(--surface-2);color:var(--text)}
+.avatar.sm{width:28px;height:28px;font-size:12px}
+.avatar.lg{width:72px;height:72px;font-size:26px}
+.avatar.violet{background:#262040;color:#C8B8FF}
+.avatar.green{background:#1B3024;color:#9FE0B5}
+.avatar.amber{background:#33291A;color:#F2C98A}
+.avatar.blue{background:#1A2A3D;color:#9CC4FF}
+.avatar.rose{background:#3A1F27;color:#FFB3C4}
+.avatar.user{background:var(--surface-3);color:var(--text)}
+
+/* lists and groups */
+.section-label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding:20px 16px 8px}
+.group{margin:0 16px;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px}
+.group .row + .row{border-top:1px solid var(--border)}
+.row .row-main{flex:1;min-width:0}
+.row .row-title{font-size:15px;line-height:20px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-sub{font-size:13px;line-height:18px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .row-meta{font-size:13px;color:var(--text-3);white-space:nowrap}
+.row .chev{color:var(--text-3)}
+.card{background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px}
+
+/* toggle */
+.toggle{width:51px;height:31px;border-radius:16px;background:var(--surface-3);position:relative;flex:none}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+.toggle.on{background:var(--success)}
+.toggle.on::after{left:22px}
+
+/* segmented control */
+.segmented{display:flex;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px;gap:2px}
+.segmented > span{flex:1;height:32px;border-radius:var(--r-pill);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:var(--text-2)}
+.segmented > span.on{background:var(--surface-3);color:var(--text)}
+
+/* search field */
+.search{height:40px;border-radius:var(--r-md);background:var(--surface-1);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:15px}
+
+/* bottom sheet over scrim */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg-raised);border-top:1px solid var(--border);border-radius:24px 24px 0 0;box-shadow:var(--shadow-sheet);z-index:30;padding:8px 0 34px}
+.sheet .grabber{width:36px;height:5px;border-radius:3px;background:var(--surface-3);margin:0 auto 12px}
+
+/* SteinHub mark */
+.mark{color:var(--text)}
+.wordmark{font-weight:600;letter-spacing:-.02em}
+/* ===== end shared base ===== */
+
+/* ===== page CSS ===== */
+
+.avatar.xs{width:20px;height:20px;font-size:10px}
+.tb-spacer{width:44px;height:44px;flex:none}
+.hl{background:var(--surface-3);color:var(--text);border-radius:3px;padding:0 2px;font-weight:600}
+.topbar .title.center{flex:1;justify-content:center}
+
+/* chat underneath the drawer */
+.chat{padding:8px 0}
+.msg-user{margin:8px 16px 8px auto;max-width:78%;background:var(--surface-2);border-radius:20px;padding:10px 14px;font-size:16px;line-height:24px;width:fit-content}
+.msg-bot{padding:8px 16px;font-size:16px;line-height:24px}
+.msg-bot p + p{margin-top:12px}
+
+/* drawer */
+.drawer{position:absolute;top:0;bottom:0;left:0;width:332px;background:var(--bg-raised);border-right:1px solid var(--border);
+  box-shadow:8px 0 32px rgba(0,0,0,.5);z-index:30;padding-top:54px;display:flex;flex-direction:column}
+.d-top{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 12px;flex:none}
+.d-top .search{flex:1}
+.d-top .cancel{font-size:15px;color:var(--text);padding:0 4px}
+.search.focus{border-color:var(--border-strong);color:var(--text);background:var(--surface-2)}
+.search .caret{width:2px;height:20px;background:var(--text);margin-left:-6px;border-radius:1px}
+.search .clear{margin-left:auto;color:var(--text-3)}
+.d-nav{padding:4px 8px 0}
+.d-row{display:flex;align-items:center;gap:12px;height:44px;padding:0 10px;border-radius:var(--r-md);font-size:15px;color:var(--text)}
+.d-row > svg.i{color:var(--text-2)}
+.d-row .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d-row.active{background:var(--surface-2)}
+.d-row .st{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3)}
+.d-row .st .status-dot{width:6px;height:6px}
+.d-label{display:flex;align-items:center;justify-content:space-between;font-size:11px;line-height:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);padding:18px 18px 6px;height:38px}
+.d-sub{font-size:12px;font-weight:500;color:var(--text-3);padding:10px 18px 4px}
+.d-thread{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:var(--r-md);font-size:15px;color:var(--text)}
+.d-thread .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d-thread.active{background:var(--surface-2)}
+.d-threads{padding:0 8px}
+.d-foot{flex:none;display:flex;align-items:center;gap:12px;border-top:1px solid var(--border);padding:12px 8px 34px 16px}
+.d-foot .who{flex:1;min-width:0}
+.d-foot .n{font-size:15px;font-weight:600}
+.d-foot .e{font-size:13px;color:var(--text-3)}
+.avatar.md36{width:36px;height:36px;font-size:13px}
+.filter-chip{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 6px 0 10px;border-radius:var(--r-pill);background:var(--text);color:var(--text-inverse);
+  font-size:12px;font-weight:600;letter-spacing:0;text-transform:none}
+.filter-chip svg.i{width:14px;height:14px;stroke-width:2.2}
+.d-empty-note{font-size:12px;color:var(--text-3);padding:10px 18px 0;line-height:16px}
+
+/* search results */
+.res{display:flex;gap:12px;padding:9px 10px;border-radius:var(--r-md)}
+.res .main{flex:1;min-width:0}
+.res .t{font-size:15px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res .s{font-size:13px;line-height:18px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res .q{font-size:14px;line-height:19px;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.res .m{font-size:12px;line-height:16px;color:var(--text-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res .time{font-size:12px;color:var(--text-3);white-space:nowrap;padding-top:2px}
+.res .avatar{margin-top:2px}
+
+/* keyboard (placeholder) */
+.kbd{position:absolute;left:0;right:0;bottom:0;height:300px;background:#1A1A1A;z-index:35;padding:8px 3px 0;border-top:1px solid var(--border)}
+.kbd .kr{display:flex;gap:6px;justify-content:center;margin-bottom:11px}
+.kbd .k{width:33px;height:42px;border-radius:6px;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text)}
+.kbd .k.w{width:44px;background:var(--surface-2);font-size:14px}
+.kbd .k.space{flex:1;max-width:190px;background:var(--surface-3);font-size:14px;color:var(--text-2)}
+.kbd .k.go{width:88px;background:var(--text);color:var(--text-inverse);font-size:15px;font-weight:600}
+
+/* long-press context menu */
+.d-dim{position:absolute;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:2}
+.lifted{position:relative;z-index:3;background:var(--surface-2);box-shadow:0 0 0 1px var(--border-strong),0 12px 32px rgba(0,0,0,.6);transform:scale(1.02)}
+.ctx{position:absolute;left:8px;width:250px;z-index:3;background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--r-lg);
+  box-shadow:0 16px 40px rgba(0,0,0,.7);overflow:hidden}
+.ctx .ci{display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 14px;font-size:15px;color:var(--text)}
+.ctx .ci + .ci{border-top:1px solid var(--border)}
+.ctx .ci.sep{border-top:6px solid var(--bg-raised)}
+.ctx .ci svg.i{color:var(--text-2)}
+.ctx .ci.danger,.ctx .ci.danger svg.i{color:var(--danger)}
+.ctx .ci .r{display:flex;align-items:center;gap:6px;color:var(--text-3);font-size:13px}
+
+</style>
+</head>
+<body>
+<!-- Icon sprite: copy verbatim. Use with <svg class="i"><use href="#i-menu"/></svg> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h16"/></symbol>
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4z"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+    <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 6.6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 20.5h8M12 16.5v4"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h3M21 17v4h-1"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 6.5H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5M12 19h8"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8A4 4 0 0 0 6 18a3 3 0 0 0 6 0z"/><path d="M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8A4 4 0 0 1 18 18a3 3 0 0 1-6 0z"/><path d="M12 5v13"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m3 6 9 7 9-7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.8a15 15 0 0 1 20 0M5 12.9a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0M12 20h.01"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 11v2"/><rect x="4" y="9" width="12" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M3 20h.01M8 20v-4M13 20v-8M18 20V8" stroke-width="2.5"/></symbol>
+    <!-- SteinHub mark (original): hexagonal stone, center hub, three spokes -->
+    <symbol id="steinhub-mark" viewBox="0 0 32 32"><path d="M16 2.8 27.4 9.4v13.2L16 29.2 4.6 22.6V9.4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M16 16V8.6M16 16l-6.4 3.7M16 16l6.4 3.7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="16" r="3" fill="currentColor"/></symbol>
+    <!-- page-added icons (Lucide-style) -->
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-contact" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7 18a5 5 0 0 1 10 0"/></symbol>
+  </defs>
+</svg>
+
+<header class="page-head">
+  <div>
+    <h1>Drawer</h1>
+    <p>Left drawer for navigation and chat history: search, Inbox, Automations, Computers, bots, and recent threads. Opens from the menu button in the chat top bar or an edge swipe.</p>
+  </div>
+  <div style="display:flex;gap:16px;align-items:center">
+    <span class="sample-tag">Sample data</span>
+    <a href="index.html">← All pages</a>
+  </div>
+</header>
+
+<main class="frames">
+  <section class="frame-wrap">
+    <div class="frame-label">1 · Drawer open</div>
+    <div class="phone">
+      <div class="island"></div><div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll chat">
+          <div class="msg-user">Jordan offered 2 more years at +5%. Should I take it?</div>
+          <div class="msg-bot"><p>Jordan's offer is +5%, the most Section 4.2 allows. Countering at $2,450 for 2 years saves you $1,680.</p><p>I drafted the counter-offer to Jordan. It's waiting for your approval.</p></div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="scrim"></div>
+      <div class="drawer">
+        <div class="d-top"><div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search chats</div></div>
+        <div class="scroll">
+          <div class="d-nav">
+            <div class="d-row"><svg class="i"><use href="#i-inbox"/></svg><span class="grow">Inbox</span><span class="count-badge">3</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-bolt"/></svg><span class="grow">Automations</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-monitor"/></svg><span class="grow">Computers</span></div>
+          </div>
+          <div class="d-label">Bots</div><div class="d-nav" style="padding-top:0"><div class="d-row"><span class="avatar sm violet">M</span><span class="grow">MausBot</span><span class="st"><span class="status-dot warning"></span>Waiting on you</span></div><div class="d-row"><span class="avatar sm green">A</span><span class="grow">Mobile App</span><span class="st"><span class="status-dot info"></span>Working</span></div><div class="d-row"><span class="avatar sm amber">H</span><span class="grow">Mac helper</span><span class="st"><span class="status-dot success"></span>Idle</span></div></div>
+          <div class="d-label">Recent</div>
+            <div class="d-sub">Today</div>
+            <div class="d-threads">
+              <div class="d-thread active"><span class="avatar xs violet">M</span><span class="t">Landlord lease renewal</span></div>
+              <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Fix push notification crash</span></div>
+              <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Plan Thursday offsite</span></div>
+            </div>
+            <div class="d-sub">Yesterday</div>
+            <div class="d-threads">
+              <div class="d-thread"><span class="avatar xs green">A</span><span class="t">TestFlight build 42 notes</span></div>
+              <div class="d-thread"><span class="avatar xs amber">H</span><span class="t">Clean up Downloads folder</span></div>
+            </div>
+            <div class="d-sub">Earlier</div>
+            <div class="d-threads">
+              <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Q4 roadmap draft</span></div>
+              <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Compare health insurance plans</span></div>
+              <div class="d-thread"><span class="avatar xs amber">H</span><span class="t">Rotate VPS SSH keys</span></div>
+            </div>
+        </div>
+        <div class="d-foot">
+          <span class="avatar user md36">AR</span>
+          <div class="who"><div class="n">Alex Rivera</div><div class="e">alex@example.com</div></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Opened from the menu button or an edge swipe. Panel is 85% wide; the dimmed chat stays visible and a tap on it closes the drawer. The open thread is highlighted.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">2 · History search</div>
+    <div class="phone">
+      <div class="island"></div><div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll chat">
+          <div class="msg-user">Jordan offered 2 more years at +5%. Should I take it?</div>
+          <div class="msg-bot"><p>Jordan's offer is +5%, the most Section 4.2 allows. Countering at $2,450 for 2 years saves you $1,680.</p><p>I drafted the counter-offer to Jordan. It's waiting for your approval.</p></div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="scrim"></div>
+      <div class="drawer">
+        <div class="d-top">
+          <div class="search focus"><svg class="i sm"><use href="#i-search"/></svg>lease<span class="caret"></span><span class="clear"><svg class="i sm"><use href="#i-x-circle"/></svg></span></div>
+          <span class="cancel">Cancel</span>
+        </div>
+        <div class="scroll" style="padding:0 8px">
+          <div class="d-label" style="padding-left:10px;padding-right:10px">Threads <span style="letter-spacing:0">2</span></div>
+          <div class="res"><span class="avatar sm violet">M</span><div class="main"><div class="t">Landlord <span class="hl">lease</span> renewal</div><div class="s">Draft reply to Jordan is waiting for approval</div></div><span class="time">10 min</span></div>
+          <div class="res"><span class="avatar sm violet">M</span><div class="main"><div class="t">Office <span class="hl">lease</span> options for 2027</div><div class="s">Shortlist of 3 spaces under $4k/month</div></div><span class="time">Oct 28</span></div>
+          <div class="d-label" style="padding-left:10px;padding-right:10px">Messages <span style="letter-spacing:0">14</span></div>
+          <div class="res"><span class="avatar sm violet">M</span><div class="main"><div class="q">Your current <span class="hl">lease</span> ends Feb 28. Jordan offered 2 more years at +5%.</div><div class="m">MausBot · Landlord lease renewal</div></div><span class="time">Today</span></div>
+          <div class="res"><span class="avatar sm amber">H</span><div class="main"><div class="q">Moved the signed <span class="hl">lease</span> PDF from Downloads to Documents/Home.</div><div class="m">Mac helper · Clean up Downloads folder</div></div><span class="time">Yesterday</span></div>
+          <div class="res"><span class="avatar sm violet">M</span><div class="main"><div class="q">Car <span class="hl">lease</span> return is due Dec 3. Want me to book the inspection?</div><div class="m">MausBot · Morning brief</div></div><span class="time">Mon</span></div>
+        </div>
+      </div>
+      <div class="kbd"><div class="kr"><span class="k">q</span><span class="k">w</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div><div class="kr"><span class="k">a</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span></div><div class="kr"><span class="k w"><svg class="i sm"><use href="#i-arrow-up"/></svg></span><span class="k">z</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">m</span><span class="k w"><svg class="i sm"><use href="#i-chev-left"/></svg></span></div><div class="kr"><span class="k w">123</span><span class="k space">space</span><span class="k go">search</span></div></div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Searches titles and message text across all bots. Results group into Threads and Messages; tapping a message opens the thread scrolled to it. Matches are highlighted in white on grey, not color.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">3 · Thread actions (long-press)</div>
+    <div class="phone">
+      <div class="island"></div><div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll chat">
+          <div class="msg-user">Jordan offered 2 more years at +5%. Should I take it?</div>
+          <div class="msg-bot"><p>Jordan's offer is +5%, the most Section 4.2 allows. Countering at $2,450 for 2 years saves you $1,680.</p><p>I drafted the counter-offer to Jordan. It's waiting for your approval.</p></div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="scrim"></div>
+      <div class="drawer">
+        <div class="d-top"><div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search chats</div></div>
+        <div class="scroll">
+          <div class="d-nav">
+            <div class="d-row"><svg class="i"><use href="#i-inbox"/></svg><span class="grow">Inbox</span><span class="count-badge">3</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-bolt"/></svg><span class="grow">Automations</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-monitor"/></svg><span class="grow">Computers</span></div>
+          </div>
+          <div class="d-label">Bots</div><div class="d-nav" style="padding-top:0"><div class="d-row"><span class="avatar sm violet">M</span><span class="grow">MausBot</span><span class="st"><span class="status-dot warning"></span>Waiting on you</span></div><div class="d-row"><span class="avatar sm green">A</span><span class="grow">Mobile App</span><span class="st"><span class="status-dot info"></span>Working</span></div><div class="d-row"><span class="avatar sm amber">H</span><span class="grow">Mac helper</span><span class="st"><span class="status-dot success"></span>Idle</span></div></div>
+          <div class="d-label">Recent</div>
+          <div class="d-sub">Today</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Landlord lease renewal</span></div>
+            <div style="position:relative;z-index:3">
+              <div class="d-thread lifted"><span class="avatar xs green">A</span><span class="t">Fix push notification crash</span></div>
+              <div class="ctx" style="bottom:50px;left:0">
+                <div class="ci">Rename <svg class="i"><use href="#i-edit"/></svg></div>
+                <div class="ci">Pin to top <svg class="i"><use href="#i-pin"/></svg></div>
+                <div class="ci">Move to bot <span class="r"><svg class="i sm"><use href="#i-chev-right"/></svg></span></div>
+                <div class="ci">Share <svg class="i"><use href="#i-share"/></svg></div>
+                <div class="ci sep danger">Delete <svg class="i"><use href="#i-trash"/></svg></div>
+              </div>
+            </div>
+            <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Plan Thursday offsite</span></div>
+          </div>
+          <div class="d-sub">Yesterday</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">TestFlight build 42 notes</span></div>
+            <div class="d-thread"><span class="avatar xs amber">H</span><span class="t">Clean up Downloads folder</span></div>
+          </div>
+          <div class="d-sub">Earlier</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs violet">M</span><span class="t">Q4 roadmap draft</span></div>
+          </div>
+        </div>
+        <div class="d-foot">
+          <span class="avatar user md36">AR</span>
+          <div class="who"><div class="n">Alex Rivera</div><div class="e">alex@example.com</div></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button>
+        </div>
+        <div class="d-dim"></div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Long-press, not swipe: a horizontal swipe already closes the drawer, so swipe actions on rows would fight that gesture. Delete asks for confirmation. Move to bot hands the thread and its context to another bot.</div>
+  </section>
+  <section class="frame-wrap">
+    <div class="frame-label">4 · Filtered by bot</div>
+    <div class="phone">
+      <div class="island"></div><div class="statusbar"><span>9:41</span><span class="sb-icons"><svg class="i sm"><use href="#i-signal"/></svg><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i lg"><use href="#i-battery"/></svg></span></div>
+      <div class="screen">
+        <div class="topbar">
+          <button class="icon-btn"><svg class="i"><use href="#i-menu"/></svg></button>
+          <div class="title">MausBot <svg class="i sm" style="color:var(--text-3)"><use href="#i-chev-down"/></svg></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-new"/></svg></button>
+        </div>
+        <div class="scroll chat">
+          <div class="msg-user">Jordan offered 2 more years at +5%. Should I take it?</div>
+          <div class="msg-bot"><p>Jordan's offer is +5%, the most Section 4.2 allows. Countering at $2,450 for 2 years saves you $1,680.</p><p>I drafted the counter-offer to Jordan. It's waiting for your approval.</p></div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="icon-btn"><svg class="i"><use href="#i-paperclip"/></svg></button>
+            <span class="placeholder">Ask MausBot anything</span>
+            <button class="icon-btn"><svg class="i"><use href="#i-mic"/></svg></button>
+            <button class="send-btn disabled"><svg class="i"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="scrim"></div>
+      <div class="drawer">
+        <div class="d-top"><div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search chats</div></div>
+        <div class="scroll">
+          <div class="d-nav">
+            <div class="d-row"><svg class="i"><use href="#i-inbox"/></svg><span class="grow">Inbox</span><span class="count-badge">3</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-bolt"/></svg><span class="grow">Automations</span></div>
+            <div class="d-row"><svg class="i"><use href="#i-monitor"/></svg><span class="grow">Computers</span></div>
+          </div>
+          <div class="d-label">Bots</div><div class="d-nav" style="padding-top:0"><div class="d-row"><span class="avatar sm violet">M</span><span class="grow">MausBot</span><span class="st"><span class="status-dot warning"></span>Waiting on you</span></div><div class="d-row active"><span class="avatar sm green">A</span><span class="grow">Mobile App</span><svg class="i sm" style="color:var(--text)"><use href="#i-check"/></svg></div><div class="d-row"><span class="avatar sm amber">H</span><span class="grow">Mac helper</span><span class="st"><span class="status-dot success"></span>Idle</span></div></div>
+          <div class="d-label">Recent <span class="filter-chip">Mobile App <svg class="i"><use href="#i-x"/></svg></span></div>
+          <div class="d-sub">Today</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Fix push notification crash</span></div>
+          </div>
+          <div class="d-sub">Yesterday</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">TestFlight build 42 notes</span></div>
+          </div>
+          <div class="d-sub">Earlier</div>
+          <div class="d-threads">
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Onboarding screen copy</span></div>
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Set up EAS build profiles</span></div>
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">App icon variants</span></div>
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Share sheet crash on iOS 18</span></div>
+            <div class="d-thread"><span class="avatar xs green">A</span><span class="t">Push token refresh</span></div>
+          </div>
+        </div>
+        <div class="d-foot">
+          <span class="avatar user md36">AR</span>
+          <div class="who"><div class="n">Alex Rivera</div><div class="e">alex@example.com</div></div>
+          <button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button>
+        </div>
+      </div>
+      <div class="home-ind"></div>
+    </div>
+    <div class="frame-note">Tap a bot row to filter Recent to that bot; tap it again or the × chip to clear. Long-press a bot row to open its profile. Starting a new chat with a bot stays in the top bar picker.</div>
+  </section>
+</main>
+</body>
+</html>

@@ -133,7 +133,7 @@ const { MIN_BOUNDS, normalizeUnreadCount, resolveWindowState } = require("./wind
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // vite binds IPv4; a bare "localhost" can resolve to ::1.
 const DEV_URL = process.env.ELECTRON_START_URL ?? "http://127.0.0.1:5199";
-let SERVER_PORT = 8799;
+let SERVER_PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT) || 8799;
 const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 let desktopViewerWindow = null;
 let desktopViewerOwner = null;

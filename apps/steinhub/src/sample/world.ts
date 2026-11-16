@@ -10,6 +10,8 @@ export const bots: BotView[] = [
   {
     id: "mausbot",
     name: "MausBot",
+    chief: true,
+    threadId: "lease",
     glyph: "M",
     look: { body: "cursor", color: "purple" },
     role: "Chief of Staff",
@@ -21,6 +23,7 @@ export const bots: BotView[] = [
   {
     id: "mobile-app",
     name: "Mobile App",
+    threadId: "push-crash",
     glyph: "A",
     look: { body: "cursor", color: "green" },
     role: "Builds the SteinHub iOS app",
@@ -32,6 +35,7 @@ export const bots: BotView[] = [
   {
     id: "mac-helper",
     name: "Mac helper",
+    threadId: "downloads",
     glyph: "H",
     look: { body: "cursor", color: "orange" },
     role: "Runs tasks on the Mac",

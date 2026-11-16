@@ -20,6 +20,10 @@ export interface BotView {
   /** The sidebar section it is filed under on the computer; absent: the main Bots list. */
   section?: string;
   chief?: boolean;
+  /** The conversation the bot has open, where tapping it goes. */
+  threadId?: string;
+  folders?: FolderView[];
+  pinned?: boolean;
   glyph: string;
   look?: BotLook;
   role: string;
@@ -37,6 +41,19 @@ export interface ThreadView {
   botId: string;
   group: ThreadGroup;
   busy?: boolean;
+  unread?: boolean;
+  /** The folder it is filed in. */
+  folderId?: string;
+  /** The bot that opened it, when a bot rather than the person did. */
+  openedBy?: string;
+  /** Its newest activity, epoch ms. */
+  at?: number;
+}
+
+export interface FolderView {
+  id: string;
+  name: string;
+  emoji?: string;
 }
 
 export interface ApprovalView {
@@ -64,6 +81,8 @@ export interface HandoffView {
   result?: string;
   /** Where the work happens, when it is a conversation the phone can open. */
   threadId?: string;
+  /** The teammate it went to or came back from. */
+  botId?: string;
 }
 
 export type MessageView =
@@ -154,6 +173,16 @@ export function formatWhen(at: number, now = Date.now()): string {
   return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
 }
 
+/** "now", "5 min ago", "2 h ago", "3 d ago": how long since, as the desktop sidebar says it. */
+export function ago(at: number, now = Date.now()): string {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.floor(hours / 24)} d ago`;
+}
+
 /** "9:30" today, "Sun" this week, "Nov 3" before: the inbox's message times. */
 export function shortWhen(at: number, now = Date.now()): string {
   const days = Math.round((startOfDay(now) - startOfDay(at)) / DAY_MS);
@@ -214,6 +243,9 @@ export function botView(bot: WireBot, index: number, modelLabels: Record<string,
     name: bot.name,
     section: bot.section || undefined,
     chief: bot.chiefOfStaff === true || undefined,
+    threadId: bot.threadId || undefined,
+    folders: bot.projects?.map((project) => ({ id: project.id, name: project.name, emoji: project.emoji })),
+    pinned: bot.pinned === true || undefined,
     glyph: (Array.from(bot.name.trim())[0] ?? "?").toUpperCase(),
     look: botLook(bot),
     role: bot.title || bot.description,
@@ -232,13 +264,20 @@ export function threadViews(bots: readonly WireBot[], now = Date.now()): ThreadV
   const rows = bots.flatMap((bot) => (bot.tasks ?? []).filter((task) => listed(task, now)).map((task) => ({ bot, task })));
   const order = orderedThreadList(rows.map(({ task }) => task));
   const owner = new Map(rows.map(({ bot, task }) => [task.threadId, bot.id]));
-  return order.map((task) => ({
-    id: task.threadId,
-    title: task.title,
-    botId: owner.get(task.threadId) ?? "",
-    group: threadGroup(task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt, now),
-    busy: task.busy === true,
-  }));
+  return order.map((task) => {
+    const at = task.lastThreadOrderAt ?? task.updatedAt ?? task.createdAt;
+    return {
+      id: task.threadId,
+      title: task.title,
+      botId: owner.get(task.threadId) ?? "",
+      group: threadGroup(at, now),
+      busy: task.busy === true,
+      unread: task.unread === true || undefined,
+      folderId: task.projectId,
+      openedBy: task.openedBy?.name,
+      at,
+    };
+  });
 }
 
 export function taskOf(bots: readonly WireBot[], threadId: string): { bot: WireBot; task: WireTask } | null {
@@ -322,6 +361,7 @@ function handoffView(message: WireMessage): HandoffView | null {
     doneWhen: message.doneWhen?.trim() || undefined,
     result: result || undefined,
     threadId: message.threadRef?.threadId,
+    botId: message.threadRef?.botId ?? message.comm?.withBotId,
   };
 }
 
@@ -401,18 +441,22 @@ export function automationView(routine: Routine, runs: readonly RoutineRun[], ho
 }
 
 export interface BotSection {
-  /** null: the main Bots list, for bots in no section. */
-  name: string | null;
+  /** "chief": the Chief of Staff, apart; "main": bots in no section; "section": one of the computer's sections. */
+  kind: "chief" | "main" | "section";
+  name: string;
   bots: BotView[];
 }
 
-/** The desktop sidebar's order: unsectioned bots under Bots, then each section in the computer's order (a section
- * only a bot names comes after), its Chief of Staff first. Empty sections are left out. */
+/** The desktop sidebar's order: the Chief of Staff on its own, unsectioned bots under Bots, then each section in the
+ * computer's order (a section only a bot names comes after), its own Chief first. Empty sections are left out. */
 export function botSections(bots: readonly BotView[], order: readonly string[]): BotSection[] {
   const names = [...order];
   for (const bot of bots) if (bot.section && !names.includes(bot.section)) names.push(bot.section);
   const chiefFirst = (list: BotView[]) => [...list.filter((bot) => bot.chief), ...list.filter((bot) => !bot.chief)];
-  const sections: BotSection[] = [{ name: null, bots: chiefFirst(bots.filter((bot) => !bot.section)) }];
-  for (const name of names) sections.push({ name, bots: chiefFirst(bots.filter((bot) => bot.section === name)) });
+  const sections: BotSection[] = [
+    { kind: "chief", name: "Chief of Staff", bots: bots.filter((bot) => bot.chief && !bot.section) },
+    { kind: "main", name: "Bots", bots: bots.filter((bot) => !bot.chief && !bot.section) },
+    ...names.map((name): BotSection => ({ kind: "section", name, bots: chiefFirst(bots.filter((bot) => bot.section === name)) })),
+  ];
   return sections.filter((section) => section.bots.length > 0);
 }

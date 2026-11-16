@@ -1,0 +1,317 @@
+diff --git a/android/src/main/java/com/swmansion/enriched/markdown/segments/SegmentHeightMeasurer.kt b/android/src/main/java/com/swmansion/enriched/markdown/segments/SegmentHeightMeasurer.kt
+index 5397c9bad8d88c07d825fc74c57ad45384c6061c..8d0dd3e6e701c21a7dd33c3cb73cc5b71de9b4c8 100644
+--- a/android/src/main/java/com/swmansion/enriched/markdown/segments/SegmentHeightMeasurer.kt
++++ b/android/src/main/java/com/swmansion/enriched/markdown/segments/SegmentHeightMeasurer.kt
+@@ -133,7 +133,7 @@ object SegmentHeightMeasurer {
+ 
+         is RenderedSegment.Table -> {
+           totalHeightPx += style.tableStyle.marginTop.toInt()
+-          totalHeightPx += TableContainerView.measureTableNodeHeight(segment.node, style, context)
++          totalHeightPx += TableContainerView.measureTableNodeHeight(segment.node, style, context, contentWidthPx)
+           maxContentWidthPx = contentWidthPx
+           if (includeBottomMargin) {
+             totalHeightPx += style.tableStyle.marginBottom.toInt()
+diff --git a/android/src/main/java/com/swmansion/enriched/markdown/segments/TableContainerView.kt b/android/src/main/java/com/swmansion/enriched/markdown/segments/TableContainerView.kt
+index 3139c3dda1c5c46fd24e91edca489e60d18b5e4b..d1666cf854f3edf43bc8e3a0678f1f70c8790464 100644
+--- a/android/src/main/java/com/swmansion/enriched/markdown/segments/TableContainerView.kt
++++ b/android/src/main/java/com/swmansion/enriched/markdown/segments/TableContainerView.kt
+@@ -39,7 +39,9 @@ import com.swmansion.enriched.markdown.utils.text.span.prepareWidthAwareSpans
+ import com.swmansion.enriched.markdown.utils.text.view.LinkLongPressMovementMethod
+ import com.swmansion.enriched.markdown.utils.text.view.cancelJSTouchForLinkTap
+ import com.swmansion.enriched.markdown.views.ContextMenuPopup
++import kotlin.math.abs
+ import kotlin.math.ceil
++import kotlin.math.floor
+ import kotlin.math.max
+ import kotlin.math.min
+ 
+@@ -115,6 +117,7 @@ class TableContainerView(
+   private var totalTableWidth = 0f
+   private var totalTableHeight = 0f
+   private var tableMarkdown = ""
++  private var layoutWidth = 0f
+ 
+   init {
+     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+@@ -143,7 +146,7 @@ class TableContainerView(
+     columnCount = rows.maxOfOrNull { it.size } ?: 0
+     tableMarkdown = buildMarkdownFromRows()
+ 
+-    val (widths, heights) = computeTableDimensions(rows.map { row -> row.map { it.attributedText } }, styleConfig, context)
++    val (widths, heights) = computeTableDimensions(rows.map { row -> row.map { it.attributedText } }, styleConfig, context, layoutWidth)
+     columnWidths = widths
+     rowHeights = heights
+     totalTableWidth = columnWidths.sum() + tableStyle.borderWidth
+@@ -325,7 +328,7 @@ class TableContainerView(
+   private fun remeasureForImageLoad() {
+     if (rows.isEmpty()) return
+     val (widths, heights) =
+-      computeTableDimensions(rows.map { row -> row.map { it.attributedText } }, styleConfig, context)
++      computeTableDimensions(rows.map { row -> row.map { it.attributedText } }, styleConfig, context, layoutWidth)
+     if (widths == columnWidths && heights == rowHeights) return
+ 
+     columnWidths = widths
+@@ -343,6 +346,16 @@ class TableContainerView(
+     heightSpec: Int,
+   ) {
+     val measuredWidth = MeasureSpec.getSize(widthSpec)
++    if (rows.isNotEmpty() && measuredWidth > 0 && abs(measuredWidth - layoutWidth) > 0.5f) {
++      layoutWidth = measuredWidth.toFloat()
++      val (widths, heights) =
++        computeTableDimensions(rows.map { row -> row.map { it.attributedText } }, styleConfig, context, layoutWidth)
++      columnWidths = widths
++      rowHeights = heights
++      totalTableWidth = columnWidths.sum() + tableStyle.borderWidth
++      totalTableHeight = rowHeights.sum() + tableStyle.borderWidth
++      renderGrid()
++    }
+     val measuredHeight = ceil(totalTableHeight).toInt()
+     scrollView.measure(
+       MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
+@@ -450,10 +463,41 @@ class TableContainerView(
+       return spanned.getSpans(0, spanned.length, ImageSpan::class.java).any { !it.isInline }
+     }
+ 
++    /** Shrinks a table wider than maxWidth to fit it: columns already narrower than an even share keep their width, the
++     * rest split what is left and wrap. A table that cannot fit at the minimum column width keeps its natural widths and
++     * scrolls. */
++    private fun fitColumns(
++      columnWidths: FloatArray,
++      maxWidth: Float,
++      borderWidth: Float,
++      minColumnWidth: Float,
++    ) {
++      val available = maxWidth - borderWidth
++      if (maxWidth <= 0f || columnWidths.isEmpty() || available < minColumnWidth * columnWidths.size) return
++      if (columnWidths.sum() <= available) return
++      val open = columnWidths.indices.toMutableList()
++      var remaining = available
++      var settled = false
++      while (!settled && open.isNotEmpty()) {
++        settled = true
++        val share = remaining / open.size
++        val fits = open.filter { columnWidths[it] <= share }
++        if (fits.isNotEmpty()) {
++          fits.forEach { remaining -= columnWidths[it] }
++          open.removeAll(fits)
++          settled = false
++        }
++      }
++      if (open.isEmpty()) return
++      val share = floor(remaining / open.size)
++      open.forEach { columnWidths[it] = max(share, minColumnWidth) }
++    }
++
+     private fun computeTableDimensions(
+       texts: List<List<CharSequence>>,
+       config: StyleConfig,
+       context: Context,
++      maxWidth: Float = 0f,
+     ): Pair<List<Float>, List<Float>> {
+       val style = config.tableStyle
+       val density = context.resources.displayMetrics.density
+@@ -483,6 +527,9 @@ class TableContainerView(
+         }
+       }
+ 
++      val overhang = max(config.tableStyle.horizontalOverflow, 0f)
++      fitColumns(columnWidths, maxWidth - overhang * 2, style.borderWidth, minColumnWidth)
++
+       val rowHeights =
+         texts.map { row ->
+           row
+@@ -510,6 +557,7 @@ class TableContainerView(
+       node: MarkdownASTNode,
+       config: StyleConfig,
+       context: Context,
++      maxWidth: Float = 0f,
+     ): Float {
+       val tableStyle = config.tableStyle
+       val headerTypeface = config.tableHeaderTypeface ?: Typeface.DEFAULT_BOLD
+@@ -535,7 +583,7 @@ class TableContainerView(
+           }
+         }
+       if (texts.isEmpty()) return 0f
+-      val (_, heights) = computeTableDimensions(texts, config, context)
++      val (_, heights) = computeTableDimensions(texts, config, context, maxWidth)
+       return heights.sum() + tableStyle.borderWidth
+     }
+   }
+diff --git a/ios/internals/ENRMViewFreeMeasurement.h b/ios/internals/ENRMViewFreeMeasurement.h
+index 17b02e477dcdadf4c3dcf19744b8fc3b3ffda001..9d8eac1ce6568f5f4b94d9a163f5fd07ea354a25 100644
+--- a/ios/internals/ENRMViewFreeMeasurement.h
++++ b/ios/internals/ENRMViewFreeMeasurement.h
+@@ -371,7 +371,7 @@ static inline CGSize ENRMMeasureSegmentedMarkdownViewFree(const PropsT &typedPro
+                                                 allowFontScaling:typedProps.allowFontScaling
+                                            maxFontSizeMultiplier:typedProps.maxFontSizeMultiplier
+                                             writingDirectionMode:writingDirectionMode
+-                                         resolvedLayoutDirection:resolvedLayoutDirection];
++                                         resolvedLayoutDirection:resolvedLayoutDirection maxWidth:maxWidth];
+         maxContentWidth = maxWidth;
+         if (shouldAddBottomMargin) {
+           yOffset += config.tableMarginBottom;
+diff --git a/ios/segments/ENRMSegmentHeightMeasurer.mm b/ios/segments/ENRMSegmentHeightMeasurer.mm
+index 2fecee700b7e2b87df22aac519316dd4000244dc..10b3503dc113cb1a5270d720da3bf2df25fe9bb2 100644
+--- a/ios/segments/ENRMSegmentHeightMeasurer.mm
++++ b/ios/segments/ENRMSegmentHeightMeasurer.mm
+@@ -47,7 +47,7 @@ CGFloat ENRMMeasureSegmentsHeightViewFree(NSArray<ENRMRenderedSegment *> *segmen
+                                                   allowFontScaling:allowFontScaling
+                                              maxFontSizeMultiplier:config.maxFontSizeMultiplier
+                                               writingDirectionMode:writingDirectionMode
+-                                           resolvedLayoutDirection:resolvedLayoutDirection];
++                                           resolvedLayoutDirection:resolvedLayoutDirection maxWidth:contentWidth];
+       if (shouldAddBottomMargin) {
+         totalHeight += config.tableMarginBottom;
+       }
+diff --git a/ios/segments/TableContainerView.h b/ios/segments/TableContainerView.h
+index 0da3e9b75dfca52a7855f263ee41d344e9f31406..b5042e26f8ab4d6ffd15a86716daf92374b04843 100644
+--- a/ios/segments/TableContainerView.h
++++ b/ios/segments/TableContainerView.h
+@@ -24,14 +24,15 @@ typedef void (^TableLinkPressBlock)(NSString *url);
+ /// runs in `applyTableNode:`/`computeLayout` — shared statics, so measured and
+ /// rendered heights cannot drift — without creating any view. Safe on any
+ /// thread; the iOS counterpart of Android's
+-/// `TableContainerView.measureTableNodeHeight`. Table height is intrinsic
+-/// (content-sized columns, horizontal scroll), so no maxWidth parameter.
++/// `TableContainerView.measureTableNodeHeight`. A table wider than maxWidth
++/// narrows its widest columns to fit, which makes their rows taller.
+ + (CGFloat)measureHeightForTableNode:(MarkdownASTNode *)tableNode
+                               config:(StyleConfig *)config
+                     allowFontScaling:(BOOL)allowFontScaling
+                maxFontSizeMultiplier:(CGFloat)maxFontSizeMultiplier
+                 writingDirectionMode:(ENRMWritingDirectionMode)writingDirectionMode
+-             resolvedLayoutDirection:(NSWritingDirection)resolvedLayoutDirection;
++             resolvedLayoutDirection:(NSWritingDirection)resolvedLayoutDirection
++                            maxWidth:(CGFloat)maxWidth;
+ 
+ @property (nonatomic, strong) StyleConfig *config;
+ 
+diff --git a/ios/segments/TableContainerView.m b/ios/segments/TableContainerView.m
+index 1499704f398705c842e7cc8397048857738d0a29..44428c667d458397eff09da9eed8edd659818818 100644
+--- a/ios/segments/TableContainerView.m
++++ b/ios/segments/TableContainerView.m
+@@ -182,8 +182,50 @@ static void ENRMTableWireImageRedraw(NSArray<NSArray<TableCellData *> *> *rows,
+   return [allRows copy];
+ }
+ 
++// Shrinks a table wider than maxWidth to fit it: columns already narrower than an even share keep their width, the
++// rest split what is left and wrap. A table that cannot fit at the minimum column width keeps its natural widths and
++// scrolls.
++static void ENRMTableFitColumns(NSMutableArray<NSNumber *> *colWidths, CGFloat maxWidth, CGFloat borderWidth,
++                                CGFloat minimumColumnWidth)
++{
++  NSUInteger count = colWidths.count;
++  CGFloat available = maxWidth - borderWidth;
++  if (maxWidth <= 0 || count == 0 || available < minimumColumnWidth * count)
++    return;
++  CGFloat total = 0;
++  for (NSNumber *width in colWidths)
++    total += width.doubleValue;
++  if (total <= available)
++    return;
++
++  NSMutableArray<NSNumber *> *open = [NSMutableArray arrayWithCapacity:count];
++  for (NSUInteger i = 0; i < count; i++)
++    [open addObject:@(i)];
++  CGFloat remaining = available;
++  BOOL settled = NO;
++  while (!settled && open.count > 0) {
++    settled = YES;
++    CGFloat share = remaining / open.count;
++    for (NSInteger j = (NSInteger)open.count - 1; j >= 0; j--) {
++      NSUInteger column = open[(NSUInteger)j].unsignedIntegerValue;
++      CGFloat width = colWidths[column].doubleValue;
++      if (width <= share) {
++        remaining -= width;
++        [open removeObjectAtIndex:(NSUInteger)j];
++        settled = NO;
++      }
++    }
++  }
++  if (open.count == 0)
++    return;
++  CGFloat share = floor(remaining / open.count);
++  for (NSNumber *column in open)
++    colWidths[column.unsignedIntegerValue] = @(MAX(share, minimumColumnWidth));
++}
++
+ static void ENRMTableComputeLayout(NSArray<NSArray<TableCellData *> *> *rows, NSUInteger colCount, StyleConfig *config,
+-                                   CGFloat borderWidth, NSMutableArray<NSNumber *> *_Nullable *_Nullable outColWidths,
++                                   CGFloat borderWidth, CGFloat maxWidth,
++                                   NSMutableArray<NSNumber *> *_Nullable *_Nullable outColWidths,
+                                    NSMutableArray<NSNumber *> *_Nullable *_Nullable outRowHeights,
+                                    CGFloat *_Nullable outTotalWidth, CGFloat *_Nullable outTotalHeight)
+ {
+@@ -210,6 +252,8 @@ static void ENRMTableComputeLayout(NSArray<NSArray<TableCellData *> *> *rows, NS
+     }
+   }
+ 
++  ENRMTableFitColumns(colWidths, maxWidth - MAX(config.tableHorizontalOverflow, 0) * 2, borderWidth, minimumColumnWidth);
++
+   NSMutableArray<NSNumber *> *rowHeights = [NSMutableArray arrayWithCapacity:rows.count];
+   for (NSArray<TableCellData *> *row in rows) {
+     CGFloat maxHeight = 0;
+@@ -254,6 +298,7 @@ @implementation TableContainerView {
+   CGFloat _totalTableHeight;
+ 
+   NSString *_cachedMarkdown;
++  CGFloat _layoutWidth;
+ 
+   NSArray *_cachedAccessibilityElements;
+ 
+@@ -379,8 +424,8 @@ - (void)computeLayout
+   NSMutableArray<NSNumber *> *rowHeights = nil;
+   CGFloat totalWidth = 0;
+   CGFloat totalHeight = 0;
+-  ENRMTableComputeLayout(_rows, _colCount, self.config, self.config.tableBorderWidth, &colWidths, &rowHeights,
+-                         &totalWidth, &totalHeight);
++  ENRMTableComputeLayout(_rows, _colCount, self.config, self.config.tableBorderWidth, _layoutWidth, &colWidths,
++                         &rowHeights, &totalWidth, &totalHeight);
+   _colWidths = colWidths;
+   _rowHeights = rowHeights;
+   _totalTableWidth = totalWidth;
+@@ -393,6 +438,7 @@ + (CGFloat)measureHeightForTableNode:(MarkdownASTNode *)tableNode
+                maxFontSizeMultiplier:(CGFloat)maxFontSizeMultiplier
+                 writingDirectionMode:(ENRMWritingDirectionMode)writingDirectionMode
+              resolvedLayoutDirection:(NSWritingDirection)resolvedLayoutDirection
++                            maxWidth:(CGFloat)maxWidth
+ {
+   NSUInteger colCount = 0;
+   NSArray<NSArray<TableCellData *> *> *rows =
+@@ -402,7 +448,7 @@ + (CGFloat)measureHeightForTableNode:(MarkdownASTNode *)tableNode
+     return 0;
+ 
+   CGFloat totalHeight = 0;
+-  ENRMTableComputeLayout(rows, colCount, config, config.tableBorderWidth, NULL, NULL, NULL, &totalHeight);
++  ENRMTableComputeLayout(rows, colCount, config, config.tableBorderWidth, maxWidth, NULL, NULL, NULL, &totalHeight);
+   return totalHeight;
+ }
+ 
+@@ -770,8 +816,13 @@ - (CGFloat)measureHeight:(CGFloat)maxWidth
+ {
+   if (_rows.count == 0)
+     return 0;
+-  if (_rowHeights.count == 0)
++  if (maxWidth > 0 && fabs(maxWidth - _layoutWidth) > 0.5) {
++    _layoutWidth = maxWidth;
++    [self computeLayout];
++    [self renderGrid];
++  } else if (_rowHeights.count == 0) {
+     [self computeLayout];
++  }
+   return _totalTableHeight;
+ }
+ 
+@@ -790,6 +841,12 @@ - (CGFloat)alignOffsetForFreeSpace:(CGFloat)freeSpace
+ - (void)layoutSubviews
+ {
+   [super layoutSubviews];
++  CGFloat boundsWidth = self.bounds.size.width;
++  if (_rows.count > 0 && boundsWidth > 0 && fabs(boundsWidth - _layoutWidth) > 0.5) {
++    _layoutWidth = boundsWidth;
++    [self computeLayout];
++    [self renderGrid];
++  }
+   _scrollView.frame = self.bounds;
+ #if !TARGET_OS_OSX
+   CGFloat overhang = MAX(self.config.tableHorizontalOverflow, 0);

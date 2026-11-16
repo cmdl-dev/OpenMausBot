@@ -93,8 +93,10 @@ function withMessage(world: LiveWorld, threadId: string, message: WireMessage): 
   };
 }
 
+/** A bot from a reply that leaves out its conversations keeps the ones already known. */
 function botsWithFrame(bots: readonly WireBot[], bot: WireBot): WireBot[] {
-  return upsert(bots, bot, (a, b) => a.id === b.id);
+  const known = bots.find((existing) => existing.id === bot.id);
+  return upsert(bots, known && bot.tasks === undefined ? { ...bot, tasks: known.tasks } : bot, (a, b) => a.id === b.id);
 }
 
 function withRuntime(world: LiveWorld, frame: Extract<ServerFrame, { kind: "runtime" }>): LiveWorld {

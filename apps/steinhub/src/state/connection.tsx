@@ -29,6 +29,12 @@ export interface Connection {
   stop(botId: string, threadId: string): Promise<void>;
   respond(threadId: string, requestId: string, answer: { behavior: "allow" | "deny" | "answer"; message?: string }): Promise<void>;
   setRoutineEnabled(routineId: string, enabled: boolean): Promise<void>;
+  /** A new conversation with the bot, in a folder when given. Resolves to its thread. */
+  newThread(botId: string, folderId?: string): Promise<string>;
+  newFolder(botId: string, folder: { name: string; emoji?: string }): Promise<void>;
+  setPinned(botId: string, pinned: boolean): Promise<void>;
+  markRead(botId: string, threadId: string): Promise<void>;
+  deleteBot(botId: string): Promise<void>;
   /** An `/api/attachments/…` path as an image source on the paired computer, with this device's token. */
   attachmentSource(path: string): { uri: string; headers: Record<string, string> } | null;
   runRoutine(routineId: string): Promise<void>;
@@ -238,6 +244,47 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => live.current?.retryNow(), []);
 
+  const newThread = useCallback(
+    async (botId: string, folderId?: string) => {
+      const created = await client().newThread(botId, folderId);
+      dispatch({ type: "frame", frame: { kind: "bot", bot: created.bot } });
+      return created.task.threadId;
+    },
+    [client],
+  );
+
+  const newFolder = useCallback(
+    async (botId: string, folder: { name: string; emoji?: string }) => {
+      const reply = await client().newFolder(botId, folder);
+      dispatch({ type: "frame", frame: { kind: "bot", bot: reply.bot } });
+    },
+    [client],
+  );
+
+  const setPinned = useCallback(
+    async (botId: string, pinned: boolean) => {
+      const reply = await client().setPinned(botId, pinned);
+      dispatch({ type: "frame", frame: { kind: "bot", bot: reply.bot } });
+    },
+    [client],
+  );
+
+  const markRead = useCallback(
+    async (botId: string, threadId: string) => {
+      const reply = await client().markRead(botId, threadId);
+      dispatch({ type: "frame", frame: { kind: "bot", bot: reply.bot } });
+    },
+    [client],
+  );
+
+  const deleteBot = useCallback(
+    async (botId: string) => {
+      await client().deleteBot(botId);
+      dispatch({ type: "frame", frame: { kind: "bot.deleted", botId } });
+    },
+    [client],
+  );
+
   const attachmentSource = useCallback(
     (path: string) => {
       if (mode !== "live" || !session) return null;
@@ -266,8 +313,13 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setRoutineEnabled,
       runRoutine,
       attachmentSource,
+      newThread,
+      newFolder,
+      setPinned,
+      markRead,
+      deleteBot,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, attachmentSource, newThread, newFolder, setPinned, markRead, deleteBot],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

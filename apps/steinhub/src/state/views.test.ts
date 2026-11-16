@@ -138,8 +138,8 @@ test("work handed to a teammate and its answer read as hand-off rows", () => {
     },
   ]);
   expect(views).toEqual([
-    { id: "h1", from: "handoff", label: "Sent to eBay Seller", ok: true, doneWhen: "Fees and subscription costs compared", result: undefined, threadId: "t9" },
-    { id: "h2", from: "handoff", label: "eBay Seller replied", ok: true, doneWhen: undefined, result: "Basic Store is the best option.", threadId: "t9" },
+    { id: "h1", from: "handoff", label: "Sent to eBay Seller", ok: true, doneWhen: "Fees and subscription costs compared", result: undefined, threadId: "t9", botId: "b2" },
+    { id: "h2", from: "handoff", label: "eBay Seller replied", ok: true, doneWhen: undefined, result: "Basic Store is the best option.", threadId: "t9", botId: "b2" },
   ]);
 });
 
@@ -185,15 +185,16 @@ test("times and tools read the way the mockups write them", () => {
   expect(toolLabel(undefined)).toBe("Question");
 });
 
-test("bots group into the computer's sections, unsectioned first and each Chief of Staff on top", () => {
+test("the Chief of Staff stands apart, then unsectioned bots, then the computer's sections with their own Chief first", () => {
   const view = (id: string, section?: string, chief?: boolean) => ({ ...botView(bot({ id, name: id }), 0, {}), section, chief });
   const sections = botSections(
-    [view("a"), view("sales-1", "Sales"), view("ops-1", "Ops"), view("sales-chief", "Sales", true), view("b")],
+    [view("a"), view("sales-1", "Sales"), view("ops-1", "Ops"), view("sales-chief", "Sales", true), view("maus", undefined, true), view("b")],
     ["Sales", "Empty"],
   );
-  expect(sections.map((section) => [section.name, section.bots.map((entry) => entry.id)])).toEqual([
-    [null, ["a", "b"]],
-    ["Sales", ["sales-chief", "sales-1"]],
-    ["Ops", ["ops-1"]],
+  expect(sections.map((section) => [section.kind, section.name, section.bots.map((entry) => entry.id)])).toEqual([
+    ["chief", "Chief of Staff", ["maus"]],
+    ["main", "Bots", ["a", "b"]],
+    ["section", "Sales", ["sales-chief", "sales-1"]],
+    ["section", "Ops", ["ops-1"]],
   ]);
 });

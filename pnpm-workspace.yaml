@@ -26,3 +26,7 @@ onlyBuiltDependencies:
 overrides:
   dompurify: 3.4.17
   fast-uri: 3.1.9
+# react-native-enriched-markdown 1.2.0 sizes table columns without the available width, so a wide table runs off a
+# phone screen. The patch narrows the widest columns to fit and wraps them, on iOS and Android.
+patchedDependencies:
+  react-native-enriched-markdown@1.2.0: patches/react-native-enriched-markdown@1.2.0.patch

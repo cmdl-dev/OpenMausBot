@@ -1,12 +1,13 @@
 import type {
   BotsResponse,
+  BotUpdateResponse,
   CompanionEndpointsSnapshot,
   InstancesResponse,
   TaskResponse,
   WireMessagePage,
 } from "@openmausbot/phone-protocol/responses.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
-import type { ServerFrame, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
+import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import { createSseParser } from "@/api/sse";
 import type { Transport } from "@/api/transport";
 
@@ -56,7 +57,13 @@ export function desktopClient(transport: Transport) {
       const suffix = query.toString() ? `?${query}` : "";
       return transport.request<WireMessagePage>("GET", `/api/threads/${id(threadId)}/messages${suffix}`);
     },
-    newThread: (botId: string) => transport.request<TaskResponse>("POST", `/api/bots/${id(botId)}/tasks`, {}),
+    newThread: (botId: string, folderId?: string) =>
+      transport.request<TaskResponse>("POST", `/api/bots/${id(botId)}/tasks`, folderId ? { projectId: folderId } : {}),
+    newFolder: (botId: string, folder: { name: string; emoji?: string }) =>
+      transport.request<{ bot: WireBot }>("POST", `/api/bots/${id(botId)}/projects`, folder),
+    setPinned: (botId: string, pinned: boolean) => transport.request<BotUpdateResponse>("PATCH", `/api/bots/${id(botId)}`, { pinned }),
+    markRead: (botId: string, threadId: string) => transport.request<{ bot: WireBot }>("POST", `/api/bots/${id(botId)}/read`, { threadId }),
+    deleteBot: (botId: string) => transport.request<unknown>("DELETE", `/api/bots/${id(botId)}`),
     send: (botId: string, message: { text: string; threadId: string; sendId: string }) =>
       transport.request<SendReply>("POST", `/api/bots/${id(botId)}/messages`, message),
     interrupt: (botId: string, threadId: string) =>

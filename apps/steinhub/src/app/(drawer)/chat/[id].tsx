@@ -128,7 +128,7 @@ export default function ChatScreen() {
             {live && !loaded ? "Loading…" : "Messages in this thread will appear here."}
           </Txt>
         ) : (
-          messages.map((message) => <Message key={message.id} message={message} bot={bot} onAnswer={answer} hostName={world.host.name} />)
+          messages.map((message) => <Message key={message.id} message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />)
         )}
       </ScrollView>
     </Screen>
@@ -152,7 +152,7 @@ function ReplyHeader({ bot, note, live }: { bot: BotView; note?: string; live?: 
   );
 }
 
-function Handoff({ handoff }: { handoff: HandoffView }) {
+function Handoff({ handoff, teammate }: { handoff: HandoffView; teammate: BotView | null }) {
   const [open, setOpen] = useState(false);
   const Icon = handoff.result ? CornerDownLeft : Send;
   const target = handoff.threadId;
@@ -165,7 +165,11 @@ function Handoff({ handoff }: { handoff: HandoffView }) {
         onPress={target ? () => router.navigate({ pathname: "/chat/[id]", params: { id: target } }) : undefined}
         style={({ pressed }) => [styles.handoffChip, pressed && styles.pressed]}
       >
-        <Icon size={14} color={handoff.ok ? colors.text2 : colors.danger} strokeWidth={size.iconStroke} />
+        {teammate ? (
+          <Avatar bot={teammate} label={teammate.glyph} tint={teammate.tint} size="xs" />
+        ) : (
+          <Icon size={14} color={handoff.ok ? colors.text2 : colors.danger} strokeWidth={size.iconStroke} />
+        )}
         <Txt variant="subhead" numberOfLines={1} style={[styles.handoffLabel, !handoff.ok && styles.errorText]}>
           {handoff.label}
         </Txt>
@@ -199,7 +203,19 @@ function Handoff({ handoff }: { handoff: HandoffView }) {
   );
 }
 
-function Message({ message, bot, onAnswer, hostName }: { message: MessageView; bot: BotView; onAnswer: Answer; hostName: string }) {
+function Message({
+  message,
+  bot,
+  onAnswer,
+  hostName,
+  findBot,
+}: {
+  message: MessageView;
+  bot: BotView;
+  onAnswer: Answer;
+  hostName: string;
+  findBot: (botId: string | undefined) => BotView | null;
+}) {
   switch (message.from) {
     case "user":
       return (
@@ -227,7 +243,7 @@ function Message({ message, bot, onAnswer, hostName }: { message: MessageView; b
         </View>
       );
     case "handoff":
-      return <Handoff handoff={message} />;
+      return <Handoff handoff={message} teammate={findBot(message.botId)} />;
     case "approval":
       return <ApprovalCard card={message} onAnswer={onAnswer} hostName={hostName} />;
   }

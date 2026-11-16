@@ -1,6 +1,6 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Calendar, Inbox, Mail, PenLine, type LucideIcon } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
@@ -26,7 +26,12 @@ function greeting(hour: number): string {
 export default function HomeScreen() {
   const world = useWorld();
   const { send } = useConnection();
+  const { bot: requestedBot } = useLocalSearchParams<{ bot?: string }>();
   const [chosenId, setChosenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (requestedBot) setChosenId(requestedBot);
+  }, [requestedBot]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);

@@ -158,3 +158,20 @@ test("deny sends deny", async () => {
   await fireEvent.press(screen.getByText("Deny"));
   await waitFor(() => expect(desktop.calls.find((call) => call.path === "/api/threads/t1/respond")?.body).toEqual({ requestId: "r1", behavior: "deny" }));
 });
+
+test("the field stays empty after Send when the keyboard writes its correction back", async () => {
+  const { desktop } = await openChat();
+  const field = screen.getByLabelText("Message");
+  await fireEvent.changeText(field, "let me know when I get the berification");
+  await fireEvent.press(screen.getByLabelText("Send"));
+  await fireEvent.changeText(field, "let me know when I get the verification");
+
+  await waitFor(() => expect(desktop.calls.some((call) => call.path === "/api/bots/b1/messages")).toBe(true));
+  expect(screen.getByLabelText("Message").props.value).toBe("");
+
+  const later = Date.now() + 1_000;
+  const clock = jest.spyOn(Date, "now").mockReturnValue(later);
+  await fireEvent.changeText(screen.getByLabelText("Message"), "Thanks");
+  clock.mockRestore();
+  expect(screen.getByLabelText("Message").props.value).toBe("Thanks");
+});

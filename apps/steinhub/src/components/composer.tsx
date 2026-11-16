@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import { ArrowUp, Camera, FileText, ImageIcon, Mic, Paperclip, Square, X, type LucideIcon } from "lucide-react-native";
 import { useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View, type TextInputInstance } from "react-native";
 import { composeMessage, type SentAttachment } from "@/api/attachments";
 import { problemText } from "@/api/errors";
 import { IconButton } from "@/components/icon-button";
@@ -37,6 +37,17 @@ interface Chip {
 
 const PHOTO_LIMIT = 5;
 
+/** How long after Send the field refuses a whole line arriving at once. */
+const ECHO_WINDOW_MS = 600;
+
+/**
+ * iOS (UIKit autocorrect, RN 0.88 Fabric) applies a pending correction when the field is cleared
+ * and reports the old line, corrected, as a change. A person can't type more than a letter that fast.
+ */
+export function isClearEcho(next: string, clearedAt: number, now: number): boolean {
+  return now - clearedAt < ECHO_WINDOW_MS && next.length > 1;
+}
+
 function locale(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
@@ -61,6 +72,17 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const [note, setNote] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const spokenFrom = useRef("");
+  const dictating = useRef(false);
+  const clearedAt = useRef(0);
+  const input = useRef<TextInputInstance>(null);
+
+  function typed(next: string) {
+    if (isClearEcho(next, clearedAt.current, Date.now())) {
+      input.current?.clear();
+      return;
+    }
+    setText(next);
+  }
 
   const uploading = chips.some((chip) => !chip.sent && !chip.failed);
   const ready = chips.flatMap((chip) => (chip.sent ? [chip.sent] : []));
@@ -68,8 +90,12 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const showStop = Boolean(onStop) && !canSend && !uploading;
 
   useSpeechRecognitionEvent("start", () => setListening(true));
-  useSpeechRecognitionEvent("end", () => setListening(false));
+  useSpeechRecognitionEvent("end", () => {
+    dictating.current = false;
+    setListening(false);
+  });
   useSpeechRecognitionEvent("result", (event) => {
+    if (!dictating.current) return;
     setText(joined(spokenFrom.current, event.results[0]?.transcript ?? ""));
   });
   useSpeechRecognitionEvent("error", (event) => {
@@ -89,6 +115,7 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
       return;
     }
     spokenFrom.current = text;
+    dictating.current = true;
     ExpoSpeechRecognitionModule.start({
       lang: locale(),
       interimResults: true,
@@ -161,9 +188,14 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
 
   async function send() {
     if (!canSend) return;
-    if (listening) ExpoSpeechRecognitionModule.stop();
+    if (dictating.current) {
+      dictating.current = false;
+      ExpoSpeechRecognitionModule.abort();
+    }
     const words = text.trim();
     const kept = chips;
+    clearedAt.current = Date.now();
+    input.current?.clear();
     setText("");
     setChips([]);
     setNote(null);
@@ -217,9 +249,10 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
           onPress={() => setMenuOpen((open) => !open)}
         />
         <TextInput
+          ref={input}
           accessibilityLabel="Message"
           value={text}
-          onChangeText={setText}
+          onChangeText={typed}
           placeholder={listening ? "Listening…" : `Ask ${botName} anything`}
           placeholderTextColor={colors.text3}
           selectionColor={colors.text}

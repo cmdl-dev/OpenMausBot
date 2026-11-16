@@ -2,6 +2,7 @@
 export const ExpoSpeechRecognitionModule = {
   start: () => undefined,
   stop: () => undefined,
+  abort: () => undefined,
   requestPermissionsAsync: async () => ({ granted: false }),
   supportsOnDeviceRecognition: () => false,
 };

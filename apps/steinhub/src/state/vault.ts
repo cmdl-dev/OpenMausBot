@@ -1,4 +1,4 @@
-import { BRAND_NAMES, cardExpired, expiryLabel } from "@openmausbot/phone-protocol/payment-card.ts";
+import { BRAND_NAMES, cardExpired, cardTitle, expiryLabel } from "@openmausbot/phone-protocol/payment-card.ts";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import type { VaultBots, VaultKind, VaultReply } from "@/api/client";
@@ -60,11 +60,11 @@ export function vaultRows(reply: VaultReply, names: (id: string) => string | und
     ...(reply.cards ?? []).map((card) => ({
       kind: "card" as const,
       id: card.id,
-      title: card.name,
+      title: cardTitle(card),
       subtitle: `${BRAND_NAMES[card.brand]} ending ${card.last4} · Expires ${expiryLabel(card.expMonth, card.expYear)}`,
       detail: detail(card.bots, card.lastUsedAt),
       readOnly: false,
-      ...(cardExpired(card.expMonth, card.expYear, today) ? { warning: "Expired" } : {}),
+      ...(cardExpired(card, today) ? { warning: "Expired" } : {}),
     })),
   ];
   return rows.sort((a, b) => VAULT_KINDS.indexOf(a.kind) - VAULT_KINDS.indexOf(b.kind) || a.title.localeCompare(b.title));

@@ -1,4 +1,4 @@
-import { CARD_NAME_MAX, CARD_TEXT_MAX, groupCardNumber, groupExpiry, parseCard } from "@openmausbot/phone-protocol/payment-card.ts";
+import { CARD_HOLDER_MAX, CARD_NAME_MAX, CARD_POSTAL_MAX, groupCardNumber, groupExpiry, parseCard } from "@openmausbot/phone-protocol/payment-card.ts";
 import { router, useLocalSearchParams } from "expo-router";
 import { Check, LockKeyhole } from "lucide-react-native";
 import { useState } from "react";
@@ -39,9 +39,11 @@ function itemOf(kind: VaultKind, fields: Fields, bots: VaultBots): { item: NewVa
     if (!text("value")) return { problem: "Enter the secret." };
     return { item: { kind, name: text("name"), value: fields.value ?? "", bots } };
   }
-  const card = { number: fields.number ?? "", expiry: fields.expiry ?? "", securityCode: fields.securityCode ?? "", nameOnCard: text("nameOnCard"), postalCode: text("postalCode"), name: text("name") };
-  const checked = parseCard(card, new Date());
-  return checked.ok ? { item: { kind, ...card, bots } } : { problem: checked.error };
+  const checked = parseCard(
+    { name: text("name"), number: fields.number ?? "", expiry: fields.expiry ?? "", cvc: fields.cvc ?? "", holder: text("holder"), postalCode: text("postalCode"), bots },
+    new Date(),
+  );
+  return checked.ok ? { item: { kind, ...checked.card } } : { problem: checked.error };
 }
 
 export default function VaultAddScreen() {
@@ -151,20 +153,20 @@ export default function VaultAddScreen() {
                 {field("expiry", "Expiry", { placeholder: "MM/YY", keyboardType: "number-pad", maxLength: 7, onChangeText: (value) => set("expiry")(groupExpiry(value)) })}
               </View>
               <View style={styles.fill}>
-                {field("securityCode", "Security code", {
+                {field("cvc", "Security code", {
                   placeholder: "•••",
                   keyboardType: "number-pad",
                   secureTextEntry: true,
                   maxLength: 4,
-                  onChangeText: (value) => set("securityCode")(value.replace(/\D/g, "")),
+                  onChangeText: (value) => set("cvc")(value.replace(/\D/g, "")),
                 })}
               </View>
             </View>
-            {field("nameOnCard", "Name on card (optional)", { autoCapitalize: "words", maxLength: CARD_TEXT_MAX })}
-            {field("postalCode", "Billing postal code (optional)", { autoCapitalize: "characters", maxLength: CARD_TEXT_MAX })}
-            {field("name", "Name (optional)", { placeholder: "Visa ending 4242", autoCapitalize: "sentences", maxLength: CARD_NAME_MAX })}
+            {field("holder", "Name on card (optional)", { autoCapitalize: "words", maxLength: CARD_HOLDER_MAX })}
+            {field("postalCode", "Billing ZIP or postal code (optional)", { autoCapitalize: "characters", maxLength: CARD_POSTAL_MAX })}
+            {field("name", "Name (optional)", { placeholder: "Personal Visa", autoCapitalize: "sentences", maxLength: CARD_NAME_MAX })}
             <Txt variant="footnote" tone="tertiary">
-              Bots ask for its parts by this name, such as its number or expiry.
+              A bot pays with it only after you approve that payment in chat. The computer types the card into the checkout; the bot never sees it.
             </Txt>
           </>
         ) : null}

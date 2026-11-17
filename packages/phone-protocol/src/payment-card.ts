@@ -1,48 +1,48 @@
 /**
- * Payment cards in the Vault. A card is kept encrypted on the computer like a saved secret, and a bot asks for each part
- * by name ("<card name> number", "<card name> expiry" …) as it asks for a saved secret. Clients see a card as its name,
- * brand, last four digits and expiry: no route returns its number or security code.
+ * A saved payment card as a phone reads and adds it: GET /api/vault's `cards` and POST /api/vault/cards, which the
+ * server checks with shared/payment-cards.ts. No route returns a card's number or security code. A bot pays with a card
+ * only through fill_card, after the person approves that payment.
  */
 
-/** Which bots may use it: every bot, or the ones named (the same choice a saved login takes). */
-export type CardBots = "all" | string[];
+export type CardBrand = "visa" | "mastercard" | "amex" | "discover" | "diners" | "jcb" | "unionpay" | "other";
 
-export type CardBrand = "visa" | "mastercard" | "amex" | "discover" | "diners" | "jcb" | "unionpay" | "card";
+/** Which bots may use it: every bot, or the ones named. */
+export type CardBots = "all" | string[];
 
 /** One saved card as the Vault lists it. */
 export interface VaultCard {
   id: string;
-  /** What the person called it, such as "Work Amex"; by default its brand and last four digits. */
+  /** What the person called it, such as Personal Visa; may be empty. */
   name: string;
   brand: CardBrand;
   last4: string;
   expMonth: number;
   /** Four digits. */
   expYear: number;
+  holder?: string;
+  postalCode?: string;
+  hasCvc: boolean;
   bots: CardBots;
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number;
 }
 
-/** A card as a client sends it to POST /api/vault/cards. */
+/** The body of POST /api/vault/cards. */
 export interface NewCardInput {
-  name?: string;
+  name: string;
   number: string;
-  /** MM/YY or MM/YYYY. */
-  expiry: string;
-  securityCode: string;
-  nameOnCard?: string;
+  expMonth: number;
+  expYear: number;
+  cvc?: string;
+  holder?: string;
   postalCode?: string;
-  bots?: CardBots;
+  bots: CardBots;
 }
 
-export const CARD_NAME_MAX = 60;
-export const CARD_TEXT_MAX = 80;
-
-/** The parts of a card a bot may ask for, each as "<card name> <part>". */
-export const CARD_PARTS = ["number", "expiry", "security code", "name on card", "billing postal code"] as const;
-export type CardPart = (typeof CARD_PARTS)[number];
+export const CARD_NAME_MAX = 80;
+export const CARD_HOLDER_MAX = 120;
+export const CARD_POSTAL_MAX = 16;
 
 export const BRAND_NAMES: Record<CardBrand, string> = {
   visa: "Visa",
@@ -52,14 +52,15 @@ export const BRAND_NAMES: Record<CardBrand, string> = {
   diners: "Diners Club",
   jcb: "JCB",
   unionpay: "UnionPay",
-  card: "Card",
+  other: "Card",
 };
 
 export function cardDigits(raw: string): string {
   return raw.replace(/[\s-]/gu, "");
 }
 
-export function luhnValid(digits: string): boolean {
+export function validCardNumber(raw: string): boolean {
+  const digits = cardDigits(raw);
   if (!/^\d{12,19}$/u.test(digits)) return false;
   let sum = 0;
   for (let index = 0; index < digits.length; index++) {
@@ -73,23 +74,22 @@ export function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
-/** The brand its leading digits name (the issuer ranges networks publish). */
-export function cardBrand(digits: string): CardBrand {
-  const first2 = Number(digits.slice(0, 2));
-  const first4 = Number(digits.slice(0, 4));
+/** The brand its leading digits name, as the server reads it. */
+export function cardBrand(number: string): CardBrand {
+  const digits = cardDigits(number);
   if (digits.startsWith("4")) return "visa";
-  if ((first2 >= 51 && first2 <= 55) || (first4 >= 2221 && first4 <= 2720)) return "mastercard";
-  if (first2 === 34 || first2 === 37) return "amex";
-  if (/^(?:6011|65|64[4-9])/u.test(digits)) return "discover";
-  if (/^(?:30[0-5]|36|38|39)/u.test(digits)) return "diners";
-  if (first4 >= 3528 && first4 <= 3589) return "jcb";
+  if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/u.test(digits)) return "mastercard";
+  if (/^3[47]/u.test(digits)) return "amex";
+  if (/^(6011|65|64[4-9])/u.test(digits)) return "discover";
+  if (/^3(0[0-5]|[689])/u.test(digits)) return "diners";
+  if (/^35(2[89]|[3-8])/u.test(digits)) return "jcb";
   if (digits.startsWith("62")) return "unionpay";
-  return "card";
+  return "other";
 }
 
 /** "1234 5678 9012 3456", or "3782 822463 10005" for American Express, as the person types it. */
 export function groupCardNumber(raw: string): string {
-  const digits = cardDigits(raw).replace(/\D/gu, "").slice(0, 19);
+  const digits = raw.replace(/\D/gu, "").slice(0, 19);
   const groups = cardBrand(digits) === "amex" ? [4, 6, 5] : [4, 4, 4, 4, 3];
   const parts: string[] = [];
   let at = 0;
@@ -112,64 +112,62 @@ export function parseExpiry(raw: string): { month: number; year: number } | null
   if (!match) return null;
   const month = Number(match[1]);
   const year = match[2]!.length === 2 ? 2000 + Number(match[2]) : Number(match[2]);
-  return month >= 1 && month <= 12 ? { month, year } : null;
+  return month >= 1 && month <= 12 && year >= 2000 && year < 2100 ? { month, year } : null;
 }
 
-/** A card is good through the last day of its expiry month. */
-export function cardExpired(month: number, year: number, now: Date): boolean {
-  return year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1);
+/** Past the last day of its expiry month. */
+export function cardExpired(card: { expMonth: number; expYear: number }, now: Date): boolean {
+  return card.expYear < now.getFullYear() || (card.expYear === now.getFullYear() && card.expMonth < now.getMonth() + 1);
 }
 
 export function expiryLabel(month: number, year: number): string {
   return `${String(month).padStart(2, "0")}/${String(year % 100).padStart(2, "0")}`;
 }
 
-export function defaultCardName(brand: CardBrand, last4: string): string {
-  return `${BRAND_NAMES[brand]} ending ${last4}`;
+/** A card as the Vault names it: its own name, or its brand and last four digits. */
+export function cardTitle(card: { name: string; brand: CardBrand; last4: string }): string {
+  return card.name.trim() || `${BRAND_NAMES[card.brand]} ending ${card.last4}`;
 }
 
 export const CARD_ERRORS = {
-  number: "Enter the card number. That one doesn't look right: check its digits.",
+  number: "Enter the whole card number. That one doesn't look right: check its digits.",
   expiry: "Enter the expiry as MM/YY.",
   expired: "That card has expired.",
-  securityCode: "Enter the 3 or 4 digit security code from the card.",
+  cvc: "The security code is the 3 digits on the back of the card (4 on the front for American Express).",
   name: `Give the card a name of at most ${CARD_NAME_MAX} characters.`,
-  text: `Keep the name on the card and postal code to ${CARD_TEXT_MAX} characters.`,
+  holder: `The name on the card can be at most ${CARD_HOLDER_MAX} characters.`,
+  postalCode: `The billing ZIP or postal code can be at most ${CARD_POSTAL_MAX} letters and digits.`,
 } as const;
 
-export interface ParsedCard {
-  name: string;
-  number: string;
-  brand: CardBrand;
-  expMonth: number;
-  expYear: number;
-  securityCode: string;
-  nameOnCard?: string;
-  postalCode?: string;
-}
-
-function plainText(raw: unknown): string {
-  return typeof raw === "string" ? [...raw].map((ch) => (ch.charCodeAt(0) < 0x20 || ch === "\u007f" ? " " : ch)).join("").trim() : "";
-}
-
-/** A card the person typed, checked as the server checks it, so a form can say what is wrong before it is sent. */
-export function parseCard(input: Partial<Record<keyof NewCardInput, unknown>>, now: Date): { ok: true; card: ParsedCard } | { ok: false; field: keyof typeof CARD_ERRORS; error: string } {
+/** What the person typed, as POST /api/vault/cards takes it, or what to fix first. */
+export function parseCard(
+  input: { name: string; number: string; expiry: string; cvc: string; holder: string; postalCode: string; bots: CardBots },
+  now: Date,
+): { ok: true; card: NewCardInput } | { ok: false; field: keyof typeof CARD_ERRORS; error: string } {
   const fail = (field: keyof typeof CARD_ERRORS) => ({ ok: false as const, field, error: CARD_ERRORS[field] });
-  const number = typeof input.number === "string" ? cardDigits(input.number) : "";
-  if (!luhnValid(number)) return fail("number");
-  const expiry = typeof input.expiry === "string" ? parseExpiry(input.expiry) : null;
+  if (!validCardNumber(input.number)) return fail("number");
+  const expiry = parseExpiry(input.expiry);
   if (!expiry) return fail("expiry");
-  if (cardExpired(expiry.month, expiry.year, now)) return fail("expired");
-  const brand = cardBrand(number);
-  const securityCode = typeof input.securityCode === "string" ? input.securityCode.trim() : "";
-  if (!(brand === "amex" ? /^\d{4}$/u : /^\d{3,4}$/u).test(securityCode)) return fail("securityCode");
-  const name = plainText(input.name) || defaultCardName(brand, number.slice(-4));
+  if (cardExpired({ expMonth: expiry.month, expYear: expiry.year }, now)) return fail("expired");
+  const cvc = input.cvc.trim();
+  if (!(cardBrand(input.number) === "amex" ? /^\d{4}$/u : /^\d{3,4}$/u).test(cvc)) return fail("cvc");
+  const name = input.name.trim();
   if (name.length > CARD_NAME_MAX) return fail("name");
-  const nameOnCard = plainText(input.nameOnCard);
-  const postalCode = plainText(input.postalCode);
-  if (nameOnCard.length > CARD_TEXT_MAX || postalCode.length > CARD_TEXT_MAX) return fail("text");
+  const holder = input.holder.trim();
+  if (holder.length > CARD_HOLDER_MAX) return fail("holder");
+  const postalCode = input.postalCode.trim();
+  if (postalCode && (postalCode.length > CARD_POSTAL_MAX || !/^[\p{L}\p{N} -]+$/u.test(postalCode))) return fail("postalCode");
   return {
     ok: true,
-    card: { name, number, brand, expMonth: expiry.month, expYear: expiry.year, securityCode, ...(nameOnCard ? { nameOnCard } : {}), ...(postalCode ? { postalCode } : {}) },
+    card: {
+      name,
+      number: cardDigits(input.number),
+      expMonth: expiry.month,
+      expYear: expiry.year,
+      cvc,
+      ...(holder ? { holder } : {}),
+      ...(postalCode ? { postalCode } : {}),
+      bots: input.bots,
+    },
   };
 }

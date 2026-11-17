@@ -94,7 +94,7 @@ const SAMPLE_APPS: { catalog: AppCatalogReply; connected: AppConnectionsReply } 
 const SAMPLE_VAULT: VaultReply = {
   logins: [{ id: "l1", site: "zillow.com", hosts: ["zillow.com"], username: "ada@example.com", hasTotp: true, source: "settings", bots: "all", lastUsedAt: Date.now() - 86_400_000 }],
   secrets: [{ id: "s1", name: "Stripe secret key", source: "card", bots: "all" }],
-  cards: [{ id: "c1", name: "Visa ending 4242", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, bots: "all", createdAt: 1, updatedAt: 1 }],
+  cards: [{ id: "c1", name: "Personal Visa", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, hasCvc: true, bots: "all", createdAt: 1, updatedAt: 1 }],
 };
 /** The demo world's memory: every sample bot remembers the same few things about Alex. */
 const SAMPLE_MEMORY: MemoryReply = {

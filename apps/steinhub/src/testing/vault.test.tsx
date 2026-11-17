@@ -48,7 +48,7 @@ const VAULT: VaultReply = {
     { id: "s1", name: "Stripe secret key", source: "settings", bots: ["b2"] },
     { id: "s2", name: "Notion token", source: "linked", provider: "1password", bots: "all" },
   ],
-  cards: [{ id: "c1", name: "Visa ending 4242", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, bots: "all", createdAt: 1, updatedAt: 1 }],
+  cards: [{ id: "c1", name: "", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, hasCvc: true, bots: "all", createdAt: 1, updatedAt: 1 }],
 };
 
 async function openPaired(initialUrl: string, routes: Parameters<typeof fakeFetch>[0] = {}) {
@@ -109,7 +109,7 @@ test("a card is checked before it is sent, then sent once to the computer's Vaul
   await fireEvent.press(screen.getByText("Save to Vault"));
   await waitFor(() => expect(desktop.calls.some((call) => call.method === "POST" && call.path === "/api/vault/cards")).toBe(true));
   const sent = desktop.calls.find((call) => call.method === "POST")!;
-  expect(sent.body).toEqual({ number: "4242 4242 4242 4242", expiry: "08/29", securityCode: "737", nameOnCard: "", postalCode: "", name: "", bots: ["b2"] });
+  expect(sent.body).toEqual({ name: "", number: "4242424242424242", expMonth: 8, expYear: 2029, cvc: "737", bots: ["b2"] });
 });
 
 test("a login goes to the Vault's logins, and the form hands back to the Vault", async () => {

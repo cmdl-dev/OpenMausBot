@@ -2,10 +2,9 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Loader2, LockKeyhole } from "lucide-react";
 
 import type { LoginBots } from "../../shared/logins";
-import { CARD_NAME_MAX, CARD_TEXT_MAX, groupCardNumber, groupExpiry, parseCard } from "../../shared/payment-card";
 import { VAULT_SECRET_NAME_MAX, type VaultSecret } from "../../shared/vault";
 import { t } from "@/lib/i18n";
-import { addCard, addSecret, changeSecret, importEnv, parseEnv } from "@/lib/vault";
+import { addSecret, changeSecret, importEnv, parseEnv } from "@/lib/vault";
 import { LoginBotPicker } from "./LoginForm";
 
 // Security: what was typed is dropped once saved, and a saved value is never shown: it can only be replaced.
@@ -118,76 +117,6 @@ export function EnvImportForm({ bots, onCancel, onSaved }: { bots: Bots; onCance
       </label>
       <LoginBotPicker value={who} onChange={setWho} bots={bots} disabled={pending} />
       {done !== null && <p role="status" className="text-[12px] text-ink-secondary">{t("settings.vault.env.done", { count: String(done) })}</p>}
-    </Shell>
-  );
-}
-
-/** A payment card: checked here as the server checks it, then sent once. */
-export function CardForm({ bots, onCancel, onSaved }: { bots: Bots; onCancel: () => void; onSaved: () => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [number, setNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [securityCode, setSecurityCode] = useState("");
-  const [nameOnCard, setNameOnCard] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [who, setWho] = useState<LoginBots>("all");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (pending) return;
-    const card = { name, number, expiry, securityCode, nameOnCard, postalCode, bots: who };
-    const checked = parseCard(card, new Date());
-    if (!checked.ok) { setError(checked.error); return; }
-    setPending(true);
-    setError(null);
-    try {
-      await addCard(card);
-      setNumber("");
-      setSecurityCode("");
-      await onSaved();
-    } catch (cause) {
-      setError(cause instanceof Error && cause.message ? cause.message : t("settings.vault.card.saveError"));
-    } finally {
-      setPending(false);
-    }
-  };
-  return (
-    <Shell form="card-form" onSubmit={(event) => void submit(event)} onCancel={onCancel} pending={pending} error={error} submitLabel={t("settings.vault.card.save")}>
-      <label className={LABEL}>
-        {t("settings.vault.card.number")}
-        <input name="cardNumber" type="text" inputMode="numeric" autoComplete="off" spellCheck={false} required autoFocus dir="ltr" value={number} placeholder="1234 5678 9012 3456"
-          onChange={(event) => setNumber(groupCardNumber(event.target.value))} disabled={pending} className={`${FIELD} font-mono`} />
-      </label>
-      <div className="grid grid-cols-2 gap-2.5">
-        <label className={LABEL}>
-          {t("settings.vault.card.expiry")}
-          <input name="cardExpiry" type="text" inputMode="numeric" autoComplete="off" required dir="ltr" value={expiry} placeholder="MM/YY"
-            onChange={(event) => setExpiry(groupExpiry(event.target.value))} disabled={pending} className={FIELD} />
-        </label>
-        <label className={LABEL}>
-          {t("settings.vault.card.securityCode")}
-          <input name="cardSecurityCode" type="password" inputMode="numeric" autoComplete="off" required maxLength={4} dir="ltr" value={securityCode} placeholder="•••"
-            onChange={(event) => setSecurityCode(event.target.value.replace(/\D/gu, ""))} disabled={pending} className={FIELD} />
-        </label>
-      </div>
-      <label className={LABEL}>
-        {t("settings.vault.card.nameOnCard")}
-        <input name="cardHolder" type="text" autoComplete="off" spellCheck={false} maxLength={CARD_TEXT_MAX} value={nameOnCard}
-          onChange={(event) => setNameOnCard(event.target.value)} disabled={pending} className={FIELD} />
-      </label>
-      <label className={LABEL}>
-        {t("settings.vault.card.postalCode")}
-        <input name="cardPostalCode" type="text" autoComplete="off" spellCheck={false} maxLength={CARD_TEXT_MAX} value={postalCode}
-          onChange={(event) => setPostalCode(event.target.value)} disabled={pending} className={FIELD} />
-      </label>
-      <label className={LABEL}>
-        {t("settings.vault.card.name")}
-        <input name="cardName" type="text" autoComplete="off" spellCheck={false} maxLength={CARD_NAME_MAX} value={name} placeholder={t("settings.vault.card.namePlaceholder")}
-          onChange={(event) => setName(event.target.value)} disabled={pending} className={FIELD} />
-        <span className="text-[12px] font-normal leading-snug text-ink-tertiary">{t("settings.vault.card.nameHint")}</span>
-      </label>
-      <LoginBotPicker value={who} onChange={setWho} bots={bots} disabled={pending} />
     </Shell>
   );
 }

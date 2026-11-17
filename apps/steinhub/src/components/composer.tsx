@@ -8,6 +8,7 @@ import { composeMessage, type SentAttachment } from "@/api/attachments";
 import { problemText } from "@/api/errors";
 import { DictationBar } from "@/components/dictation-bar";
 import { IconButton } from "@/components/icon-button";
+import { PasteImageButton, savePastedImage, useClipboardImage } from "@/components/paste-image";
 import { Txt } from "@/components/text";
 import { useConnection } from "@/state/connection";
 import { colors, radius, size, space, type } from "@/theme";
@@ -37,6 +38,9 @@ interface Chip {
 }
 
 const PHOTO_LIMIT = 5;
+
+/** How long Paste image stays after the field loses focus, so the tap that blurred it still lands. */
+const PASTE_LINGER_MS = 600;
 
 /** How long Done waits for the recognizer's last words before keeping what it has. */
 const FINAL_RESULT_MS = 1500;
@@ -96,6 +100,10 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const setText = onChangeText ?? setOwn;
   const [chips, setChips] = useState<Chip[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clipboard = useClipboardImage();
+  const [pastedAt, setPastedAt] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [dictation, setDictation] = useState<{ spoken: string; finishing: boolean } | null>(null);
   const listening = useRef(false);
@@ -132,6 +140,7 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   useEffect(
     () => () => {
       if (listening.current) ExpoSpeechRecognitionModule.abort();
+      if (blurTimer.current) clearTimeout(blurTimer.current);
     },
     [],
   );
@@ -199,6 +208,17 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
       );
     }
   }
+
+  function paste(dataUri: string) {
+    setPastedAt(clipboard.version);
+    setMenuOpen(false);
+    savePastedImage(dataUri).then(
+      (pick) => attach([pick]),
+      (error: unknown) => setNote(error instanceof Error ? error.message : "Couldn't paste that image."),
+    );
+  }
+
+  const offerPaste = clipboard.hasImage && pastedAt !== clipboard.version && (focused || menuOpen);
 
   function pickFromMenu(source: Source) {
     choose(source)
@@ -290,6 +310,7 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
         </View>
       ) : null}
       {menuOpen ? <AttachMenu onChoose={pickFromMenu} /> : null}
+      {offerPaste && !dictation ? <PasteImageButton onImage={paste} onError={setNote} /> : null}
       {dictation ? (
         <DictationBar transcript={dictation.spoken} finishing={dictation.finishing} onCancel={cancelDictation} onDone={doneDictating} />
       ) : (
@@ -306,6 +327,13 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
             accessibilityLabel="Message"
             value={text}
             onChangeText={typed}
+            onFocus={() => {
+              if (blurTimer.current) clearTimeout(blurTimer.current);
+              setFocused(true);
+            }}
+            onBlur={() => {
+              blurTimer.current = setTimeout(() => setFocused(false), PASTE_LINGER_MS);
+            }}
             placeholder={`Ask ${botName} anything`}
             placeholderTextColor={colors.text3}
             selectionColor={colors.text}

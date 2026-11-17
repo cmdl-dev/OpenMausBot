@@ -1,5 +1,6 @@
 import { router, useGlobalSearchParams, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
+import { launchedFromPush } from "@/state/push";
 import type { BotView, ThreadView } from "@/state/views";
 import { useWorld } from "@/state/world";
 
@@ -20,7 +21,7 @@ export function useOpenChiefOnLaunch(): void {
 
   useEffect(() => {
     if (settled.current || world.source !== "live") return;
-    if (pathname !== "/" || Object.keys(params).length > 0) {
+    if (pathname !== "/" || Object.keys(params).length > 0 || launchedFromPush()) {
       settled.current = true;
       return;
     }

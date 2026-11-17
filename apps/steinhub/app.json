@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "scheme": "steinhub",
     "userInterfaceStyle": "automatic",
+    "extra": {
+      "apnsEnvironment": "sandbox"
+    },
     "backgroundColor": "#000000",
     "platforms": [
       "ios",
@@ -38,6 +41,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "mode": "development"
+        }
+      ],
       [
         "expo-local-authentication",
         {

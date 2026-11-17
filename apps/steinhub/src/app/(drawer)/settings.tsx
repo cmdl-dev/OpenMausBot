@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { FlaskConical, LockKeyhole, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
+import { Bell, FlaskConical, LockKeyhole, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, Platform, StyleSheet, Switch, View } from "react-native";
 import { Avatar } from "@/components/avatar";
@@ -90,6 +90,17 @@ export default function SettingsScreen() {
           <Row title="Pair another computer" leading={<Plus {...iconProps} />} onPress={() => router.navigate("/onboarding")} />
         )}
         {live ? <Row title="Unpair this phone" destructive leading={<Unlink size={size.icon} color={colors.danger} strokeWidth={size.iconStroke} />} onPress={unpair} /> : null}
+      </Group>
+
+      <SectionLabel>Notifications</SectionLabel>
+      <Group>
+        <Row
+          title="Notifications"
+          value={prefs.quiet.on ? `Quiet ${prefs.quiet.start}–${prefs.quiet.end}` : undefined}
+          leading={<Bell {...iconProps} />}
+          chevron
+          onPress={() => router.push("/notifications")}
+        />
       </Group>
 
       <SectionLabel>Appearance</SectionLabel>

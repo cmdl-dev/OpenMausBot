@@ -7,6 +7,7 @@ import type {
   WireMessagePage,
 } from "@openmausbot/phone-protocol/responses.ts";
 import type { NewCardInput, VaultCard } from "@openmausbot/phone-protocol/payment-card.ts";
+import { PHONE_PUSH_ROUTE, type PhonePushAnswer, type PhonePushRegistration } from "@openmausbot/phone-protocol/phone-push.ts";
 import type { InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
@@ -190,6 +191,8 @@ export function desktopClient(transport: Transport) {
     setRoutineEnabled: (routineId: string, enabled: boolean) =>
       transport.request<{ routine: Routine }>("PATCH", `/api/routines/${id(routineId)}`, { enabled }),
     runRoutine: (routineId: string) => transport.request<unknown>("POST", `/api/routines/${id(routineId)}/run`, {}),
+    pushDevice: () => transport.request<PhonePushAnswer>("GET", PHONE_PUSH_ROUTE),
+    registerPush: (registration: PhonePushRegistration) => transport.request<PhonePushAnswer>("PUT", PHONE_PUSH_ROUTE, registration),
     vault: () => transport.request<VaultReply>("GET", "/api/vault"),
     addToVault: ({ kind, ...fields }: NewVaultItem) => transport.request<unknown>("POST", VAULT_PATHS[kind], fields),
     removeFromVault: (kind: VaultKind, itemId: string) => transport.request<unknown>("DELETE", `${VAULT_PATHS[kind]}/${id(itemId)}`),

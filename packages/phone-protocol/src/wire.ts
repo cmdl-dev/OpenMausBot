@@ -456,6 +456,8 @@ export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCard
      * collapsed transcript, never as message body, and the model's replay folds it back after `text`. */
     | { kind: "audio"; path: string; mime: string; durationMs?: number; text?: string }
   >;
+  /** A note a bot posted with notify_person: the person was notified and opens the conversation here. */
+  alert?: { title: string };
   card?: OptionCardData;
   /** widget rows (kind "widget"): a bot-authored UI tree. `text` is its
    * readable fallback for clients that do not know the kind. */

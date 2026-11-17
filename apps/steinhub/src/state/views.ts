@@ -100,7 +100,18 @@ export interface HandoffView {
 
 export type MessageView =
   | { id: string; from: "user"; text: string; attachments?: SentAttachment[]; pending?: "sending" | "failed" }
-  | { id: string; from: "bot"; text: string; at?: number; streaming?: boolean; images?: SentAttachment[] }
+  | {
+      id: string;
+      from: "bot";
+      text: string;
+      at?: number;
+      streaming?: boolean;
+      images?: SentAttachment[];
+      /** The computer's id for the message, which a notification can point at. */
+      messageId?: string;
+      /** A note the bot posted with notify_person. */
+      alert?: { title: string };
+    }
   | { id: string; from: "working" }
   | HandoffView
   | ApprovalView;
@@ -356,7 +367,15 @@ export function messageViews(
     }
     const images = sentImages(message);
     if (HIDDEN_KINDS.has(message.kind) || (!message.text && !images.length)) continue;
-    views.push({ id: message.itemId ? replyKey(message.itemId) : message.id, from: "bot", text: message.text ?? "", at: message.at, ...(images.length ? { images } : {}) });
+    views.push({
+      id: message.itemId ? replyKey(message.itemId) : message.id,
+      from: "bot",
+      text: message.text ?? "",
+      at: message.at,
+      messageId: message.id,
+      ...(images.length ? { images } : {}),
+      ...(message.alert ? { alert: { title: message.alert.title } } : {}),
+    });
   }
   for (const send of extras.pending ?? []) {
     views.push({ id: `send:${send.sendId}`, from: "user", ...userLine(send.text), pending: send.failed ? "failed" : "sending" });

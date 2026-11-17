@@ -36,8 +36,17 @@ export const PUSH_TITLE_MAX = 200;
 
 /** The kinds a closed app is woken for: a bot waits on the person (approval, question, sign-in), or a reply is ready.
  * Everything else reaches the phone only while it is connected. */
-export const PUSH_KINDS = ["approval", "question", "sign-in", "done"] as const;
+export const PUSH_KINDS = ["approval", "question", "sign-in", "done", "alert", "wait"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
+/** What a registration without `kinds` gets: the kinds every phone had before alerts and waits could be pushed. */
+export const DEFAULT_PUSH_KINDS: readonly PushKind[] = ["approval", "question", "sign-in", "done"];
+
+/** A window in which pushes still arrive but silently: "HH:MM" in 24 hours, in an IANA time zone; it may cross midnight. */
+export interface QuietHours {
+  start: string;
+  end: string;
+  timeZone: string;
+}
 
 /** `PUT /api/push/device`, from the phone. */
 export interface PhonePushRegistration {
@@ -46,9 +55,13 @@ export interface PhonePushRegistration {
   /** APNs only: `sandbox` for a development build. */
   environment?: ApnsEnvironment;
   pairing?: string;
-  /** The kinds this phone wants pushed, from its own notification switches. Absent: all of `PUSH_KINDS`. Empty: none,
+  /** The kinds this phone wants pushed, from its own notification switches. Absent: `DEFAULT_PUSH_KINDS`. Empty: none,
    * the registration is kept. */
   kinds?: PushKind[];
+  /** APNs only: the app's bundle id when it is not the official app. A server holding its own APNs key for that bundle
+   * sends to Apple directly; otherwise the relay is used. */
+  bundle?: string;
+  quiet?: QuietHours;
 }
 
 /** Whether pushes can leave this server at all: `off` until the owner switches phone push on, `no-account` while it
@@ -61,6 +74,8 @@ export interface PublicPushDevice {
   environment: ApnsEnvironment;
   pairing?: string;
   kinds: PushKind[];
+  bundle?: string;
+  quiet?: QuietHours;
   updatedAt: number;
 }
 
@@ -79,6 +94,7 @@ export interface PhonePushNotification {
   threadId: string;
   roomId?: string;
   roomName?: string;
+  messageId?: string;
 }
 
 export interface PushRelaySendRequest {

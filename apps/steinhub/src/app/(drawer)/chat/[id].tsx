@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowDown, Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
+import { ArrowDown, Bell, Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from "react-native";
 import { attachmentUrlPath, type SentAttachment } from "@/api/attachments";
@@ -21,7 +21,7 @@ import { colors, radius, size, space } from "@/theme";
 type Answer = (card: ApprovalView, option: string) => Promise<void>;
 
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, message: target } = useLocalSearchParams<{ id: string; message?: string }>();
   const world = useWorld();
   const connection = useConnection();
   const { thread, bot, messages, loaded, hasMore } = world.detail(id);
@@ -32,6 +32,11 @@ export default function ChatScreen() {
   const [scrolledUp, setScrolledUp] = useState(false);
   const live = world.source === "live";
   const { loadThread } = connection;
+  const offsets = useRef(new Map<string, number>());
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const reached = useRef<string | null>(null);
+  const olderTries = useRef(0);
+  const targetView = target ? messages.find((message) => message.from === "bot" && message.messageId === target) : undefined;
   const streaming = messages.some((message) => (message.from === "bot" && message.streaming) || message.from === "working");
 
   const loadError = loadFailure ? problemText(loadFailure, world.host.name) : null;
@@ -45,6 +50,26 @@ export default function ChatScreen() {
     following.current = true;
     setScrolledUp(false);
     scroller.current?.scrollToEnd({ animated: true });
+  }
+
+  useEffect(() => {
+    if (!target || reached.current === target || !loaded) return;
+    if (targetView) return;
+    if (hasMore && olderTries.current < OLDER_PAGES_FOR_TARGET) {
+      olderTries.current += 1;
+      loadThread(id, { older: true }).catch(() => undefined);
+    }
+  }, [target, targetView, loaded, hasMore, id, loadThread]);
+
+  function reveal(viewId: string, y: number) {
+    offsets.current.set(viewId, y);
+    if (!target || reached.current === target || targetView?.id !== viewId) return;
+    reached.current = target;
+    following.current = false;
+    setScrolledUp(true);
+    setHighlighted(viewId);
+    setTimeout(() => scroller.current?.scrollTo({ y: Math.max(0, y - space[4]), animated: true }), 50);
+    setTimeout(() => setHighlighted((current) => (current === viewId ? null : current)), HIGHLIGHT_MS);
   }
 
   useEffect(() => {
@@ -120,7 +145,7 @@ export default function ChatScreen() {
           scrollEventThrottle={64}
           onScroll={onScroll}
           onContentSizeChange={() => {
-            if (following.current) scroller.current?.scrollToEnd({ animated: false });
+            if (following.current && !(target && reached.current !== target)) scroller.current?.scrollToEnd({ animated: false });
           }}
         >
           {hasMore ? (
@@ -149,7 +174,16 @@ export default function ChatScreen() {
               {live && !loaded ? "Loading…" : "Messages in this thread will appear here."}
             </Txt>
           ) : (
-            messages.map((message) => <Message key={message.id} message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />)
+            messages.map((message) => (
+              <View
+                key={message.id}
+                onLayout={(event) => reveal(message.id, event.nativeEvent.layout.y)}
+                style={highlighted === message.id ? styles.highlight : undefined}
+                accessibilityState={highlighted === message.id ? { selected: true } : undefined}
+              >
+                <Message message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />
+              </View>
+            ))
           )}
         </ScrollView>
         {scrolledUp ? (
@@ -306,6 +340,14 @@ function BotReply({ message, bot }: { message: Extract<MessageView, { from: "bot
   return (
     <View style={styles.reply}>
       <ReplyHeader bot={bot} note={message.streaming ? "Writing" : message.at ? clock(message.at) : "9:40"} live={message.streaming} />
+      {message.alert ? (
+        <View style={styles.alert} accessibilityLabel={`Notified you: ${message.alert.title}`}>
+          <Bell size={14} color={colors.warning} strokeWidth={size.iconStroke} />
+          <Txt variant="footnote" weight="600" style={styles.alertText} numberOfLines={2}>
+            {message.alert.title}
+          </Txt>
+        </View>
+      ) : null}
       {message.text ? <Markdown fadesIn={streamed}>{message.text}</Markdown> : null}
       {message.images ? <SentFiles files={message.images} /> : null}
       {message.text || message.images ? null : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
@@ -405,6 +447,9 @@ function ApprovalCard({ card, onAnswer, hostName }: { card: ApprovalView; onAnsw
 
 /** How close to the end still counts as reading the latest message, so new text keeps it in view. */
 const NEAR_BOTTOM = 80;
+/** How many earlier pages a notification's message is looked for in before the chat settles for the latest. */
+const OLDER_PAGES_FOR_TARGET = 5;
+const HIGHLIGHT_MS = 2_500;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
@@ -432,6 +477,20 @@ const styles = StyleSheet.create({
   },
   sending: { opacity: 0.6 },
   sentFiles: { gap: space[2], marginBottom: space[1] },
+  highlight: { backgroundColor: colors.warningBg, borderRadius: radius.md },
+  alert: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: space[1],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    backgroundColor: colors.warningBg,
+  },
+  alertText: { color: colors.warning, flexShrink: 1 },
   sentImage: { width: 200, height: 150, borderRadius: radius.md, backgroundColor: colors.surface3 },
   sentFile: { flexDirection: "row", alignItems: "center", gap: space[2], maxWidth: 240 },
   shrink: { flexShrink: 1 },

@@ -73,7 +73,7 @@ test("tool rows stay out of the thread; cards become approvals", () => {
   ]);
   expect(views).toEqual([
     { id: "m1", from: "user", text: "Send it" },
-    { id: "m2", from: "bot", text: "Drafted.", at: NOW },
+    { id: "m2", from: "bot", text: "Drafted.", at: NOW, messageId: "m2" },
     expect.objectContaining({ id: "c1", from: "approval", kind: "permission", action: "Send email", state: "pending", requestId: "r1", preview: "Hi Jordan" }),
   ]);
 });
@@ -100,7 +100,7 @@ test("streamed text shows until the saved message with its item id arrives", () 
   const saved = run(streaming, { type: "frame", frame: { kind: "message", threadId: "t1", message: text("m9", "bot", "Hello", { itemId: "i1" }) } });
   expect(saved.streaming.t1).toEqual([]);
   expect(saved.threads.t1.messages.map((message) => message.id)).toEqual(["m9"]);
-  expect(messageViews(saved.threads.t1.messages)).toEqual([{ id: "item:i1", from: "bot", text: "Hello", at: NOW }]);
+  expect(messageViews(saved.threads.t1.messages)).toEqual([{ id: "item:i1", from: "bot", text: "Hello", at: NOW, messageId: "m9" }]);
 });
 
 test("a sent line stays pending until its echo carries the same send id", () => {

@@ -34,7 +34,9 @@ export type NotifyKind =
   | "wait"
   /** Something OpenMausBot changed on its own that the person hears about
    * once: a tool turned off for the bots it doesn't start for. */
-  | "notice";
+  | "notice"
+  /** A bot flagged something important for the person with notify_person. */
+  | "alert";
 
 export interface Notification {
   kind: NotifyKind;
@@ -53,6 +55,8 @@ export interface Notification {
   /** On a Team Cloud, the one person this is for (their person key): a teammate tagged by name, or the person a bot
    * passed a message to. It reaches nobody else, an admin included. */
   forPerson?: string;
+  /** The message to open it at, when the notification points at one. */
+  messageId?: string;
 }
 
 /** A `Notification` as the feed stores it: the live `notify` frame and `GET /api/notifications` carry the same entry. */

@@ -4,6 +4,25 @@ import { useSyncExternalStore } from "react";
 export type ThemeChoice = "system" | "dark" | "light";
 export type TextSize = "small" | "default" | "large" | "xlarge";
 
+/** Which pushes this phone asks its computer for. */
+export interface NotifyChoices {
+  /** A bot waits on an approval, an answer or a sign-in. */
+  needsYou: boolean;
+  /** A bot flagged something important with notify_person. */
+  alerts: boolean;
+  /** A wait the person asked for ("tell me when…") fired. */
+  reminders: boolean;
+  /** Every finished reply, routine reports included. */
+  replies: boolean;
+}
+
+export interface Quiet {
+  on: boolean;
+  /** "HH:MM", 24 hours. */
+  start: string;
+  end: string;
+}
+
 export interface Preferences {
   theme: ThemeChoice;
   textSize: TextSize;
@@ -11,9 +30,23 @@ export interface Preferences {
   lock: boolean;
   /** The bot a new chat starts with, by id; the first bot when unset or gone. */
   defaultBot: string | null;
+  notify: NotifyChoices;
+  quiet: Quiet;
+  /** The app has asked iOS once whether it may notify. */
+  pushAsked: boolean;
 }
 
-export const DEFAULTS: Preferences = { theme: "system", textSize: "default", lock: false, defaultBot: null };
+export const DEFAULTS: Preferences = {
+  theme: "system",
+  textSize: "default",
+  lock: false,
+  defaultBot: null,
+  notify: { needsYou: true, alerts: true, reminders: true, replies: false },
+  quiet: { on: false, start: "22:00", end: "07:00" },
+  pushAsked: false,
+};
+
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const TEXT_SCALES: Record<TextSize, number> = { small: 0.9, default: 1, large: 1.15, xlarge: 1.3 };
 export const TEXT_SIZE_LABELS: Record<TextSize, string> = { small: "Small", default: "Default", large: "Large", xlarge: "Extra large" };
@@ -33,10 +66,25 @@ function parse(raw: string | null | undefined): Preferences {
       textSize: typeof read.textSize === "string" && read.textSize in TEXT_SCALES ? (read.textSize as TextSize) : "default",
       lock: read.lock === true,
       defaultBot: typeof read.defaultBot === "string" && read.defaultBot ? read.defaultBot : null,
+      notify: parseNotify(read.notify),
+      quiet: parseQuiet(read.quiet),
+      pushAsked: read.pushAsked === true,
     };
   } catch {
     return DEFAULTS;
   }
+}
+
+function parseNotify(raw: unknown): NotifyChoices {
+  const value = raw && typeof raw === "object" ? (raw as Partial<Record<keyof NotifyChoices, unknown>>) : {};
+  const flag = (key: keyof NotifyChoices) => (typeof value[key] === "boolean" ? (value[key] as boolean) : DEFAULTS.notify[key]);
+  return { needsYou: flag("needsYou"), alerts: flag("alerts"), reminders: flag("reminders"), replies: flag("replies") };
+}
+
+function parseQuiet(raw: unknown): Quiet {
+  const value = raw && typeof raw === "object" ? (raw as Partial<Record<keyof Quiet, unknown>>) : {};
+  const clock = (key: "start" | "end") => (typeof value[key] === "string" && CLOCK.test(value[key] as string) ? (value[key] as string) : DEFAULTS.quiet[key]);
+  return { on: value.on === true, start: clock("start"), end: clock("end") };
 }
 
 /** The theme and text size are read before the first screen draws, since every style is built once at start. A store

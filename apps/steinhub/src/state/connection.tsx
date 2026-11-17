@@ -4,6 +4,7 @@ import { File } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
+import type { PhonePushAnswer, PhonePushRegistration } from "@openmausbot/phone-protocol/phone-push.ts";
 import {
   desktopClient,
   type AppCatalogReply,
@@ -60,6 +61,8 @@ export interface Connection {
   appStatus(slug: string): Promise<AppConnection | null>;
   /** Starts a sign-in on the computer and resolves to the page the person finishes it on. */
   connectApp(slug: string, alias?: string): Promise<string>;
+  /** Registers this phone for pushes with the computer, or updates what it asks for. */
+  registerPush(registration: PhonePushRegistration): Promise<PhonePushAnswer>;
   /** The Vault's logins, secrets and cards, by name only: no value ever comes back. */
   vault(): Promise<VaultReply>;
   /** Sends a value to the computer's Vault once. */
@@ -349,6 +352,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [mode, client],
   );
 
+  const registerPush = useCallback(
+    async (registration: PhonePushRegistration) => {
+      if (mode !== "live") throw new Error("Notifications need a paired computer.");
+      return await client().registerPush(registration);
+    },
+    [mode, client],
+  );
+
   const vault = useCallback(async () => (mode === "demo" ? SAMPLE_VAULT : await client().vault()), [mode, client]);
 
   const addToVault = useCallback(
@@ -489,6 +500,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       vault,
       addToVault,
       removeFromVault,
+      registerPush,
     }),
     [
       mode,
@@ -524,6 +536,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       vault,
       addToVault,
       removeFromVault,
+      registerPush,
     ],
   );
 

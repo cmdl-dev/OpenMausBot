@@ -29,7 +29,7 @@ import { isRemoteMcpServer, mcpServerServes, parseStoredMcpServer } from "./mcp-
 import { parseJson, schemaIssue, type JsonObject, type JsonValue } from "./schema.ts";
 import { deciderConfigSchema, type DeciderConfig } from "./decider/config.ts";
 import { fishKeyFromLiveKey, liveConfigSchema, liveConfigWithEnv, liveSettingEnv, type LiveConfig } from "./live-config.ts";
-import { browserEngineConfigSchema, isValidCdpTarget, type BrowserEngineConfig } from "./browser/config.ts";
+import { browserEngineConfigSchema, type BrowserEngineConfig } from "./browser/config.ts";
 import { roomContextSettings } from "./room-context-settings.ts";
 import { localVmConfigSchema } from "./local-vm-settings.ts";
 export * from "./local-vm-settings.ts";
@@ -94,13 +94,12 @@ const browserProfileSchema = z.object({
   // Lowercase only: Chromium partition directories collide on case-insensitive filesystems.
   id: z.string().regex(BROWSER_PROFILE_ID).refine((id) => id !== "guest", "guest is reserved"),
   name: z.string().trim().min(1).max(40),
-  /** "chrome" uses the person's own running Chrome (My Chrome); absent is the built-in browser. */
-  browser: z.literal("chrome").optional(),
 }).strict();
 const legacyBrowserProfileSchema = z.object({
   id: z.string().regex(LEGACY_BROWSER_PROFILE_ID).refine((id) => id !== "guest", "guest is reserved"),
   name: z.string().trim().min(1).max(40),
   partitionId: z.string().regex(LEGACY_BROWSER_PROFILE_ID).refine((id) => id !== "guest", "guest is reserved").optional(),
+  /** A My Chrome profile from before My Chrome was removed: read, then dropped, so the profile runs on OpenMausBot's Chrome. */
   browser: z.literal("chrome").optional(),
 }).strict();
 
@@ -188,7 +187,6 @@ function migrateStoredBrowserProfiles(
     const id = canonicalIds[index]!;
     const partitionId = effectivePartitions[index]!;
     const migrated: BrowserProfile = { id, name: profile.name };
-    if (profile.browser) migrated.browser = profile.browser;
     if (partitionId !== id) migrated.partitionId = partitionId;
     if (!aliases.has(profile.id)) aliases.set(profile.id, id);
     return migrated;
@@ -584,11 +582,6 @@ export function parseConfigPatch(value: JsonValue): ConfigPatch {
 
 export function vpsSshAlias(cfg: AppConfig): string | null {
   return isValidSshAlias(cfg.vps?.sshAlias) ? cfg.vps.sshAlias : null;
-}
-
-/** Revalidated because the value is forwarded into a child process environment. */
-export function browserEngineAttachCdpUrl(cfg: AppConfig): string | null {
-  return isValidCdpTarget(cfg.browserEngine?.attachCdpUrl) ? cfg.browserEngine.attachCdpUrl : null;
 }
 
 export function roomTurnTimeoutMinutes(cfg: AppConfig): number {

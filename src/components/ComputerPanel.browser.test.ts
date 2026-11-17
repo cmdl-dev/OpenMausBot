@@ -31,36 +31,26 @@ const render = (config: FeatureFlagConfig & { cloudHome?: boolean }, browser?: b
   return renderToStaticMarkup(createElement(ComputerPanel, { bot: { ...bot, browser } }));
 };
 
-describe("Browser panel installation access", () => {
-  const missing = { kind: "unavailable", installable: true } as const;
+describe("Browser panel without Chrome", () => {
+  const missing = { kind: "unavailable", reason: "Google Chrome is not installed.", installChrome: true } as const;
 
-  it("shows the real install panel before the engine is available", () => {
+  it("says installing Google Chrome gives the bots a browser, and offers no install of its own", () => {
     const config = { features: { browser: true }, browserEngine: missing };
-    expect(render(config)).toContain("Install the browser");
+    const markup = render(config);
+    expect(markup).toContain("Install Google Chrome, then restart");
+    expect(markup).not.toContain("Install the browser");
     expect(browserAvailable(config)).toBe(false);
   });
 
   it("retains the global and per-bot opt-in gates", () => {
-    expect(render({ browserEngine: missing })).not.toContain("Install the browser");
-    expect(render({ features: { browser: true }, browserEngine: missing }, false)).not.toContain("Install the browser");
+    expect(render({ browserEngine: missing })).not.toContain(t("browser.panel.unavailable"));
+    expect(render({ features: { browser: true }, browserEngine: missing }, false)).not.toContain(t("browser.panel.unavailable"));
   });
 
-  it("does not offer an install on unsupported hosts and still shows a ready engine", () => {
-    expect(render({ features: { browser: true }, browserEngine: { kind: "unavailable", installable: false } })).not.toContain("The browser isn't installed");
+  it("shows a ready engine", () => {
     const ready = render({ features: { browser: true }, browserEngine: { kind: "engine" } });
     expect(ready).toContain("Opening the live browser…");
     expect(ready).not.toMatch(/Loading browser…|Only admins/);
-  });
-
-  it("keeps Chrome setup failure and progress visible even when the binary exists", () => {
-    const failed = render({ features: { browser: true }, browserEngine: { kind: "engine", installError: "Chrome download failed" } });
-    expect(failed).toContain("Chrome download failed");
-    expect(failed).toContain("Retry browser installation");
-    expect(failed).not.toContain("has its own browser");
-    const installing = render({ features: { browser: true }, browserEngine: { kind: "engine", installing: true } });
-    expect(installing).toContain("Installing…");
-    expect(installing).toContain('disabled=""');
-    expect(installing).not.toContain("has its own browser");
   });
 });
 

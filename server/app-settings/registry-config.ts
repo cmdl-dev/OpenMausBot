@@ -19,7 +19,7 @@ const visible = (value: unknown): unknown => (value && typeof value === "object"
 const fields = (value: object) => Object.entries(value).map(([field, inner]) => `${field} ${display(inner) || "cleared"}`).join(", ");
 const quoted = (text: string) => `"${text.length > 160 ? `${text.slice(0, 160)}…` : text}"`;
 const nonEmpty = <T extends z.ZodType<object>>(schema: T) => schema.refine((value) => Object.keys(value).length > 0, "name at least one field");
-type BrowserProfileChange = { id?: string; name: string; browser?: "chrome" };
+type BrowserProfileChange = { id?: string; name: string };
 const imageSlot = z.object({ provider: z.enum(IMAGE_PROVIDERS), model: z.string().trim().max(200).optional() }).strict();
 
 export function configEntries(deps: Pick<RegistryDeps, "cfg" | "saveConfig" | "bots" | "call" | "read" | "paused">, writable: (spec: WritableSpec) => SettingEntry): SettingEntry[] {
@@ -138,11 +138,6 @@ export function configEntries(deps: Pick<RegistryDeps, "cfg" | "saveConfig" | "b
       read: () => (cfg().browserEngine?.egress?.proxy ? "set" : ""), patch: (proxy) => ({ browserEngine: { egress: { proxy } } }),
       says: (proxy) => (proxy ? "Send bots' browsers to public sites through the SOCKS5 proxy you named" : "Send bots' browsers to public sites directly, with no proxy"),
     }),
-    section({
-      id: "desktops.browserEngine", label: "Browser engine", help: "What runs bots' browsers: agent-browser (the default) or MausBot's own Chrome driver (early).", where: "Settings → Desktops & browser",
-      synonyms: ["browser engine", "chrome", "new browser", "agent-browser"], value: z.enum(["agent-browser", "chrome"]), allowed: "agent-browser or chrome",
-      current: () => cfg().browserEngine?.engine ?? "agent-browser", patch: (engine) => ({ browserEngine: { engine } }),
-    }),
     feature("desktops.savedSteps", "Saved steps", "Bots may repeat saved browser steps without AI.", "Settings → Desktops & browser", ["saved steps", "repeat", "without ai"], "savedSteps", true,
       "Let bots repeat saved steps without AI", "Turn off saved steps"),
     section({
@@ -156,27 +151,26 @@ export function configEntries(deps: Pick<RegistryDeps, "cfg" | "saveConfig" | "b
       "Let every paired device lend its computer to bots here, not only your own. A lent folder can be used to reach a shell", "Stop every device, your own included, lending its computer to bots here"),
     writable({
       id: "desktops.browserProfiles", label: "Browser profiles", help: "Named browser profiles bots use, each keeping its own logins. Send the full list; leave out id for a new one. Removing one deletes its logins, so only the user does that.",
-      where: "Settings → Desktops & browser", synonyms: ["browser profiles", "profiles", "my chrome", "logins"],
-      value: z.array(z.object({ id: z.string().regex(/^[a-z0-9-]{1,80}$/).optional(), name: z.string().trim().min(1).max(40), browser: z.literal("chrome").optional() }).strict()).max(20),
-      allowed: '[{"id"?,"name","browser"?:"chrome"}]; "chrome" uses your own running Chrome',
-      current: () => (cfg().browserProfiles ?? []).map(({ id, name, browser }) => ({ id, name, ...(browser ? { browser } : {}) })),
-      read: () => (cfg().browserProfiles ?? []).map((profile) => `${profile.id}: ${profile.name}${profile.browser ? " (your Chrome)" : ""}`).join("; "),
+      where: "Settings → Desktops & browser", synonyms: ["browser profiles", "profiles", "logins"],
+      value: z.array(z.object({ id: z.string().regex(/^[a-z0-9-]{1,80}$/).optional(), name: z.string().trim().min(1).max(40) }).strict()).max(20),
+      allowed: '[{"id"?,"name"}]',
+      current: () => (cfg().browserProfiles ?? []).map(({ id, name }) => ({ id, name })),
+      read: () => (cfg().browserProfiles ?? []).map((profile) => `${profile.id}: ${profile.name}`).join("; "),
       describe: (next: BrowserProfileChange[]) => {
         const current = cfg().browserProfiles ?? [];
         const gone = current.find((profile) => !next.some((wanted) => wanted.id === profile.id));
         if (gone) return { refusal: `Removing the browser profile "${gone.name}" deletes its saved logins, so only the user does that, in Settings → Desktops & browser. Send every current profile.` };
         const unknown = next.find((wanted) => wanted.id && !current.some((profile) => profile.id === wanted.id));
         if (unknown) return { refusal: `No browser profile has the id ${unknown.id}. Leave out id for a new profile.` };
-        const where = (profile: BrowserProfileChange) => (profile.browser ? "your own running Chrome, with its logins" : "the built-in browser");
         const lines = next.flatMap((wanted) => {
           const before = current.find((profile) => profile.id === wanted.id);
-          if (!before) return [`add the profile "${wanted.name}" on ${where(wanted)}`];
-          return [...(before.name !== wanted.name ? [`rename "${before.name}" to "${wanted.name}"`] : []), ...(Boolean(before.browser) !== Boolean(wanted.browser) ? [`move "${wanted.name}" to ${where(wanted)}`] : [])];
+          if (!before) return [`add the profile "${wanted.name}"`];
+          return before.name !== wanted.name ? [`rename "${before.name}" to "${wanted.name}"`] : [];
         });
         return lines.length ? { change: `Browser profiles: ${lines.join("; ")}` } : { refusal: "That list is the same as the current one." };
       },
       write: (next: BrowserProfileChange[]) => {
-        const current = (cfg().browserProfiles ?? []).map(({ id, name, browser }) => ({ id, name, ...(browser ? { browser } : {}) }));
+        const current = (cfg().browserProfiles ?? []).map(({ id, name }) => ({ id, name }));
         const browserProfiles = next.map((profile) => ({ ...profile, id: profile.id ?? `profile-${randomUUID().replaceAll("-", "")}` }));
         return deps.saveConfig({ browserProfiles, expectedBrowserProfiles: current });
       },

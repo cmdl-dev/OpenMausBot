@@ -7,7 +7,7 @@ import { lstat, mkdir, readdir, rename, rm, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { shellQuote } from "./browser/chrome/wrapper.ts";
+import { shellQuote } from "./browser/chrome/environment.ts";
 import type { ContainerComputerStatus, LocalVmTarget } from "./container-computer.ts";
 import { augmentedPath, resolveCliSpawn } from "./env-path.ts";
 

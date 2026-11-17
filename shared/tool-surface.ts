@@ -12,7 +12,7 @@ export const SCREEN_TOUCHING_TOOLS: ReadonlySet<string> = new Set([
   // built-in browser: the Electron surface's names, from older remote harnesses
   "browser_navigate", "browser_type", "browser_press", "browser_scroll", "browser_hover", "browser_drag",
   "browser_select_option", "browser_back", "browser_forward", "browser_screenshot",
-  // built-in browser: agent-browser's names, and the new browser's
+  // built-in browser: OpenMausBot's Chrome driver's names
   "agent_browser_open", "agent_browser_click", "agent_browser_fill", "agent_browser_type", "agent_browser_press",
   "agent_browser_select", "agent_browser_check", "agent_browser_screenshot", "agent_browser_hover", "agent_browser_upload",
   "agent_browser_navigate", "agent_browser_drag", "agent_browser_scroll", "agent_browser_tabs", "agent_browser_dialog", "agent_browser_eval",
@@ -33,7 +33,7 @@ export function screenTouchingTool(toolName: string): boolean {
 }
 
 /** Which surface a screen-touching tool acted on. The computer server's
- * browser_click/fill act inside the desktop, not in agent-browser, so the
+ * browser_click/fill act inside the desktop, not in the bots' browser, so the
  * server identity is checked before prefixes are stripped. */
 export function screenSurfaceForTool(toolName: string): "browser" | "computer" {
   const name = toolName.toLowerCase();

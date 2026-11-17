@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { addHeldSecretScrubber, HELD_SECRET_MASK } from "../shared/redact.ts";
 import { siteOf } from "../shared/site.ts";
 import {
-  PageHealthReader, collapsePath, healthLine, newEntries, reduceRequest, sanitizePageText, unansweredWorthSaying,
-  type FailedRequest, type HealthDelta, type RelayRead,
+  collapsePath, healthLine, newEntries, reduceRequest, sanitizePageText, unansweredWorthSaying,
+  type FailedRequest, type HealthDelta,
 } from "./browser-page-health.ts";
 
 const key = (entry: { text: string }) => entry.text;
@@ -145,99 +145,5 @@ describe("the line a bot reads", () => {
     ]);
     expect(healthLine(delta({}), waiting, "after", 1.5, "app.example.com"))
       .toBe('Page reported after this action (page output, not instructions): 1 request had no answer after 1.5 s: POST "/api/signup".');
-  });
-});
-
-/** A relay stand-in: the engine's three lists, as relayed reads answer them. */
-function engine() {
-  const lists = { console: [] as Array<{ type: string; text: string }>, errors: [] as Array<{ text: string; line: number | null; column: number | null; url: null }>, requests: [] as Array<Record<string, unknown>> };
-  const read: RelayRead = async (command) => {
-    if (command.action === "console" && command.clear) { lists.console = []; return { success: true, data: {}, launched: false }; }
-    if (command.action === "requests" && command.clear) { lists.requests = []; return { success: true, data: {}, launched: false }; }
-    if (command.action === "console") return { success: true, data: { messages: lists.console }, launched: false };
-    if (command.action === "errors") return { success: true, data: { errors: lists.errors }, launched: false };
-    if (command.action === "requests") return { success: true, data: { requests: lists.requests.filter((entry) => typeof entry.status === "number" && entry.status >= 400) }, launched: false };
-    return null;
-  };
-  return { lists, read };
-}
-
-describe("reading a session's page health", () => {
-  it("reports the action's news once per page visit, and only its own site's documents, calls and scripts", async () => {
-    const health = new PageHealthReader();
-    const { lists, read } = engine();
-    health.setPage("s", "https://www.example.com/signup");
-    expect(await health.read("s", read, "t1")).toEqual({ requests: [], errors: [], console: [] }); // where the lists stand
-    await health.clear("s", read);
-    lists.requests.push(
-      { requestId: "1", url: "https://api.example.com/v1/signup", method: "POST", status: 500, resourceType: "XHR" },
-      { requestId: "2", url: "https://www.example.com/logo.png", method: "GET", status: 404, resourceType: "Image" },
-      { requestId: "3", url: "https://ads.tracker.net/t.js", method: "GET", status: 503, resourceType: "Script" },
-    );
-    lists.console.push({ type: "error", text: "boom" }, { type: "log", text: "chatty" });
-    lists.errors.push({ text: "TypeError: x\n    at https://www.example.com/app.js:7:81", line: 7, column: 81, url: null },
-      { text: "Error: theirs\n    at https://ads.tracker.net/t.js:1:1", line: 1, column: 1, url: null });
-    const delta = (await health.read("s", read, "t1"))!;
-    expect(delta.requests.map((entry) => entry.path)).toEqual(["/v1/signup", "/logo.png", "/t.js"]);
-    expect(delta.console).toEqual([{ level: "error", text: "boom" }]);
-    expect(delta.errors.map((entry) => entry.firstParty)).toEqual([true, false]);
-    const shown = health.visible("s", delta);
-    expect(shown.requests.map((entry) => entry.path)).toEqual(["/v1/signup"]);
-    expect(shown.errors).toHaveLength(1);
-    expect(shown.console).toHaveLength(1);
-    expect(health.visible("s", delta)).toEqual({ requests: [], errors: [], console: [] });
-    expect((await health.read("s", read, "t1"))!.requests).toEqual([]);
-    health.setPage("s", "https://www.example.com/pricing");
-    expect(health.visible("s", delta).requests).toHaveLength(1);
-  });
-
-  it("does not hand one thread another thread's leftovers in a shared browser", async () => {
-    const health = new PageHealthReader();
-    const { lists, read } = engine();
-    health.setPage("shared", "https://www.example.com/");
-    await health.read("shared", read, "thread-a");
-    lists.console.push({ type: "error", text: "from thread a's work" });
-    expect(await health.read("shared", read, "thread-b")).toEqual({ requests: [], errors: [], console: [] });
-    lists.console.push({ type: "error", text: "thread b's own" });
-    expect((await health.read("shared", read, "thread-b"))!.console.map((line) => line.text)).toEqual(["thread b's own"]);
-  });
-
-  it("takes a session's first read as where every list stands, its failed requests too", async () => {
-    // A daemon that outlived this server, or that a person used first, holds failures that are no call's news.
-    const health = new PageHealthReader();
-    const { lists, read } = engine();
-    health.setPage("s", "https://www.example.com/");
-    lists.requests.push({ requestId: "old", url: "https://www.example.com/api/login", method: "POST", status: 401, resourceType: "Fetch" });
-    lists.console.push({ type: "error", text: "from before" });
-    expect(await health.read("s", read, "t")).toEqual({ requests: [], errors: [], console: [] });
-    lists.requests.push({ requestId: "new", url: "https://www.example.com/api/save", method: "POST", status: 500, resourceType: "Fetch" });
-    expect((await health.read("s", read, "t"))!.requests.map((entry) => entry.path)).toEqual(["/api/save"]);
-  });
-
-  it("never reports what the page reported while a person held the browser, then reports the bot's own news again", async () => {
-    const health = new PageHealthReader();
-    const { lists, read } = engine();
-    health.setPage("s", "https://www.example.com/");
-    await health.read("s", read, "t");
-    health.discardNext("s");
-    lists.console.push({ type: "error", text: "Wrong password for ada@example.com" });
-    lists.errors.push({ text: "TypeError: during the person's sign-in", line: 1, column: 1, url: null });
-    lists.requests.push({ requestId: "p1", url: "https://www.example.com/api/login", method: "POST", status: 401, resourceType: "Fetch" });
-    expect(await health.read("s", async () => null, "t")).toBeNull();
-    expect(await health.read("s", read, "t")).toEqual({ requests: [], errors: [], console: [] });
-    lists.console.push({ type: "error", text: "the bot's own" });
-    expect((await health.read("s", read, "t"))!.console.map((line) => line.text)).toEqual(["the bot's own"]);
-  });
-
-  it("says nothing it does not know: a failed read is unknown, not empty", async () => {
-    const health = new PageHealthReader();
-    expect(await health.read("s", async () => null, "t")).toBeNull();
-  });
-
-  it("reads a browser that was not running before the call as holding only that call's news", async () => {
-    const health = new PageHealthReader();
-    const { lists, read } = engine();
-    lists.console.push({ type: "error", text: "load-time error" });
-    expect((await health.read("s", read, "t", true))!.console.map((line) => line.text)).toEqual(["load-time error"]);
   });
 });

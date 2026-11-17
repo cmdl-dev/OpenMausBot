@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { soulSystemPrompt } from "./bot-folder.ts";
-import { BUILT_IN_BROWSER_SYSTEM_PROMPT } from "./browser-engine.ts";
+import { CHROME_BROWSER_SYSTEM_PROMPT } from "./browser/prompt.ts";
 import {
   longCommandsPrompt,
   buildSystemPrompt,
@@ -227,7 +227,7 @@ describe("computerPrompt", () => {
       expect(computerPrompt(kind).endsWith(SIGN_IN_PROMPT)).toBe(true);
       expect(computerPrompt(kind).startsWith(" ")).toBe(true);
     }
-    expect(BUILT_IN_BROWSER_SYSTEM_PROMPT.endsWith(SIGN_IN_PROMPT)).toBe(true);
+    expect(CHROME_BROWSER_SYSTEM_PROMPT.endsWith(SIGN_IN_PROMPT)).toBe(true);
   });
 
   it("allows authorized login without granting secret discovery or removing human handoff", () => {
@@ -240,7 +240,7 @@ describe("computerPrompt", () => {
     expect(SIGN_IN_PROMPT).toContain("then continue the task");
     expect(SIGN_IN_PROMPT).toContain("call request_sign_in with the site and a short reason and end your turn");
     expect(SIGN_IN_PROMPT).toContain("never to send you the password or code");
-    for (const prompt of [computerPrompt("local"), BUILT_IN_BROWSER_SYSTEM_PROMPT]) {
+    for (const prompt of [computerPrompt("local"), CHROME_BROWSER_SYSTEM_PROMPT]) {
       expect(prompt).not.toContain("At a sign-in, password");
       expect(prompt).not.toMatch(/never type (?:their|the user's) (?:password|credentials)/i);
     }
@@ -258,7 +258,7 @@ describe("computerPrompt", () => {
     // An inbox code no longer sends the person in; only a code the bot cannot read does.
     expect(SIGN_IN_PROMPT).not.toMatch(/\bMFA\b/u);
     expect(SIGN_IN_PROMPT.indexOf("type the code into that site yourself")).toBeLessThan(SIGN_IN_PROMPT.indexOf("call request_sign_in"));
-    for (const prompt of [computerPrompt("local"), computerPrompt("box"), BUILT_IN_BROWSER_SYSTEM_PROMPT]) expect(prompt).toContain("type the code into that site yourself");
+    for (const prompt of [computerPrompt("local"), computerPrompt("box"), CHROME_BROWSER_SYSTEM_PROMPT]) expect(prompt).toContain("type the code into that site yourself");
   });
 
   it("prefers connected apps for Google and Microsoft data without refusing an asked-for Google or Microsoft sign-in", () => {

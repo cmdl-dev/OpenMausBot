@@ -38,9 +38,8 @@ export function pagePanelBot(url: string, facts: PageOpenFacts): string | null {
   if (!facts.desktop || facts.desktop.remoteClient?.active || !isPublishedPageUrl(url)) return null;
   if (facts.groups.some((group) => group.id === facts.selectedId)) return null;
   const bot = facts.bots.find((candidate) => candidate.id === facts.selectedId);
-  const engine = facts.config?.browserEngine;
   if (!bot || bot.browser === false || !builtInBrowserEnabled(facts.config) || !browserAvailable(facts.config)) return null;
-  return engine?.installing || engine?.installError ? null : bot.id;
+  return bot.id;
 }
 
 export interface PanelPage { botId: string; url: string; nonce: number; at: number }

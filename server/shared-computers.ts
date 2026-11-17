@@ -13,7 +13,7 @@ export const sharedComputerRegistration = z.object({
   platform: z.enum(LENT_PLATFORMS).optional(),
   /** Its internet connection, for the bots' browsers; sent only to a server that advertises deviceLink. */
   internet: z.boolean().optional(),
-  /** Its real Chrome, for the bots' browser; sent only to a server that advertises myChromeLink. */
+  /** Its real Chrome, from a desktop app that lent it to a server before My Chrome was removed: read, never used. */
   chrome: z.boolean().optional(),
   /** It takes and honours run_command's timeout_seconds; sent only to a server that advertises commandTimeouts. Older
    * desktops refuse a job with a field they do not know, and stop every command at 30 seconds. */
@@ -199,8 +199,8 @@ export class SharedComputers {
     // it is replaced below, so it is found under the key its session has now.
     if (old && old.owner.person === owner.person) {
       this.authorize(registration.id, owner.session, secret);
-      // Its link was let in for the internet connection and Chrome as lent then: lent or taken back since, the link starts over.
-      if ((old.registration.internet === true) !== (registration.internet === true) || (old.registration.chrome === true) !== (registration.chrome === true)) this.links?.drop(key);
+      // Its link was let in for the internet connection as lent then: lent or taken back since, the link starts over.
+      if ((old.registration.internet === true) !== (registration.internet === true)) this.links?.drop(key);
       old.registration = registration; old.seen = Date.now();
       this.remember(registration, old.owner.person);
       this.changed();
@@ -330,17 +330,11 @@ export class SharedComputers {
     if (!lending.length || lending.some(record => online.has(record.id))) return null;
     return { away: deviceWord(lending[0]!.platform) };
   }
-  /** The newest computer lending its Chrome, and whether it is online now; null when none lends it. */
-  chromeLender(principal: string): { name: string; device: "PC" | "Mac" | "computer"; online: boolean } | null {
-    const record = (this.lent?.list(principal) ?? []).find(candidate => candidate.chrome === true && candidate.stoppedAt === null);
-    if (!record) return null;
-    return { name: record.name, device: deviceWord(record.platform), online: this.list(principal).some(registration => registration.id === record.id) };
-  }
   /** The registered computer behind a device link: the same session and secret as its poll. */
   linkable(id: string, session: string, secret: string): LinkedComputer {
     const entry = this.authorize(id, session, secret);
     entry.seen = Date.now();
-    return { key: SharedComputers.key(session, id), person: entry.owner.person, internet: entry.registration.internet === true, chrome: entry.registration.chrome === true, seenAs: null,
+    return { key: SharedComputers.key(session, id), person: entry.owner.person, internet: entry.registration.internet === true, seenAs: null,
       live: () => this.sessionLive(session), used: () => this.lent?.used(entry.owner.person, id) };
   }
   status(principal: string | null): SharedComputerStatus[] {

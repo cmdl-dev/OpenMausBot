@@ -3,12 +3,10 @@ import { signInEnvRefusal } from "../sign-in-env.ts";
 import * as boat from "../boat.ts";
 import { boatCreateRecoverySnapshot, retireDeletedBoatCreate } from "../boat-create-idempotency.ts";
 import { boatDeletionSnapshot } from "../boat-delete-journal.ts";
-import { browserEngineStatus, browserSessionId } from "../browser-engine.ts";
-import { browserEngineKind } from "../browser/config.ts";
+import { browserSessionId } from "../browser/session-names.ts";
 import type { BrowserCleanupCoordinator, BrowserCleanupRequest } from "../browser-lifecycle-cleanup.ts";
 import { finalizeBrowserCleanupMutation, requireBrowserCleanupAcknowledged } from "../browser-lifecycle-cleanup.ts";
-import type { BrowserLive } from "../browser-live.ts";
-import type { BrowserRuntime } from "../browser-runtime.ts";
+import type { BrowserLive, BrowserRuntime } from "../browser/engines.ts";
 import { boatAccountResourceChangeError, vpsAliasResourceChangeError } from "../cloud-backend.ts";
 import * as composio from "../composio.ts";
 import {
@@ -66,10 +64,6 @@ export interface ConfigRouteDeps {
   browserCleanup: Pick<BrowserCleanupCoordinator, "hasPendingProfile" | "prepare" | "abort" | "commit" | "ensure">;
   browserLive: Pick<BrowserLive, "closeAll" | "closeForSession">;
   browserRuntime: Pick<BrowserRuntime, "heldBy">;
-  usedBrowserSessions: Pick<Map<string, { command: string; env: Record<string, string> }>, "get" | "delete">;
-  closeBrowser(session: string, spec: { command: string; env: Record<string, string> }): Promise<boolean>;
-  /** After browserEngine.engine changed: closes the viewers and the browsers the other engine ran. */
-  browserEngineSwitched(): void;
   decider: Pick<Decider, "testKey">;
   sharedComputers: Pick<SharedComputers, "close">;
   sharedComputerControl: Pick<SharedComputerControl, "close">;
@@ -96,7 +90,6 @@ export interface ConfigRouteDeps {
   perBotLocalVmCountForModeChange(): Promise<number | null>;
   checkedModelSelection(raw: unknown, current?: { selection: ModelSelection; busy: boolean }, requireAvailableModel?: boolean): ModelSelectionCheck;
   policyModelRefusal(instance: { instanceId: string; driverKind: string }): string | undefined;
-  browserSessionSpec(binaryPath: string, session: string, profile: string | undefined): { command: string; env: Record<string, string> };
   configStatus(): ConfigStatus;
   /** What this caller is shown: a client sees configured-or-not only; on a Team Cloud the profile is the caller's own. */
   configForAccess(status: ConfigStatus, auth: RequestAuth): unknown;
@@ -117,11 +110,11 @@ export interface ConfigRouteDeps {
 
 export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
   const {
-    store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, usedBrowserSessions, decider,
-    closeBrowser, browserEngineSwitched, sharedComputers, sharedComputerControl, hostedModels, cloudHome: CLOUD_HOME, sharedMembership, lendingEnabled, providerConfigs,
+    store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, decider,
+    sharedComputers, sharedComputerControl, hostedModels, cloudHome: CLOUD_HOME, sharedMembership, lendingEnabled, providerConfigs,
     localVmIdleMs, localVmIdles, localVmActiveThreads, localVmLifecycleBusy, localVmImageBusy, localVmModeChangeBusy, localVmModeChanging,
     providerConfigBusy, computerProviderConfigTransitions, managedBoatOwners, providerOperationConflict,
-    perBotLocalVmCountForModeChange, checkedModelSelection, policyModelRefusal, browserSessionSpec, configStatus,
+    perBotLocalVmCountForModeChange, checkedModelSelection, policyModelRefusal, configStatus,
     configForAccess, resyncOpenCodeProviderKeys, revokeEngineCapabilities, reloadProviders, broadcast, drainQueuedSends, ownProfile, ownHints, postiz,
   } = deps;
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
@@ -199,31 +192,22 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
       if (changingVoiceProvider && patch.tts?.model === undefined) patch.tts = { ...patch.tts, model: "" };
       if (providerConfigBusy.get()) return json(res, 409, { error: "provider settings are already being updated" });
       if (patch.browserProfiles !== undefined && body.expectedBrowserProfiles !== undefined) {
-        const current = (cfg.browserProfiles ?? []).map(({ id, name, browser }) => ({ id, name, ...(browser ? { browser } : {}) }));
+        const current = (cfg.browserProfiles ?? []).map(({ id, name }) => ({ id, name }));
         if (JSON.stringify(body.expectedBrowserProfiles) !== JSON.stringify(current)) {
           return json(res, 409, { error: "Browser profiles changed in another window. Review the refreshed list and try again." });
         }
       }
       const disablingBuiltInBrowser = patch.features?.browser === false && builtInBrowserEnabled(cfg);
-      const switchingBrowserEngine = patch.browserEngine?.engine !== undefined && patch.browserEngine.engine !== browserEngineKind(cfg);
       const removedBrowserProfileIds = patch.browserProfiles === undefined
         ? []
         : (cfg.browserProfiles ?? [])
             .map((profile) => profile.id)
             .filter((id) => !patch.browserProfiles!.some((profile) => profile.id === id));
-      const browserChoiceChanged = (patch.browserProfiles ?? []).filter((profile) => {
-        const current = cfg.browserProfiles?.find((candidate) => candidate.id === profile.id);
-        return current !== undefined && (current.browser ?? null) !== (profile.browser ?? null);
-      }).map((profile) => profile.id);
       const profileControlConflict = () => removedBrowserProfileIds.some((id) => {
         const target = browserProfilePartitionTarget(cfg, id);
         return target && browserRuntime.heldBy(browserSessionId("", target.partitionId));
       });
       if (profileControlConflict()) return json(res, 409, { error: "Release browser control before deleting its profile." });
-      if (browserChoiceChanged.some((id) => {
-        const target = browserProfilePartitionTarget(cfg, id);
-        return target && browserRuntime.heldBy(browserSessionId("", target.partitionId));
-      })) return json(res, 409, { error: "Release browser control before changing its browser." });
       if (patch.browserProfiles !== undefined) {
         const currentProfiles = new Map((cfg.browserProfiles ?? []).map((profile) => [profile.id, profile]));
         const nextProfiles = patch.browserProfiles.map((profile) => {
@@ -499,11 +483,7 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
             error: `stop ${activeReference.name}'s turn before removing its browser profile`,
           });
         }
-        const switching = store.bots.find((bot) => bot.busy && bot.browserProfile && browserChoiceChanged.includes(bot.browserProfile));
-        if (switching) return json(res, 409, { error: `stop ${switching.name}'s turn before changing its browser` });
       }
-      const browsing = switchingBrowserEngine ? store.bots.find((bot) => bot.busy && bot.browser !== false) : undefined;
-      if (browsing) return json(res, 409, { error: `stop ${browsing.name}'s turn before switching the browser` });
       // Observed again after the awaits: catches an operation that already held a claim.
       for (const provider of transitioningProviders) {
         const conflict = providerOperationConflict(provider);
@@ -532,14 +512,6 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
       const resetKeys = PROVIDER_KEY_KINDS.flatMap((kind) => {
         const next = patch[kind]?.key;
         return next === undefined ? [] : [cfg[kind]?.key, next];
-      });
-      const engineForSwitch = browserEngineStatus();
-      const browsersToClose = browserChoiceChanged.flatMap((id) => {
-        const target = browserProfilePartitionTarget(cfg, id);
-        if (!target) return [];
-        const session = browserSessionId("", target.partitionId);
-        const spec = usedBrowserSessions.get(session) ?? (engineForSwitch.kind === "ready" ? browserSessionSpec(engineForSwitch.binaryPath, session, id) : null);
-        return spec ? [{ session, spec }] : [];
       });
       let configWriteCommitted = false;
       const enginesBefore = engineLaunches(providerConfigs());
@@ -620,16 +592,8 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
         sharedComputerControl.close();
       }
       if (disablingBuiltInBrowser) browserLive.closeAll();
-      if (switchingBrowserEngine) browserEngineSwitched();
       for (const request of browserCleanupRequests) {
         if (request.kind === "profile") browserLive.closeForSession(browserSessionId("", request.partitionId));
-      }
-      for (const { session, spec } of browsersToClose) {
-        browserLive.closeForSession(session);
-        usedBrowserSessions.delete(session);
-        void closeBrowser(session, spec).then((closed) => {
-          if (!closed) console.warn(`browser ${session}: could not close it after its browser changed; the next turn may still use the old one`);
-        });
       }
       if (patch.browserProfiles !== undefined) {
         const retained = new Set(patch.browserProfiles.map((profile) => profile.id));

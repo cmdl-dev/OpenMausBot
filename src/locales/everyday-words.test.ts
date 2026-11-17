@@ -59,7 +59,7 @@ const EVERYDAY_KEYS: Record<string, readonly string[]> = {
   ],
   "the Settings pages Simple mode shows": [
     "settings.diagnostics.subtitle", "settings.diagnostics.elsewhere", "settings.import.appsSubtitle", "settings.profiles.temporaryHint",
-    "settings.profiles.myChromeUnavailable", "remote.serverPairing.error",
+    "remote.serverPairing.error",
   ],
 };
 

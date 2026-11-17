@@ -3,7 +3,7 @@
 #
 # Build the renderer + the self-contained server bundle, then ship only those
 # artifacts on a slim Node runtime. The runtime stage holds what changes
-# rarely (Chrome's libraries, agent-browser and its Chrome), and each image
+# rarely (Chrome's libraries and Chrome for Testing), and each image
 # adds its engine CLIs before the app files, which change with every commit:
 # a code-only change rebuilds only the small app layers, so a pull downloads
 # only those. The server keeps binding 127.0.0.1 inside the container (the
@@ -39,6 +39,19 @@ COPY scripts/prepare-cloudflared.mjs /stage/prepare-cloudflared.mjs
 RUN node /stage/prepare-cloudflared.mjs --current --root /stage \
  && cp /stage/dist-native/cloudflared/linux-*/cloudflared /cloudflared
 
+# Chrome for Testing for the image's CPU, for the bots' browser: the version
+# server/browser/chrome/install.ts pins, checked against its size and SHA-256
+# before it is unpacked. A pin change rebuilds only this layer and its copy.
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS chrome
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
+COPY server/atomic.ts /stage/server/atomic.ts
+COPY server/browser/chrome/install.ts /stage/server/browser/chrome/install.ts
+COPY scripts/prepare-chrome.ts /stage/scripts/prepare-chrome.ts
+# The installer keeps its folders private (0700); here every user, the server's `maus` among them, runs it.
+RUN node /stage/scripts/prepare-chrome.ts --arch "$TARGETARCH" --out /chrome \
+  && chmod -R go+rX,go-w /chrome && test -x /chrome/chrome
+
 # The JavaScript build is the same for every CPU, so it runs once on the build
 # host's own; only the Data engine's native tree below follows the image's CPU.
 FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS build
@@ -72,8 +85,8 @@ RUN arch=x64 && if [ "$TARGETARCH" = arm64 ]; then arch=arm64; fi \
   && mv "dist-native/duckdb/linux-$arch" dist-native/duckdb/target && chmod -R go-w dist-native/duckdb
 
 FROM node:24-bookworm-slim AS runtime
-# Install Chrome's Bookworm libraries directly: agent-browser --with-deps
-# invokes sudo even as root, and this image deliberately does not ship sudo.
+# Chrome's Bookworm libraries (the list `openmausbot browser install
+# --with-deps` installs on a server, server/browser/chrome/libraries.ts).
 # git + curl: agent CLIs shell out to git; curl backs the healthcheck
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
@@ -86,40 +99,16 @@ RUN apt-get update \
     libxshmfence1 libgbm1 fonts-noto-color-emoji fonts-noto-cjk fonts-freefont-ttf \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --home-dir /data --shell /bin/bash maus
-# The bots' browser (docs/plans/browser-engine.md): the pinned agent-browser
-# and a Chrome for Testing with its libraries, so a server bot can browse.
-# Pin here and in server/browser-engine-release.ts together.
-ARG AGENT_BROWSER_VERSION=0.37.0
-# `agent-browser install` fetches Chrome for Testing's last-known-good Stable;
-# the publish job passes that version so a Chrome release rebuilds this layer.
-ARG CHROME_CACHE_TAG=""
-# Chrome for Testing has no Linux ARM64 build, so an arm64 image takes
-# Debian's Chromium instead, linked at the same path; the publish job passes
-# its newest bookworm version so a Debian security update rebuilds it too.
-ARG CHROMIUM_CACHE_TAG=""
-ARG TARGETARCH
-# The global link must be the native binary for this platform (agent-browser's
-# postinstall points it there); the other platforms' binaries are never run.
-RUN echo "agent-browser ${AGENT_BROWSER_VERSION}, Chrome for Testing ${CHROME_CACHE_TAG:-Stable}, Debian Chromium ${CHROMIUM_CACHE_TAG:-latest}" \
-  && npm install -g --cache /tmp/npm-cache agent-browser@${AGENT_BROWSER_VERSION} \
-  && if [ "$TARGETARCH" = arm64 ]; then \
-       apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/* \
-       && mkdir -p /opt/openmausbot-browser && ln -s /usr/lib/chromium/chromium /opt/openmausbot-browser/chrome; \
-     else HOME=/opt/openmausbot-browser agent-browser install \
-       && ln -s /opt/openmausbot-browser/.agent-browser/browsers/chrome-*/chrome /opt/openmausbot-browser/chrome; \
-     fi \
-  && native="$(readlink -f "$(command -v agent-browser)")" \
-  && case "$native" in */agent-browser/bin/agent-browser-linux-*) ;; *) echo "agent-browser is not a native binary: $native" >&2; exit 1;; esac \
-  && [ "$(head -c 4 "$native")" = "$(printf '\177ELF')" ] \
-  && for binary in "${native%/*}"/agent-browser-*; do [ "$binary" = "$native" ] || rm "$binary"; done \
-  && agent-browser --version \
-  && rm -rf /tmp/npm-cache /tmp/node-compile-cache
+# The bots' browser runs this Chrome for Testing (OMB_CHROME_PATH). Inside a
+# container OpenMausBot turns Chrome's own sandbox off by itself: the container
+# is the isolation boundary (server/browser/chrome/host-setup.ts).
+COPY --from=chrome /chrome /opt/openmausbot-browser
 # Keep the baked-in browser outside both root's private home and /data,
 # which may be an existing mounted volume. Session state still lives in HOME,
 # which each image sets after its last build step, so no build step writes
 # into what a fresh volume starts with.
 #  OMB_DUCKDB_DIR: the DuckDB binding tree the server requires (no node_modules here).
-ENV AGENT_BROWSER_EXECUTABLE_PATH=/opt/openmausbot-browser/chrome \
+ENV OMB_CHROME_PATH=/opt/openmausbot-browser/chrome \
     OMB_DUCKDB_DIR=/app/duckdb \
     OMB_DATA_DIR=/data/.openmausbot \
     OMB_STATIC_DIR=/app/dist \

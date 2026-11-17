@@ -20,7 +20,7 @@ const ALL = ["macos-latest", "ubuntu-latest", "windows-latest"];
 const PR = ["ubuntu-latest", "windows-latest"];
 const LINUX = ["ubuntu-latest"];
 const MAIN = ["ubuntu-latest", "windows-latest"];
-const SERVER_JOBS = ["build", "vitest", "behavior-evals", "packaged-server", "electron-smokes", "foss", "ui-smoke", "browser-identity", "package-linux", "browser-driver"];
+const SERVER_JOBS = ["build", "vitest", "behavior-evals", "packaged-server", "electron-smokes", "foss", "ui-smoke", "package-linux", "browser-driver"];
 const temporaryDirectories: string[] = [];
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -69,7 +69,7 @@ const packaged = (oses: string[]) => oses.filter((os) => os !== "macos-latest");
 const everything = (oses: string[]) => ({ jobs: SELECTABLE_JOBS, vitest_os: oses, packaged_server_os: packaged(oses), vitest_matrix: vitestMatrix(oses) });
 const staticOnly = (oses: string[], build: boolean) => ({ jobs: build ? ["build"] : [], vitest_os: oses, packaged_server_os: packaged(oses), vitest_matrix: vitestMatrix(oses) });
 /** What a push to main and a merge group run: Linux's and Windows' shards, the macOS smokes and the short Linux checks. */
-const MAIN_JOBS = ["build", "vitest", "behavior-evals", "packaged-server", "electron-smokes", "foss", "control-plane", "ui-smoke", "browser-identity"];
+const MAIN_JOBS = ["build", "vitest", "behavior-evals", "packaged-server", "electron-smokes", "foss", "control-plane", "ui-smoke"];
 const mainLane = () => ({ jobs: MAIN_JOBS, vitest_os: MAIN, packaged_server_os: MAIN, vitest_matrix: vitestMatrix(MAIN) });
 
 describe("vitest matrix", () => {
@@ -101,7 +101,7 @@ describe("CI path scope", () => {
 
   it("runs a test under scripts/ wherever the suite runs, without the build", () => {
     expect(selectCiScope(["scripts/generate-locale.test.mjs", "scripts/testing/control-omb-ui.e2e.test.ts"]))
-      .toEqual({ areas: ["script-tests"], checks: ["browser-identity", "host-tests", "linux-tests", "ui-smoke"] });
+      .toEqual({ areas: ["script-tests"], checks: ["host-tests", "linux-tests", "ui-smoke"] });
   });
 
   it("runs the build, the Linux shards and the renderer smoke for a renderer change", () => {
@@ -167,7 +167,7 @@ describe("CI path scope", () => {
     [], [""], ["docs/../server/file.md"], ["./src/App.tsx"],
     [".github/workflows/ci.yml"], ["scripts/ci-scope.mjs"], ["scripts/testing/host-e2e.ts"], [".gitattributes"],
     ["package.json"], ["pnpm-lock.yaml"], ["pnpm-workspace.yaml"], ["tsconfig.json"], ["vite.config.ts"], [".oxlintrc.json"],
-    ["third_party/browser/agent-browser-windows-stdio.patch"], ["scripts/testing/ci-retry-runner.ts"], ["unknown/file"], ["src/App.tsx", "package.json"],
+    ["third_party/scrcpy/README.md"], ["scripts/testing/ci-retry-runner.ts"], ["unknown/file"], ["src/App.tsx", "package.json"],
   ])("runs everything for %j", (...files) => {
     expect(selectCiScope(files)).toEqual(FULL_SCOPE);
   });
@@ -451,7 +451,7 @@ describe("Windows on a pull request", () => {
     "electron/main.mjs", "build/installer.nsh", "electron-builder.yml", "maus.ps1", "scripts/build-cua-win.mjs",
     "scripts/smoke-cua-win-embedded.mjs", "server/win32-paths.ts", "server/shell/windows.ts", "server/foo.win32.test.ts",
     ".github/workflows/package-win.yml", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".gitattributes", "vite.config.ts",
-    "third_party/browser/agent-browser-windows-stdio.patch", ".github/workflows/ci.yml", "scripts/ci-scope.mjs",
+    "third_party/scrcpy/README.md", ".github/workflows/ci.yml", "scripts/ci-scope.mjs",
     "scripts/testing/host-e2e.ts", "scripts/testing/vitest-shard-weights.json", "server/testing/host-timeout.ts",
     "scripts/prepare-cloudflared.mjs", "scripts/after-pack.mjs", ...Object.keys(HOST_E2E),
   ])("runs for %s", (file) => {

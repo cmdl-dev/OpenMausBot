@@ -30,7 +30,7 @@ The same TypeScript **harness server** (`server/`) runs in four places:
 Bots have tools:
 
 - the engine's shell and file tools;
-- a per-bot Chrome (agent-browser) whose traffic goes through an egress gate;
+- a per-bot Chrome (OpenMausBot's own driver) whose traffic goes through an egress gate;
 - computer use: the local desktop, a local VM, and paid cloud computers;
 - MCP servers, both custom ones and the harness's own;
 - Composio connected apps, through `cloudflare/composio-broker/`;
@@ -216,8 +216,7 @@ These are deliberate product decisions. Do not report them.
   have them.
 - The egress gate bypassed to reach loopback services, the LAN, link-local
   addresses or cloud metadata. Routes to try: redirects, DNS rebinding,
-  IPv4-mapped, NAT64 or 6to4 addresses, WebRTC, agent-browser fetching
-  directly, or DevTools ports.
+  IPv4-mapped, NAT64 or 6to4 addresses, WebRTC, or DevTools ports.
 - Bypasses of pairing, sessions or the tunnel: code reuse, fixation, scope
   confusion between `client` and `admin`, or a cookie session used
   cross-origin.

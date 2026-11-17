@@ -1,5 +1,5 @@
 // A sign-in the person asked for, where the site emails a one-time code: a scripted bot reads it from the person's own
-// mailbox (a stand-in MCP server) and types it into the site (a happy-dom page behind a stand-in agent-browser). Nothing
+// mailbox (a stand-in MCP server) and types it into the site (a happy-dom page behind the driver's fake Chrome). Nothing
 // reaches a real browser, a real mailbox, the user's data or port 8799.
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -69,31 +69,12 @@ async function fixtureWorld() {
   });
   await new Promise<void>((ready) => bridge.listen(port, "127.0.0.1", ready));
 
-  const binaryPath = join(tools, "agent-browser");
-  // The stand-in agent-browser: always running; `mcp` lists the page tools and answers them from the page.
-  writeFileSync(binaryPath, `#!${process.execPath}
-const args = process.argv.slice(2).filter((arg) => arg !== "--json" && arg !== "--no-webmcp");
-const say = (value) => { process.stdout.write(JSON.stringify(value)); process.exit(0); };
-const bridge = (path, body) => fetch("http://127.0.0.1:${port}" + path, { method: "POST", body: JSON.stringify(body) }).then((response) => response.text());
-if (args[0] === "session" && args[1] === "list") say({ success: true, data: { sessions: [process.env.AGENT_BROWSER_SESSION] } });
-else if (args[0] === "close" || args[0] === "set") process.exit(0);
-else if (args[0] === "mcp") {
-  const tool = (name) => ({ name, description: name, inputSchema: { type: "object", properties: { script: { type: "string" }, selector: { type: "string" }, text: { type: "string" } } } });
-  const answer = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
-  require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
-    const message = JSON.parse(line);
-    if (message.id === undefined) return;
-    if (message.method === "initialize") answer(message.id, { protocolVersion: "2024-11-05", capabilities: { tools: {} } });
-    else if (message.method === "tools/list") answer(message.id, { tools: ["agent_browser_get_url", "agent_browser_eval", "agent_browser_snapshot", "agent_browser_fill", "agent_browser_click"].map(tool) });
-    else bridge("/mcp", message.params).then((text) => answer(message.id, JSON.parse(text)));
-  });
-}
-else bridge("/engine", { args }).then((text) => { process.stdout.write(text); process.exit(0); }, () => process.exit(1));
-`, { mode: 0o755 });
+  // The page answers the browser tools a bot uses here; a preview capture never waits.
+  writeFileSync(join(tools, "capture.gate"), "open");
   const mailboxTools = join(tools, "mailbox-tools.json");
   writeFileSync(mailboxTools, JSON.stringify([{ name: "read_inbox", description: "Read the newest emails in the person's inbox", inputSchema: { type: "object", properties: {} } }]));
 
-  const fixture = await launchVerificationServer({}, undefined, undefined, { binaryPath, executablePath: join(tools, "chrome") }, undefined, { scripted: true });
+  const fixture = await launchVerificationServer({}, undefined, undefined, { fakeGates: tools, page: { bridge: `http://127.0.0.1:${port}`, startUrl: `${SHOP}/sign-in`, tools: ["agent_browser_get_url", "agent_browser_eval", "agent_browser_snapshot", "agent_browser_fill", "agent_browser_click"] } }, undefined, { scripted: true });
   const base = fixture.info.url;
   const planPath = join(fixture.info.dataDir, "room-plan.json");
   const evidence = () => existsSync(`${planPath}.evidence.jsonl`)

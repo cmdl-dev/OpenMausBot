@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
@@ -19,7 +19,7 @@ import { fixtureApi } from "./preview-fixture.ts";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const CLI = join(ROOT, "scripts", "control-omb.ts");
 const forced = process.env.OMB_UI_E2E === "1";
-const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
+const binary = resolveUiDriver(UI_TOOLS_DIR, process.env);
 const enabled = forced || Boolean(binary);
 if (!enabled) {
   console.log(`skipping thinking-timer ui e2e: no agent-browser binary resolves (looked in ${UI_TOOLS_DIR}, OMB_AGENT_BROWSER_PATH and PATH); set OMB_UI_E2E=1 to install the pinned release`);

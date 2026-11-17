@@ -15,7 +15,7 @@ const ENGINE_MIN_BYTES = 300 * MB, ENGINE_MAX_BYTES = 1500 * MB;
 /** One more session in a running shared process: OpenCode 1.19.3 grew about 110 MB a session with three stdio MCP
  * servers after a prompt; more MCP servers cost more. */
 export const SESSION_BYTES = 200 * MB;
-/** One bot's browser (agent-browser's daemon and its Chrome) on a page or two: 270 to 390 MB per bot on an 8 GB Cloud home,
+/** One bot's browser (its Chrome) on a page or two: 270 to 390 MB per bot on an 8 GB Cloud home,
  * 2026-10-21. It runs outside the engine's process group, so an engine's measured size never includes it. */
 export const BROWSER_BYTES = 400 * MB;
 /** A new engine's share is held back this long while it starts and grows; it is measured once it has run this long. */

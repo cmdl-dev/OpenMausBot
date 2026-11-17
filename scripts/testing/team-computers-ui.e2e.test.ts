@@ -3,14 +3,14 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { ENABLE_ADVANCED_UI, OPEN_SIDEBAR_TOOLS, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
+const binary = resolveUiDriver(UI_TOOLS_DIR, process.env);
 const enabled = process.env.OMB_UI_E2E === "1" || Boolean(binary);
 if (!enabled) console.info("skipping team computers UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
 

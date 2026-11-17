@@ -52,7 +52,7 @@ export function profileDir(dataDir: string, key: string): string {
 
 export interface ProfileRecord {
   key: string;
-  backend: "local" | "my-chrome" | "cdp-url";
+  backend: "local";
   egress: "direct" | { via: string };
   /** The calibrated identity file this profile was last launched with. */
   identity: string | null;

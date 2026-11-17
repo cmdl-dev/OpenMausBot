@@ -10,13 +10,12 @@ interface BrowserProfileUser {
 interface BrowserProfileRecord {
   id: string;
   name: string;
-  browser?: "chrome";
   partitionId?: string;
 }
 
 /** Partition routing is read-only: never reflect it through a config PATCH. */
-export function browserProfilesForPatch(profiles: BrowserProfileRecord[]): Array<{ id: string; name: string; browser?: "chrome" }> {
-  return profiles.map(({ id, name, browser }) => ({ id, name, ...(browser ? { browser } : {}) }));
+export function browserProfilesForPatch(profiles: BrowserProfileRecord[]): Array<{ id: string; name: string }> {
+  return profiles.map(({ id, name }) => ({ id, name }));
 }
 
 /** Sends the list the person edited, so another window's changes cannot silently disappear. */

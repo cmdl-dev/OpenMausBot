@@ -4,7 +4,7 @@
 // addresses, the order events arrived in, a step it failed) are not part of the contract.
 import { readFileSync } from "node:fs";
 
-import { BROWSER_WAITING } from "../../../browser-live.ts";
+import { BROWSER_WAITING } from "../protocol.ts";
 import { shape as fieldShape } from "./v1-session.ts";
 
 interface Step {

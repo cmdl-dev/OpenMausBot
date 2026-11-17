@@ -258,8 +258,7 @@ export function ComputerPanel({
   const panelView = resolveComputerPanelView(storedPanelView, { advanced, androidConnected });
   const panelRef = useComputerPanelEntry(profileBot.id, panelView);
   const browserAvailableHere = browserAvailable(state.config);
-  const browserEnabled = builtInBrowserEnabled(state.config) && bot.browser !== false
-    && (browserAvailableHere || state.config?.browserEngine?.installable === true);
+  const browserEnabled = builtInBrowserEnabled(state.config) && bot.browser !== false && browserAvailableHere;
   const [retry, setRetry] = useState(0);
   const [boatKeyShown, setBoatKeyShown] = useState(false);
   // Auto is the server's decision: never guess host-vs-cloud from desktop capabilities.
@@ -1047,7 +1046,7 @@ export function ComputerPanel({
   const canProvisionVps = computerStatusCurrent && canManageCloud && (phase === "vps-stopped" || (phase === "vps-unconfigured" && Boolean(vpsStatus?.configured)));
   const canReplaceVps = computerStatusCurrent && canManageCloud && phase === "vps-incompatible" && Boolean(vpsStatus?.managed);
 
-  const browserCanTurnOn = browserAvailableHere || state.config?.browserEngine?.installable === true;
+  const browserCanTurnOn = browserAvailableHere;
   const [browserTurningOn, setBrowserTurningOn] = useState(false);
   const turnOnBrowser = async () => {
     if (browserTurningOn) return;

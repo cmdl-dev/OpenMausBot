@@ -6,10 +6,9 @@ import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
 import { mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 
 
-const binaryPath = process.env.OMB_VERIFY_BROWSER_BINARY;
-const executablePath = process.env.OMB_VERIFY_BROWSER_CHROME;
-if (!binaryPath || !executablePath) throw new Error("Set OMB_VERIFY_BROWSER_BINARY and OMB_VERIFY_BROWSER_CHROME to explicit installed binaries.");
-const fixture = await launchVerificationServer(process.env, undefined, undefined, { binaryPath, executablePath });
+const chrome = process.env.OMB_VERIFY_BROWSER_CHROME;
+if (!chrome) throw new Error("Set OMB_VERIFY_BROWSER_CHROME to an explicit installed Chrome.");
+const fixture = await launchVerificationServer(process.env, undefined, undefined, { chrome });
 let ui: MountedPreview | undefined;
 try {
   await runControlOmb(["new-bot", "--name", "Pepper", "--url", fixture.info.url]);

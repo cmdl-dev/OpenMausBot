@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { FAKE_BROWSER_HOOK, fakeBrowserEnv } from "./testing/fake-browser.ts";
 import { cloudPairingSignature, cloudRequestSignature } from "./cloud-home.ts";
 import { CONTROL_BUSY } from "./control-client.ts";
 import { BROWSER_HANDED_OVER, browserBusyText } from "./host/browser-seats.ts";
@@ -107,7 +108,8 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-ac
       OMB_CLOUD_BOOTSTRAP_SECRET: this.secret, OMB_PUBLIC_URL: `https://${HOST}`,
       ...(this.role === "team" ? { OMB_CLOUD_TEAM_ID: TEAM.id, OMB_CLOUD_TEAM_NAME: TEAM.name } : {}),
     };
-    this.child = spawn(process.execPath, ["--import", prelude, join(SERVER_DIR, "index.ts")], {
+    const browser = this.extraEnv.OMB_TEST_FAKE_BROWSER ? ["--import", FAKE_BROWSER_HOOK] : [];
+    this.child = spawn(process.execPath, ["--import", prelude, ...browser, join(SERVER_DIR, "index.ts")], {
       cwd: join(SERVER_DIR, ".."),
       env: { PATH: process.env.PATH, HOME: this.home, USERPROFILE: this.home, OMB_DATA_DIR: this.dataDir, OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1), ...roleEnv, ...this.extraEnv },
       stdio: ["ignore", "pipe", "pipe"],
@@ -229,35 +231,16 @@ describe.each(roles)("one bot's threads on a %s server", (role) => {
   }, 90_000);
 });
 
-/** An agent-browser stand-in answering MCP: no Chrome, no page. */
-function inertBrowser(dir: string) {
-  const browser = join(dir, "agent-browser");
-  writeFileSync(browser, [
-    "#!/usr/bin/env node",
-    'import { createInterface } from "node:readline";',
-    'if (process.argv[2] === "mcp") {',
-    '  createInterface({ input: process.stdin }).on("line", (line) => {',
-    '    const message = JSON.parse(line); if (message.id === undefined) return;',
-    '    const result = message.method === "initialize" ? { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "inert-browser", version: "1" } }',
-    '      : message.method === "tools/list" ? { tools: [{ name: "agent_browser_snapshot", inputSchema: { type: "object" } }] }',
-    '      : { content: [{ type: "text", text: "inert browser action" }] };',
-    '    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");',
-    '  });',
-    '} else { if (process.argv[2] === "session") console.log(JSON.stringify({ success: true, data: { sessions: [] } })); process.exit(0); }',
-  ].join("\n"), { mode: 0o755 });
-  return browser;
-}
 const browse = (f: Fixture, threadId: string) => internal(f, "/api/internal/browser/mcp", f.servers(threadId).browser.env.OMB_MCP_TOKEN_BROWSER, {
   method: "tools/call", params: { name: "agent_browser_snapshot", arguments: {} },
 });
 
-// The stand-in is a script with a shebang, which Windows cannot run as a program.
-describe.skipIf(process.platform === "win32").each(["desktop", "home"] as const)("two threads wanting one bot's browser on a %s server", (role) => {
+describe.each(["desktop", "home"] as const)("two threads wanting one bot's browser on a %s server", (role) => {
   let f: Fixture;
   afterEach(async () => { await f?.stop(); });
   const running = async (env: Record<string, string>) => {
     f = new Fixture(role);
-    f.extraEnv = { OMB_AGENT_BROWSER_PATH: inertBrowser(f.home), OMB_COMPUTER_CALL_WAIT_MS: "500", ...env };
+    f.extraEnv = { ...fakeBrowserEnv(f.home), OMB_COMPUTER_CALL_WAIT_MS: "500", ...env };
     await f.start();
     const { botId, threads } = await botWithThreads(f, CLAUDE, 2);
     await send(f, botId, threads[0]!, "First job");

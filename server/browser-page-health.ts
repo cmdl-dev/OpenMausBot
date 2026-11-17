@@ -1,9 +1,7 @@
-// Best effort, never proof of absence: CDP events wait in a 4,096-event buffer dropped on overflow, browser-generated
-// console lines (CSP, CORS, "Failed to load resource") and network-level failures never reach agent-browser's lists, and
-// `errors --clear` is ignored. Page text is untrusted: one stripped, capped, JSON-quoted line per sample.
+// What a page reported after a bot's action: failed requests, errors and console lines, reduced to one line the bot reads.
+// Best effort, never proof of absence. Page text is untrusted: one stripped, capped, JSON-quoted line per sample.
 import { scrubHeldSecrets } from "../shared/redact.ts";
 import { siteOf } from "../shared/site.ts";
-import type { RelayAnswer } from "./browser-relay.ts";
 
 export interface FailedRequest {
   method: string;
@@ -26,17 +24,10 @@ export interface HealthDelta {
   more?: { requests?: number; errors?: number; console?: number };
 }
 
-export type RelayRead = (command: Record<string, unknown>) => Promise<RelayAnswer | null>;
 
-const KEPT = 20;
-const KEPT_CHARS = 300;
 const SAMPLES = 3;
 const SAMPLE_CHARS = 120;
 const LINE_CHARS = 500;
-const SEEN_REQUESTS = 1_000;
-const SHOWN_PER_VISIT = 200;
-const SHOWN_TYPES = new Set(["document", "fetch", "xhr", "script"]);
-const CONSOLE_LEVELS = new Set(["error", "assert"]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -87,22 +78,8 @@ export function reduceRequest(raw: unknown, pageSite: string | null, now = Date.
   return reduced;
 }
 
-/** From the stack's top frame: the engine's error entries carry no URL. */
-function reduceError(raw: unknown, pageSite: string | null): PageError | null {
-  const entry = record(raw);
-  if (!entry || typeof entry.text !== "string") return null;
-  const text = sanitizePageText(entry.text, KEPT_CHARS);
-  if (!text) return null;
-  const frame = /(?:\bat\s+(?:[^\n(]*\()?|@)(https?:\/\/[^\s)]+?):(\d+):(\d+)/u.exec(entry.text);
-  if (!frame) return { text, firstParty: null };
-  try {
-    const url = new URL(frame[1]!);
-    return { text, at: `${url.hostname}${collapsePath(url.pathname)}:${frame[2]}:${frame[3]}`, firstParty: pageSite === null ? null : siteOf(url.hostname) === pageSite };
-  } catch { return { text, firstParty: null }; }
-}
 
 export interface Cursor { ready: boolean; count: number; tail: string[] }
-const freshCursor = (): Cursor => ({ ready: false, count: 0, tail: [] });
 
 /** The first read only sets the cursor; a shorter list was cleared, and a list rotated at its cap is found again by its last keys. */
 export function newEntries<T>(list: readonly T[], keyOf: (entry: T) => string, cursor: Cursor): { fresh: T[]; cursor: Cursor } {
@@ -119,133 +96,11 @@ export function newEntries<T>(list: readonly T[], keyOf: (entry: T) => string, c
   return { fresh: [...list], cursor: next };
 }
 
-function cap<T>(items: T[], kind: keyof NonNullable<HealthDelta["more"]>, more: NonNullable<HealthDelta["more"]>): T[] {
-  if (items.length > KEPT) more[kind] = items.length - KEPT;
-  return items.slice(0, KEPT);
-}
 
 export function emptyDelta(): HealthDelta { return { requests: [], errors: [], console: [] }; }
 
 export function isEmptyDelta(delta: HealthDelta | null): boolean {
   return !delta || (!delta.requests.length && !delta.errors.length && !delta.console.length);
-}
-
-interface SessionHealth {
-  console: Cursor;
-  errors: Cursor;
-  seen: Set<string>;
-  seenOrder: string[];
-  visit: string | null;
-  host: string | null;
-  site: string | null;
-  shown: Set<string>;
-  /** Another thread's leftovers in a shared browser are not this thread's news. */
-  thread: string | null;
-  /** A person took the browser: the next read moves past what they caused, reporting none of it. */
-  discard: boolean;
-}
-
-export class PageHealthReader {
-  private sessions = new Map<string, SessionHealth>();
-
-  private state(session: string): SessionHealth {
-    let state = this.sessions.get(session);
-    if (!state) {
-      state = { console: freshCursor(), errors: freshCursor(), seen: new Set(), seenOrder: [], visit: null, host: null, site: null, shown: new Set(), thread: null, discard: false };
-      this.sessions.set(session, state);
-    }
-    return state;
-  }
-
-  setPage(session: string, href: string | null, loadedAt: number | null = null): void {
-    if (!href) return;
-    let url: URL;
-    try { url = new URL(href); } catch { return; }
-    const state = this.state(session);
-    const visit = `${url.origin}${url.pathname}\u0000${loadedAt ?? ""}`;
-    if (visit !== state.visit) { state.visit = visit; state.shown.clear(); }
-    const web = url.protocol === "http:" || url.protocol === "https:";
-    state.host = web ? url.hostname.toLowerCase() : null;
-    state.site = web ? siteOf(url.hostname) : null;
-  }
-
-  pageHost(session: string): string | null { return this.sessions.get(session)?.host ?? null; }
-
-  pageSite(session: string): string | null { return this.sessions.get(session)?.site ?? null; }
-
-  /** Null when a read failed: unknown, never "nothing". */
-  async read(session: string, read: RelayRead, thread: string | null, fresh = false): Promise<HealthDelta | null> {
-    const state = this.state(session);
-    if (fresh) {
-      if (!state.console.ready) state.console = { ready: true, count: 0, tail: [] };
-      if (!state.errors.ready) state.errors = { ready: true, count: 0, tail: [] };
-    }
-    const noting = !state.console.ready;
-    const consoleAnswer = await read({ action: "console" });
-    const errorsAnswer = consoleAnswer?.success ? await read({ action: "errors" }) : null;
-    const requestsAnswer = errorsAnswer?.success ? await read({ action: "requests", status: "400-599" }) : null;
-    if (!consoleAnswer?.success || !errorsAnswer?.success || !requestsAnswer?.success) return null;
-    const messages = Array.isArray(consoleAnswer.data?.messages) ? consoleAnswer.data.messages : [];
-    const errors = Array.isArray(errorsAnswer.data?.errors) ? errorsAnswer.data.errors : [];
-    const requests = Array.isArray(requestsAnswer.data?.requests) ? requestsAnswer.data.requests : [];
-    const consoleNews = newEntries(messages, (entry) => { const value = record(entry); return `${String(value?.type)}\u0000${String(value?.text)}`; }, state.console);
-    const errorNews = newEntries(errors, (entry) => { const value = record(entry); return `${String(value?.text)}\u0000${String(value?.line)}\u0000${String(value?.column)}`; }, state.errors);
-    state.console = consoleNews.cursor;
-    state.errors = errorNews.cursor;
-    const freshRequests: unknown[] = [];
-    for (const raw of requests) {
-      const id = record(raw)?.requestId;
-      if (typeof id !== "string" || state.seen.has(id)) continue;
-      state.seen.add(id);
-      state.seenOrder.push(id);
-      if (state.seenOrder.length > SEEN_REQUESTS) state.seen.delete(state.seenOrder.shift()!);
-      freshRequests.push(raw);
-    }
-    const sameThread = state.thread === null || state.thread === thread;
-    state.thread = thread;
-    const held = state.discard;
-    state.discard = false;
-    if (noting || held || !sameThread) return emptyDelta();
-    const more: NonNullable<HealthDelta["more"]> = {};
-    const delta: HealthDelta = {
-      requests: cap(freshRequests.flatMap((raw) => reduceRequest(raw, state.site) ?? []), "requests", more),
-      errors: cap(errorNews.fresh.flatMap((raw) => reduceError(raw, state.site) ?? []), "errors", more),
-      console: cap(consoleNews.fresh.flatMap((raw) => {
-        const value = record(raw);
-        const level = typeof value?.type === "string" ? value.type : "";
-        const text = sanitizePageText(String(value?.text ?? ""), KEPT_CHARS);
-        return CONSOLE_LEVELS.has(level) && text ? [{ level, text }] : [];
-      }), "console", more),
-    };
-    if (Object.keys(more).length) delta.more = more;
-    return delta;
-  }
-
-  /** Also stops the engine holding request bodies. Errors cannot be cleared (the engine ignores it). */
-  async clear(session: string, read: RelayRead): Promise<void> {
-    const state = this.state(session);
-    if ((await read({ action: "console", clear: true }))?.success) state.console = { ready: state.console.ready, count: 0, tail: [] };
-    await read({ action: "requests", clear: true });
-  }
-
-  visible(session: string, delta: HealthDelta): HealthDelta {
-    const state = this.state(session);
-    const once = (signature: string) => {
-      if (state.shown.has(signature)) return false;
-      if (state.shown.size < SHOWN_PER_VISIT) state.shown.add(signature);
-      return true;
-    };
-    return {
-      requests: delta.requests.filter((request) => request.firstParty && !request.pending && SHOWN_TYPES.has(request.type.toLowerCase())
-        && once(`r\u0000${request.method}\u0000${request.host}${request.path}\u0000${request.status}`)),
-      errors: delta.errors.filter((error) => error.firstParty !== false && once(`e\u0000${error.text}`)),
-      console: delta.console.filter((line) => once(`c\u0000${line.level}\u0000${line.text}`)),
-    };
-  }
-
-  discardNext(session: string): void { this.state(session).discard = true; }
-
-  forget(session: string): void { this.sessions.delete(session); }
 }
 
 function plural(count: number, word: string): string { return `${count} ${word}${count === 1 ? "" : "s"}`; }

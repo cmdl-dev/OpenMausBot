@@ -1,11 +1,11 @@
 # Live browser and profiles
 
-Use installed native engine and Chrome binaries explicitly; the fixture never
-uses the operator's browser profiles, OMB home, provider logins, or API keys.
+Name an installed Chrome explicitly (Google Chrome or Chrome for Testing, never
+a headless shell); the fixture never uses the operator's browser profiles, OMB
+home, provider logins, or API keys.
 
 ```sh
-OMB_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
-OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
+OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome \
 node --experimental-strip-types scripts/verify-browser-live.ts
 ```
 
@@ -126,14 +126,13 @@ from the menu (new engine) still shows bands on purpose.
 | --- | --- | --- | --- |
 | ![Before](images/browser-fill/before-midnight-maximized.png) | ![After](images/browser-fill/after-midnight-maximized.png) | ![Wide](images/browser-fill/after-midnight-advanced-wide.png) | ![Tablet](images/browser-fill/after-new-engine-tablet-preset.png) |
 
-`scripts/testing/browser-fill.e2e.test.ts` runs the agent-browser side against the pinned engine and
-`server/browser/viewers/viewers.e2e.test.ts` the new engine's (`OMB_CDP_CHROME`).
+`server/browser/viewers/viewers.e2e.test.ts` runs it against a real Chrome (`OMB_CDP_CHROME`).
 
 Focused automated coverage:
 
 ```sh
-pnpm exec vitest run server/browser-engine.test.ts server/browser-runtime.test.ts server/browser-page-size.test.ts \
-  server/harness-mcp-proxy.test.ts server/browser-live.test.ts server/browser-dialogs.test.ts \
+pnpm exec vitest run server/browser/engines.test.ts server/host/browser.test.ts server/browser/service.test.ts \
+  server/harness-mcp-proxy.test.ts server/browser/viewers/live-v1.test.ts \
   server/browser-live-routes.test.ts server/browser-codex-path.integration.test.ts \
   src/lib/browser-stream-v1.test.ts src/lib/browser-stream-client.test.ts src/lib/browser-control.test.ts \
   src/lib/browser-profiles.test.ts src/components/BrowserProfilesManager.test.ts \
@@ -156,8 +155,7 @@ With an installed Playwright module, the same isolated launcher can run an
 automatic native acceptance pass, close its browsers and exit:
 
 ```sh
-OMB_VERIFY_BROWSER_BINARY=/absolute/path/to/agent-browser \
-OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome-headless-shell \
+OMB_VERIFY_BROWSER_CHROME=/absolute/path/to/chrome \
 OMB_VERIFY_PLAYWRIGHT=/absolute/path/to/playwright/index.mjs \
 node --experimental-strip-types scripts/verify-browser-live.ts --recovery
 ```
@@ -177,19 +175,13 @@ as well: native macOS acceptance alone does not prove Windows process behavior.
 
 ### Lifecycle references
 
-- [agent-browser's MCP loop](https://github.com/vercel-labs/agent-browser/blob/v0.37.0/cli/src/mcp.rs)
-  exits on stdin EOF; idle transport retirement must not kill the profile's daemon.
-- [agent-browser daemon startup](https://github.com/vercel-labs/agent-browser/blob/v0.37.0/cli/src/connection.rs)
-  detaches the daemon. Losing the MCP transport does not prove an accepted
-  browser action stopped; interruption still requires an explicit restart.
 - [Pi author's browser tools](https://github.com/badlogic/agent-tools/blob/main/browser-tools/browser-nav.js)
   disconnect the automation client instead of closing Chrome after navigation.
 - [OpenClaw's CDP connection](https://github.com/openclaw/openclaw/blob/main/extensions/browser/src/browser/cdp-websocket.ts)
   bounds connection retries before commands have side effects. OMB similarly
   retries observation only, never clicks, text, navigation or submissions.
 
-No upstream implementation was copied; OMB already ships agent-browser and
-keeps its existing license notices and profile/control boundaries.
+No upstream implementation was copied.
 
 Verified 2026-09-19 on macOS arm64 with agent-browser 0.37.0 and the packaged
 Chrome Headless Shell: 214 focused checks, typecheck and scoped lint passed.

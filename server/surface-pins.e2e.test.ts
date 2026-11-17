@@ -89,7 +89,7 @@ describe("surface pin provenance against the real server", () => {
         TEMP: home, TMP: home, TMPDIR: home,
         OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1), OMB_STATIC_DIR: ui, OMB_TEST_VM_STATE: stateFile,
         OMB_BOAT_API: boatApi, OMB_USER_DATA: join(home, "user-data"), OMB_TEST_DESKTOP_CUA_CONNECTION: cuaDescriptor,
-        ...(withBrowser ? { OMB_AGENT_BROWSER_PATH: inertBrowser, AGENT_BROWSER_EXECUTABLE_PATH: inertBrowser } : {}),
+        ...(withBrowser ? { OMB_CHROME_PATH: inertBrowser } : {}),
       }, stdio: ["ignore", "pipe", "pipe"],
     });
     child = proc;
@@ -121,8 +121,8 @@ describe("surface pin provenance against the real server", () => {
     dumpFile = join(home, "dump.json");
     finishFile = join(home, "finish");
     cuaDescriptor = join(home, "user-data", "cua-connection.json");
-    inertBrowser = join(home, "agent-browser");
-    writeFileSync(inertBrowser, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    inertBrowser = join(home, "chrome");
+    writeFileSync(inertBrowser, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
     vmState();
     mkdirSync(data);
     mkdirSync(join(ui, "assets"), { recursive: true });

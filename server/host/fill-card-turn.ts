@@ -4,8 +4,7 @@ import { loginPageCheck, loginSite } from "../../shared/logins.ts";
 import { amountValue, cardExpired, cardLabel, PAYMENT_AMOUNT_MAX, PAYMENT_ITEM_MAX, type VaultCard } from "../../shared/payment-cards.ts";
 import { PAYMENT_APPROVAL_MS } from "../../shared/payment-request.ts";
 import type { Surface } from "../../shared/wire.ts";
-import { BROWSER_CONTROL_REFUSAL } from "../browser-runtime.ts";
-import type { StepContext } from "../browser-steps.ts";
+import { BROWSER_CONTROL_REFUSAL } from "../browser/calls.ts";
 import { fillCard, pageShowsAmount, type CardFillDeps, type CardField, type CardValues } from "../card-fill.ts";
 import { SECRET_HOLD_MS } from "../login-fill.ts";
 import { redactSecretsInText } from "../redact.ts";
@@ -23,18 +22,18 @@ export interface FillCardTurnDeps {
   place(bot: BotRecord, threadId: string): Surface | null;
   current(bot: BotRecord, threadId: string): BotRecord;
   builtInBrowserOn(): boolean;
-  /** Null while the browser engine is not installed. */
-  target(bot: BotRecord, threadId: string): Promise<{ session: string; spec: Spec; env: NodeJS.ProcessEnv } | null>;
-  /** Null on a browser that cannot keep a typed card out of screenshots. */
-  cardInput(session: string, spec: Spec): CardInput | null;
+  target(bot: BotRecord, threadId: string): Promise<{ session: string; spec: Spec } | null>;
+  /** Why the bots' browser cannot run here (the launcher's diagnosis), or null when it can. */
+  browserUnavailable(): string | null;
+  /** Null for a session the browser has not named yet. */
+  cardInput(session: string): CardInput | null;
   claim(turn: Turn, resource: string): boolean;
-  withSecretInput(session: string, spec: Spec, fill: () => Promise<Outcome>, ctx: StepContext): Promise<Outcome>;
+  withSecretInput(session: string, spec: Spec, fill: () => Promise<Outcome>): Promise<Outcome>;
   cards: Pick<VaultStore, "cardsFor" | "card" | "markUsed">;
   payments: Pick<PaymentRequestService, "approval" | "propose" | "use" | "heldCard" | "isHeld">;
   /** Who asked, on a card in a room; absent in a bot's own chat. */
   from(bot: BotRecord, threadId: string): { botId: string; name: string; color: string } | undefined;
   remember: CardFillDeps["remember"];
-  stepContext(bot: BotRecord, turn: Turn): StepContext;
   turnActive?(turn: Turn): boolean;
   now?(): number;
 }
@@ -80,13 +79,13 @@ export function createFillCardTurn(deps: FillCardTurnDeps) {
     const item = text(raw.item, PAYMENT_ITEM_MAX);
     if (!amount || !amountValue(amount)) return { ok: false, text: "fill_card needs amount: the order's total exactly as the checkout shows it, with its currency, such as $42.10." };
     if (!item) return { ok: false, text: "fill_card needs item: a few words on what the person is buying, such as 2 concert tickets for Saturday." };
+    const unavailable = deps.browserUnavailable();
+    if (unavailable) return { ok: false, text: `The browser cannot run on this computer: ${unavailable} ${PAY_YOURSELF}` };
     const browser = await deps.target(current, threadId);
     if (!browser) return { ok: false, text: `The browser is not available on this computer right now. ${PAY_YOURSELF}` };
     const { session, spec } = browser;
-    const input = deps.cardInput(session, spec);
-    if (!input) {
-      return { ok: false, text: `Paying with a card needs the new browser, which keeps the typed card out of screenshots. The person can turn it on in Settings → Early features → New browser. Until then: ${PAY_YOURSELF}` };
-    }
+    const input = deps.cardInput(session);
+    if (!input) return { ok: false, text: "The browser has no checkout page open. Open the checkout page first, then call fill_card." };
     if (!deps.claim(capability, `browser:${session}`)) return { ok: false, text: "Another conversation is using this browser. Wait until it finishes, then call fill_card again." };
     const page = loginPageCheck(input.pageUrl() ?? "");
     if (!page.ok) {
@@ -105,7 +104,7 @@ export function createFillCardTurn(deps: FillCardTurnDeps) {
             : "That saved card is gone. Tell the person, and do not pay." };
         }
         const label = approved.request.cardLabel;
-        const outcome = await deps.withSecretInput(session, spec, () => fill(card, input, approved.request.amount, page.pageHost, label, capability), deps.stepContext(current, capability));
+        const outcome = await deps.withSecretInput(session, spec, () => fill(card, input, approved.request.amount, page.pageHost, label, capability));
         if (outcome.ok) {
           deps.payments.use(threadId, approved.messageId);
           if (!deps.payments.isHeld(approved.request.cardId)) deps.cards.markUsed(approved.request.cardId);

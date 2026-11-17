@@ -1,12 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync } from "node:fs";
 
 import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
-import { browserDaemonFile, browserProfilesRoot, closeBrowserSession, runningBrowserSessionNames } from "./browser-engine.ts";
-import { orphanedBrowsers, stopBrowserProcesses } from "./browser-processes.ts";
-import { browserRuntimeEnv } from "./browser-runtime.ts";
 
 const BOT_ID = /^[A-Za-z0-9_-]{1,120}$/;
 const PROFILE_ID = /^[a-z0-9_-]{1,40}$/;
@@ -376,108 +372,10 @@ export class BrowserCleanupCoordinator {
   }
 }
 
-/** Defaults for config.json's browserEngine.idleTimeoutMinutes (1-60); agent-browser's own backstop closes an idle daemon after an hour. */
+/** Defaults for config.json's browserEngine.idleTimeoutMinutes (1-60). */
 export const DEFAULT_BROWSER_IDLE_MINUTES = 10;
 export const CLOUD_HOME_BROWSER_IDLE_MINUTES = 3;
 
 export function browserIdleMs(cfg: { browserEngine?: { idleTimeoutMinutes?: number } }, { cloudHome = false }: { cloudHome?: boolean } = {}): number {
   return (cfg.browserEngine?.idleTimeoutMinutes ?? (cloudHome ? CLOUD_HOME_BROWSER_IDLE_MINUTES : DEFAULT_BROWSER_IDLE_MINUTES)) * 60_000;
-}
-
-/** agent-browser writes one `<session>.pid` per daemon, so with none there is nothing to ask about. */
-function daemonsMayRun(env: NodeJS.ProcessEnv): boolean {
-  try { return readdirSync(dirname(browserDaemonFile({ ...env, AGENT_BROWSER_SESSION: "" }, ".pid"))).some((name) => name.endsWith(".pid") && name !== "dashboard.pid"); }
-  catch { return false; }
-}
-
-/** agent-browser detaches each daemon and its Chrome, so they outlive a crashed or killed server. A browser attached to the
- * person's own Chrome, or anything else under the same HOME, is never this data dir's to close. */
-export class BrowserSweep {
-  readonly #engine: () => string | null;
-  readonly #owns: (session: string) => boolean;
-  readonly #live: (session: string) => boolean;
-  readonly #held: (session: string) => boolean;
-  readonly #closeIdle: (session: string) => Promise<boolean>;
-  readonly #intervalMs: number;
-  readonly #warned = new Set<string>();
-  #timer: ReturnType<typeof setInterval> | undefined;
-  #pass: Promise<void> | undefined;
-  #hadDaemons = false;
-
-  constructor(options: {
-    engine: () => string | null;
-    owns: (session: string) => boolean;
-    live: (session: string) => boolean;
-    /** A turn holds it until it finishes: never closed while one does. */
-    held: (session: string) => boolean;
-    closeIdle: (session: string) => Promise<boolean>;
-    intervalMs?: number;
-  }) {
-    this.#engine = options.engine;
-    this.#owns = options.owns;
-    this.#live = options.live;
-    this.#held = options.held;
-    this.#closeIdle = options.closeIdle;
-    this.#intervalMs = options.intervalMs ?? 60_000;
-  }
-
-  start(): this {
-    void this.sweep(true);
-    this.#timer = setInterval(() => void this.sweep(), this.#intervalMs);
-    this.#timer.unref?.();
-    return this;
-  }
-
-  sweep(boot = false): Promise<void> {
-    this.#pass ??= this.#sweep(boot).catch((error) => console.warn("browser sweep:", error)).finally(() => { this.#pass = undefined; });
-    return this.#pass;
-  }
-
-  async #owned(binaryPath: string, timeoutMs?: number): Promise<string[] | null> {
-    const env = browserRuntimeEnv({});
-    if (!daemonsMayRun(env)) return null;
-    return (await runningBrowserSessionNames(binaryPath, env, timeoutMs))?.filter((session) => this.#owns(session)) ?? null;
-  }
-
-  async #sweep(boot: boolean): Promise<void> {
-    const binaryPath = this.#engine();
-    if (!binaryPath) return;
-    const owned = await this.#owned(binaryPath);
-    if (boot || owned || this.#hadDaemons) {
-      for (const { session, tree } of await orphanedBrowsers(browserRuntimeEnv({}).HOME, browserProfilesRoot())) {
-        if (!this.#owns(session)) continue;
-        if (await stopBrowserProcesses(tree)) console.info(`browser ${session}: stopped a browser whose engine had been killed under it`);
-        else console.warn(`browser ${session}: could not stop a browser whose engine had been killed under it`);
-      }
-    }
-    this.#hadDaemons = owned !== null;
-    for (const session of owned ?? []) {
-      // Read per browser, after the awaits before it: a turn may have started using it.
-      if (this.#held(session)) continue;
-      if (this.#live(session)) {
-        if (await this.#closeIdle(session)) console.info(`browser ${session}: closed after it sat unused`);
-        continue;
-      }
-      const closed = await closeBrowserSession(binaryPath, browserRuntimeEnv({ AGENT_BROWSER_SESSION: session }));
-      if (closed) {
-        this.#warned.delete(session);
-        console.info(`browser ${session}: closed a browser nothing here uses any more`);
-      } else if (!this.#warned.has(session)) {
-        this.#warned.add(session);
-        console.warn(`browser ${session}: could not close a browser nothing here uses any more; the sweep keeps trying`);
-      }
-    }
-  }
-
-  async closeAll(timeoutMs = 4_000): Promise<void> {
-    clearInterval(this.#timer);
-    this.#timer = undefined;
-    const binaryPath = this.#engine();
-    const owned = binaryPath ? await this.#owned(binaryPath, timeoutMs).catch(() => null) : null;
-    await Promise.all((owned ?? []).map(async (session) => {
-      if (!await closeBrowserSession(binaryPath!, browserRuntimeEnv({ AGENT_BROWSER_SESSION: session }), timeoutMs)) {
-        console.warn(`browser ${session}: could not close its browser at shutdown`);
-      }
-    }));
-  }
 }

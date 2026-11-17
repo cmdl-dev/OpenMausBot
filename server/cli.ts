@@ -567,38 +567,34 @@ export async function runLogout(options: CliOptions, io: CliIo = defaultIo()): P
 }
 
 export async function runBrowser(options: CliOptions, io: CliIo = defaultIo()): Promise<number> {
-  const { browserEngineStatus, describeBrowserEngine, ensureChrome, installAgentBrowserBinary, resolveAgentBrowserBinary } = await import("./browser-engine.ts");
-  const status = browserEngineStatus({ dataDir: options.dataDir });
+  const launcher = new (await import("./browser/chrome/launcher.ts")).ChromeLauncher({ dataDir: options.dataDir, log: io.log, readyWaitMs: 30 * 60_000 });
   if (options.browserAction === "status") {
-    io.log(describeBrowserEngine(status, status.kind === "ready" ? new (await import("./browser/chrome/launcher.ts")).ChromeLauncher({ dataDir: options.dataDir }).describe() : undefined));
-    if (status.kind !== "ready" && status.installable) io.log("install it with:  openmausbot browser install");
-    return status.kind === "ready" ? 0 : 1;
+    io.log(`browser: ${launcher.describe()}`);
+    return launcher.plan().kind === "none" ? 1 : 0;
   }
-  let binary = resolveAgentBrowserBinary({ dataDir: options.dataDir });
-  if (binary) {
-    io.log(`agent-browser is already here: ${binary}`);
-  } else {
-    if (status.kind !== "ready" && !status.installable) {
-      io.error(status.reason);
-      return 1;
-    }
+  if (options.withDeps) {
     try {
-      binary = await installAgentBrowserBinary({ dataDir: options.dataDir, log: io.log });
+      await (await import("./browser/chrome/libraries.ts")).installChromeLibraries({ log: io.log });
     } catch (error) {
-      io.error(`could not install agent-browser: ${message(error)}`);
+      io.error(`could not install Chrome's system libraries: ${message(error)}`);
       return 1;
     }
-    io.log(`installed ${binary}`);
+    io.log(`Chrome's system libraries are installed; run ${cliCommand("browser install")} as the user running serve to get Chrome ready`);
+    return 0;
   }
-  try {
-    await ensureChrome(binary, { withDeps: options.withDeps === true, log: io.log });
-  } catch (error) {
-    io.error(`Chrome is not ready: ${message(error)}`);
-    if (process.platform === "linux" && !options.withDeps) io.error(`on Linux, install Chrome's system libraries with: sudo ${cliCommand("browser install --with-deps")}, then retry ${cliCommand("browser install")} as the user running serve`);
+  const plan = launcher.plan();
+  if (plan.kind === "none") {
+    io.error(plan.reason);
     return 1;
   }
-  io.log("browser installed for this user and data directory; run serve as the same user, then enable it under Settings → Computers and per bot");
-  if (process.platform === "linux" && options.withDeps) io.log(`if serve runs as another user, run ${cliCommand("browser install")} from that user's login shell too`);
+  try {
+    await launcher.binary();
+  } catch (error) {
+    io.error(message(error));
+    if (process.platform === "linux") io.error(`on Linux, install Chrome's system libraries with: sudo ${cliCommand("browser install --with-deps")}, then retry ${cliCommand("browser install")} as the user running serve`);
+    return 1;
+  }
+  io.log(`browser: ${launcher.describe()}; run serve as the same user and data directory, then enable it under Settings → Computers and per bot`);
   return 0;
 }
 
@@ -668,7 +664,6 @@ async function planTunnel(options: CliOptions, log: (line: string) => void, reco
 }
 
 export async function runServe(options: CliOptions, log: (line: string) => void = console.log): Promise<number> {
-  const { browserEngineStatus, describeBrowserEngine } = await import("./browser-engine.ts");
   if (await serverUp(options.port)) {
     console.error(`something already answers on http://127.0.0.1:${options.port}; use ${cliCommand("pair")} against it, or --port for a second server`);
     return 1;
@@ -860,7 +855,7 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
       if (options.open !== false && !await openDashboard(options.port)) log(`Open http://127.0.0.1:${options.port} in a browser on this computer.`);
     } else {
       log(`data: ${options.dataDir}`);
-      log(describeBrowserEngine(browserEngineStatus({ dataDir: options.dataDir })));
+      log(`browser: ${new (await import("./browser/chrome/launcher.ts")).ChromeLauncher({ dataDir: options.dataDir }).describe()}`);
     }
     const reach = route && origin && route !== "lan" ? await waitForReach(options.port, origin, route === "public-url" ? 3_000 : 15_000) : undefined;
     if (route && origin) for (const line of reachLines(route, origin, options.port, prefix, reach)) log(line);

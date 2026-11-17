@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { amountValue, cardBrand, cardExpired, cardLabel, validCardNumber } from "../shared/payment-cards.ts";
 import { amountForms } from "./card-fill.ts";
-import { decryptBrowserState } from "./browser-sites.ts";
+import { unsealText } from "./sealed-text.ts";
 import { json, readBody } from "./harness/http.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import { dispatchRoutes } from "./routes/table.ts";
@@ -58,7 +58,7 @@ describe("saved cards in the Vault", () => {
     expect(reopened.listCards()).toEqual([card]);
     expect(JSON.stringify(reopened.listCards())).not.toContain(VISA);
     expect(reopened.card(card.id)).toMatchObject({ number: VISA, cvc: "314" });
-    const written = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
+    const written = JSON.parse(unsealText(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
     expect(z.object({ version: z.literal(1), logins: z.array(z.unknown()) }).parse(written).logins).toEqual([]);
   });
 

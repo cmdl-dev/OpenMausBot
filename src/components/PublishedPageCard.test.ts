@@ -84,7 +84,7 @@ describe("a published page's card", () => {
     for (const [state, bridge] of [
       [app({ selectedId: "room" }), {}],
       [app({ bots: [{ id: "pepper", browser: false }] }), {}],
-      [app({ config: { features: { browser: true }, browserEngine: { kind: "unavailable", installable: true } } }), {}],
+      [app({ config: { features: { browser: true }, browserEngine: { kind: "unavailable", installChrome: true } } }), {}],
       [app(), { remoteClient: { active: true } }],
     ] as const) {
       desktop(bridge);

@@ -70,7 +70,6 @@ export function useBotSettingsDerived(bot: Bot) {
   const connectorGrantState: ConnectorGrantsState = connectorGrantsState(bot);
   const canUseBrowser = engine?.capabilities?.browserMcp === true;
   const desktopBrowser = browserAvailable(state.config);
-  const browserBlockedOnWindows = window.ogb?.platform === "win32" && !desktopBrowser;
   const browserFeature = builtInBrowserEnabled(state.config);
   const browserAllowed = bot.browser !== false;
   const browserEnabled = browserFeature && browserAllowed;
@@ -95,7 +94,6 @@ export function useBotSettingsDerived(bot: Bot) {
     connectorGrantState,
     canUseBrowser,
     desktopBrowser,
-    browserBlockedOnWindows,
     browserFeature,
     browserAllowed,
     browserEnabled,

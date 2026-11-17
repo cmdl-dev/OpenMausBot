@@ -439,21 +439,17 @@ import * as vps from "./vps-computer.ts";
 import { vpsConfigForBot, vpsSshAliasForBot } from "./vps-hosts.ts";
 import { ROUTINE_RESTARTED, RoutineManager, type Routine, type RoutineRun, type RoutineRunOn, type RoutineRunTrigger } from "./routines.ts"; import { routineModelRefusal, routineThreadModel, type RoutineModelChecks } from "./routine-input.ts"; import { routineHistoryFor, routineRunsFor } from "./routine-run-window.ts"; import { runTurnLive } from "./routine-turn-live.ts"; import { batchSaves } from "./save-batch.ts";
 import { CalendarCallManager, type CalendarCall } from "./calendar-calls.ts";
-import { BROWSER_UPLOAD_TOOL, browserRuntimeEnv } from "./browser-runtime.ts";
+import { BROWSER_UPLOAD_TOOL } from "./browser/calls.ts";
 import { BrowserUploadRefusal, uploadableFiles } from "./browser-upload.ts";
-import { listSignedInSites, signOutOfSites } from "./browser-sites.ts";
 import { HeldSecrets, TEAM_READER, VaultStore } from "./vault-store.ts";
 import { OnePasswordLogins, onePasswordUnavailable, sdkOnePasswordClient, type OnePasswordSdk } from "./onepassword.ts";
 import { nativeRequire } from "./data/engine.ts";
 import { createFillLoginTurn } from "./host/fill-login-turn.ts"; import { createPayments } from "./host/payments.ts"; import { createInternalFillCardRoutes } from "./routes/fill-card.ts";
 import { BotLogins, cardLoginPlace, cardSignInElsewhere, observeSignInPage, type ObservedPage } from "./bot-logins.ts";
-import { relayFrame } from "./browser-relay.ts";
-import { browserEvidence, stepContext } from "./browser-steps.ts";
+import { BrowserEvidence } from "./browser-evidence.ts";
 import { parseLoginFields, parseTotpField, createLoginRoutes } from "./routes/logins.ts"; import { createVaultRoutes } from "./routes/vault.ts"; import { createVaultReaders } from "./host/vault-readers.ts"; import { createSignInVaultChoices } from "./vault/choices.ts";
 import { loginSite } from "../shared/logins.ts";
-import { browserRestartRefusal } from "./browser-live.ts";
-import { browserEngineStatus } from "./browser-engine.ts";
-import { chromeLauncher } from "./browser/chrome/launcher.ts";
+import { browserRestartRefusal } from "./browser/viewers/protocol.ts";
 import { botThreadLimitText, botThreadsHost, maxConcurrentBotThreads, maxConcurrentChildThreads } from "./bot-thread-limits.ts"; import { createBrowserSeats } from "./host/browser-seats.ts"; import { createBrowserHost } from "./host/browser.ts"; import { createCloudPlanTier } from "./host/cloud-plan-tier.ts";
 import { createScreenFrameSource, rememberTurnFrame, type ScreenCapture } from "./screen-frame-source.ts";
 import { screenFrameHash, screenSurfaceForTool, screenTouchingTool, settledFrameIsNews } from "./screen-frame-gate.ts";
@@ -600,7 +596,6 @@ import { createSkillShareRoutes } from "./routes/skill-share.ts";
 import { createTeamContextRoutes } from "./routes/team-context.ts";
 import { createAppSuggestions } from "./host/app-suggestions.ts"; import { createAppFindRoute, createAppSuggestionRoutes } from "./routes/app-suggestions.ts"; import { appPickAvailable } from "./decider/app-picks.ts"; import { managedConnectorUnavailableReason } from "../shared/connector-availability.ts"; import { createDeciderRoutes } from "./routes/decider.ts"; import { createCloudSendRoutes } from "./routes/cloud-send.ts"; import { claudeCodeSkillInputs } from "./setup-import.ts"; import { createCloudConnectionsHost } from "./cloud-connections-host.ts";
 import { createUpdateCheckRoutes, updateRouteDeps } from "./routes/update-check.ts"; import { createSeatsRoutes } from "./routes/seats.ts"; import { createTimeZoneRoutes } from "./routes/time-zone.ts";
-import { createBrowserSiteRoutes } from "./routes/browser-sites.ts";
 import { createInternalSignInRoutes } from "./routes/sign-in.ts";
 import { createInternalMcpRoutes } from "./routes/internal-mcp.ts";
 import { createInternalAppSettingsRoutes, createWindowPrefs } from "./routes/app-settings.ts"; import { createCustomDomainRoutes } from "./routes/custom-domain.ts"; import { createThemeRoutes } from "./themes/routes.ts"; import { createThemeStore } from "./themes/store.ts"; import { createThemeTool } from "./themes/tool.ts";
@@ -2389,10 +2384,10 @@ function cancelDirectTurnDispatch(botId: string, expectedThreadId?: string): Dir
 }
 
 const {
-  browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions,
-  currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, usesMyChrome, lentChromeSummary, browserSessionSpec, browserIntegration,
-  browserReady, currentBrowserSpec, loginInput, cardInput, browserSystemPrompt, closeBrowser, browserEngineSwitched, eraseDeletedBrowser, engineSummary, browserSessionsOf, signedInSitesTarget, uploadPaths, eraseAudienceBrowsers,
-} = createBrowserHost({ cfg, language: appLanguage, store: () => store, turnResources, activeInternalGenerationByThread, mintInternalCapability, DESKTOP_MANAGED, CLOUD_HOME, HOSTED_WORKSPACE, PORT, engineMemory, audienceOf: teamHost.browserAudience, ...(CLOUD_TEAM ? { browserBox: (fd: number, ro: readonly string[]) => botBox.browserBox(fd, ro) } : {}), lendRefusal: (turn) => cloudLendingRefusal({ botId: store.botByThread(turn.threadId)?.id ?? "", threadId: turn.threadId, generation: turn.generation }), device: () => deviceLinks.route(CLOUD_HOME_LENDER) ?? sharedComputers.internetAway(CLOUD_HOME_LENDER) ?? { unshared: true as const }, lentChrome: CLOUD_PERSONAL ? { route: () => deviceLinks.chromeRoute(CLOUD_HOME_LENDER), lender: () => sharedComputers.chromeLender(CLOUD_HOME_LENDER) } : undefined });
+  browserRuntime, browserLive, browserSweep, temporaryBrowserSessions,
+  currentBrowserSession, forgetTemporaryBrowser, browserIntegration,
+  browserReady, currentBrowserSpec, loginInput, cardInput, browserSystemPrompt, eraseDeletedBrowser, engineSummary, browserSessionsOf, uploadPaths, eraseAudienceBrowsers,
+} = createBrowserHost({ cfg, language: appLanguage, store: () => store, turnResources, mintInternalCapability, DESKTOP_MANAGED, CLOUD_HOME, HOSTED_WORKSPACE, PORT, engineMemory, audienceOf: teamHost.browserAudience, lendRefusal: (turn) => cloudLendingRefusal({ botId: store.botByThread(turn.threadId)?.id ?? "", threadId: turn.threadId, generation: turn.generation }), device: () => deviceLinks.route(CLOUD_HOME_LENDER) ?? sharedComputers.internetAway(CLOUD_HOME_LENDER) ?? { unshared: true as const } });
 
 const dataSheets = new DataSheetRegistry({
   broadcast: (frame) => broadcast({ ...frame }),
@@ -2424,14 +2419,8 @@ function dataIntegration(botId: string, turn: { threadId: string; generation: st
 }
 const emailIntegration = (bot: BotRecord, turn: { threadId: string; generation: string }) => emailHost.integration(bot, () => mintInternalCapability({ botId: bot.id, ...turn, kind: "email", depth: 0, skillAuthoring: false, createdBots: 0, openedThreads: 0 }), `http://127.0.0.1:${PORT}`);
 
-let browserEngineInstall: Promise<void> | null = null;
-let browserEngineInstallError: string | null = null;
-export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; version?: string; chrome?: string; installing?: boolean; installError?: string; myChrome: boolean; proxyConfigured?: boolean; proxySaved?: boolean; myChromeOn?: { name: string; device: "PC" | "Mac" | "computer"; online: boolean }; myChromeLendable?: true; serverSites?: boolean; engine: "agent-browser" | "chrome" } {
-  const status = browserEngineStatus();
-  const progress = { myChrome: myChromeAvailable(), ...lentChromeSummary(), ...(browserEngineInstall ? { installing: true } : {}), ...(browserEngineInstallError ? { installError: browserEngineInstallError } : {}) };
-  return engineSummary(status.kind === "ready"
-    ? { kind: "engine" as const, version: status.version, chrome: chromeLauncher.describe(), ...progress }
-    : { kind: "unavailable" as const, reason: status.reason, installable: status.installable, ...progress });
+export function browserEngineSummary(): { kind: "engine" | "unavailable"; reason?: string; installChrome?: true; version?: string; chrome?: string; proxyConfigured?: boolean; proxySaved?: boolean; serverSites?: boolean } {
+  return engineSummary();
 }
 
 function phoneIntegration(botId: string, threadId: string, generation: string) {
@@ -2852,7 +2841,7 @@ const cloudPlanTier = createCloudPlanTier({ dataDir: DATA_DIR, cloudHome: Boolea
 const teamWelcome = createTeamWelcomeStore(DATA_DIR); const { cloudHealth, cloudSigned } = createCloudSignedHost({ cloudHome: CLOUD_HOME, sessions, power: () => cloudPower, box: () => botBox.report(), teamAdmin: teamAdminHost(), policyChanged: nudgeCloudTeamPolicy, invited: (email, by) => teamWelcome.invited(personKey({ id: "", email }), by), memberBrowserOff: () => managedPolicy.remoteAccessRefusal() !== undefined, plan: (cancelled) => routineHolds?.plan(cancelled), planTier: (tier) => cloudPlanTier.set(tier), memberLeft: (email) => leaveTeam ? leaveTeam(email).then((result) => { botApi.manager.revokeMintedBy(personKey({ id: "", email })); teamOwners.left(email); teamMessages.inbox.forget(personKey({ id: "", email })); forgetSetupPresser(store, personKey({ id: "", email })); devsReports.forget(personKey({ id: "", email })); teamSlack?.memberLeft(personKey({ id: "", email })); return result; }) : Promise.reject(new Error("not a team")), health: { store, bus, perf: perf.health, dataDir: DATA_DIR, eventsDir: EVENTS_DIR, version: serverVersion(), image: process.env.OMB_CLOUD_IMAGE, routines: (cap) => routines?.health(cap) ?? [], schedule: () => routines?.scheduleReport() ?? null,
   engines: () => registry.instances().map((instance) => ({ instanceId: instance.instanceId, driverKind: instance.driverKind, snapshot: registry.knownSnapshot(instance.instanceId) })),
   connectors: () => emailHost.health(composio.configured(cfg) ? composio.connectedServices(cfg) : null),
-  browser: () => ({ available: browserReady(undefined), installing: Boolean(browserEngineInstall), interrupted: browserRuntime.interruptedCount() }), firstHour: () => firstHourHooks.health(), ...(engineMemory.enabled ? { room: () => engineMemory.dayPressure() } : {}) } });
+  browser: () => ({ available: browserReady(), installing: false, interrupted: browserRuntime.interruptedCount() }), firstHour: () => firstHourHooks.health(), ...(engineMemory.enabled ? { room: () => engineMemory.dayPressure() } : {}) } });
 const teamComputers = new TeamComputers(join(DATA_DIR, "team-computers.json"), ENVIRONMENT_ID);
 let followupsReady = false;
 const sendSequencer = new SendSequencer();
@@ -6105,7 +6094,7 @@ async function selectableComputers(bot: BotRecord) {
 
 function browserSelectable(bot: BotRecord): boolean {
   return registry.get(bot.modelSelection.instanceId)?.adapter.capabilities.browserMcp === true && builtInBrowserEnabled(cfg)
-    && bot.browser !== false && bot.computer !== "off" && browserReady(bot.browserProfile);
+    && bot.browser !== false && bot.computer !== "off" && browserReady();
 }
 
 /** Continues this request on `surface` once its turn ends; false when this turn cannot switch, or already switches elsewhere. */
@@ -8335,13 +8324,12 @@ async function beginTurn(
           mountedComputer, (error) => console.warn(`[browser] thread ${threadId}: left out beside ${mountedComputer} (${redactSecretsInText(String(error))})`));
         if (browser) integrations.browser = browser.integration;
         if (browser) {
-          const spec = browser.spec;
           const session = browser.session;
           // The preview shares the profile with tool calls: claim the same browser:<session> resource, and skip the frame while another thread holds it.
           browserCapture = async () => {
             const owner = turnResourceOwners.get(threadId);
             if (!owner || !claimTurnResource(owner, `browser:${session}`)) throw new Error("another thread is using this browser");
-            return browserRuntime.previewFrame(session, () => relayFrame(spec, session), spec);
+            return browserRuntime.previewFrame(session);
           };
         }
       }
@@ -11582,7 +11570,7 @@ async function signInCardPage(botId: string, threadId: string, messageId: string
   try { cardHost = new URL(card.url).hostname.toLowerCase(); }
   catch { return { status: 409, body: { error: "this sign-in request has no page address to save a login for" } }; }
   const browser = card.place === "browser" ? await botBrowserTarget(botForThread(botId, threadId) ?? bot, threadId).catch(() => null) : null;
-  const observed = browser ? await observeSignInPage(loginInput(browser.session, browser.spec, browser.env).engine).catch(() => null) : null;
+  const observed = browser ? await Promise.resolve().then(() => observeSignInPage(loginInput(browser.session, browser.spec).engine)).catch(() => null) : null;
   return { card, cardHost, observed };
 }
 
@@ -11612,13 +11600,11 @@ async function saveLoginFromCard(botId: string, threadId: string, messageId: str
 
 /** Saved logins appear by site and username only. */
 function browserPromptFor(bot: { id: string; browserProfile?: string }, agentsMounted: boolean): string {
-  return browserSystemPrompt(bot.browserProfile) + (agentsMounted ? savedLoginsPrompt(botLogins.sitesFor(bot.id)) + savedCardsPrompt(logins.cardsFor(bot.id), Date.now()) : "");
+  return browserSystemPrompt() + (agentsMounted ? savedLoginsPrompt(botLogins.sitesFor(bot.id)) + savedCardsPrompt(logins.cardsFor(bot.id), Date.now()) : "");
 }
 
-/** Null while the browser engine is not installed. */
-async function botBrowserTarget(bot: BotRecord, threadId: string): Promise<{ session: string; spec: { command: string; env: Record<string, string> }; env: NodeJS.ProcessEnv } | null> {
-  const target = await currentBrowserSpec(bot.id, bot.browserProfile, teamHost.browserAudience(threadId));
-  return target && { ...target, env: browserRuntimeEnv({ ...target.spec.env, AGENT_BROWSER_SESSION: target.session }) };
+function botBrowserTarget(bot: BotRecord, threadId: string): Promise<{ session: string; spec: { command: string; env: Record<string, string> } }> {
+  return currentBrowserSpec(bot.id, bot.browserProfile, teamHost.browserAudience(threadId));
 }
 
 const connectorCardRequests = createConnectorCards({ cfg: () => cfg, store, composio, connectorThread, refusal: (capability, slugs) => managedPolicy.appsConnectRefusal(slugs) ?? teamConnections.connectRefusal(capability, slugs), decide: (row) => appendDecision(DATA_DIR, row), language: threadLanguage, maybeResume: maybeResumeConnectors }); const connectCardSettle = createConnectCardSettle({ threadsWithCards: threadsWithCardsSince, messagesFor: (threadId) => store.messagesFor(threadId), patchMessage: (threadId, messageId, patch) => store.patchMessage(threadId, messageId, patch), resume: maybeResumeConnectors, now: Date.now });
@@ -11626,13 +11612,12 @@ const loginMailCodes = createLoginMailCodes({ dataDir: DATA_DIR, cfg: () => cfg,
 const { fillLoginForTurn } = createFillLoginTurn({
   mailCodes: loginMailCodes, turnActive: (turn) => internalCapabilityIsActive(turn as InternalCapability),
   place: signInPlace, current: (bot, threadId) => botForThread(bot.id, threadId) ?? bot, builtInBrowserOn: () => builtInBrowserEnabled(cfg),
-  browserSelectable, moveToBrowser: (turn) => selectTurnPlace(turn, "browser"), myChrome: (bot) => usesMyChrome(bot.browserProfile),
-  target: botBrowserTarget, claim: claimTurnResource, withSecretInput: (session, spec, fill, ctx) => browserRuntime.withSecretInput(session, spec, fill, ctx),
+  browserSelectable, moveToBrowser: (turn) => selectTurnPlace(turn, "browser"),
+  target: botBrowserTarget, claim: claimTurnResource, withSecretInput: (session, spec, fill) => browserRuntime.withSecretInput(session, spec, fill),
   logins: botLogins, onePasswordTrouble: () => botLogins.onePassword.status().error, loginInput, remember: (value, kind) => heldSecrets.remember(value, kind),
-  stepContext: (bot, turn) => stepContext(bot, turn, () => liveTurnByThread.get(turn.threadId) ?? null),
 });
 
-const { paymentRequests, fillCardForTurn, resolveAndSendPayment, providePaymentCard } = createPayments({ store, language: threadLanguage, answer: answerCardNode, decide: (row) => appendDecision(DATA_DIR, { ...row, botName: store.bot(row.botId)?.name, tool: "fill_card", source: row.decision === "card-shown" ? "no-grant" : "user" }), turnActive: (turn) => internalCapabilityIsActive(turn as InternalCapability), place: signInPlace, current: (bot, threadId) => botForThread(bot.id, threadId) ?? bot, builtInBrowserOn: () => builtInBrowserEnabled(cfg), target: botBrowserTarget, cardInput, claim: claimTurnResource, withSecretInput: (session, spec, fill, ctx) => browserRuntime.withSecretInput(session, spec, fill, ctx), cards: logins, vault: logins, remember: (value, kind) => heldSecrets.remember(value, kind), from: (bot, threadId) => (store.groupByThread(threadId) ? { botId: bot.id, name: bot.name, color: bot.color } : undefined), stepContext: (bot, turn) => stepContext(bot, turn, () => liveTurnByThread.get(turn.threadId) ?? null) });
+const { paymentRequests, fillCardForTurn, resolveAndSendPayment, providePaymentCard } = createPayments({ store, language: threadLanguage, answer: answerCardNode, decide: (row) => appendDecision(DATA_DIR, { ...row, botName: store.bot(row.botId)?.name, tool: "fill_card", source: row.decision === "card-shown" ? "no-grant" : "user" }), turnActive: (turn) => internalCapabilityIsActive(turn as InternalCapability), place: signInPlace, current: (bot, threadId) => botForThread(bot.id, threadId) ?? bot, builtInBrowserOn: () => builtInBrowserEnabled(cfg), target: botBrowserTarget, browserUnavailable: () => { const engine = engineSummary(); return engine.kind === "unavailable" ? engine.reason : null; }, cardInput, claim: claimTurnResource, withSecretInput: (session, spec, fill) => browserRuntime.withSecretInput(session, spec, fill), cards: logins, vault: logins, remember: (value, kind) => heldSecrets.remember(value, kind), from: (bot, threadId) => (store.groupByThread(threadId) ? { botId: bot.id, name: bot.name, color: bot.color } : undefined) });
 
 async function localVmPayload(target: LocalVmTarget, auth: RequestAuth) {
   const status = localVmUpdates.describe(target, await containerComputerStatus(undefined, undefined, target));
@@ -12050,7 +12035,7 @@ const workspaceBackupAccess = {
     }
     return work();
   }, {
-    idle: () => !providerFleetReloading && !providerAuthSessions.active && !browserEngineInstall &&
+    idle: () => !providerFleetReloading && !providerAuthSessions.active &&
       !routines?.isTicking && !calendarCalls?.isTicking && !botWaits.isTicking &&
       !localVmImageBusy && !localVmProvisionBusy && !localVmModeChangeBusy &&
       !localVmLifecycleBusy.size && !boatLifecycleBusyBots.size && !computerPreviews.size && !orphanBoatLifecycleBusyIds.size &&
@@ -12304,12 +12289,7 @@ ROUTES.push(createTeamRoutes({
   starterNotes, threadShown, botShown: (auth) => (botId) => visibleTo(viewerFor(auth)).bot(botId), routineShown: (auth) => (routine) => routineVisible(routine, visibleTo(viewerFor(auth))),
   ...skillExport(skillsHost),
 }));
-ROUTES.push(createBrowserSiteRoutes({
-  target: (which, threadId) => signedInSitesTarget(which, threadId === null ? "team" : teamHost.browserAudience(threadId)),
-  list: (target) => listSignedInSites(target),
-  signOut: (target, site) => signOutOfSites(target, site),
-}));
-ROUTES.push(createBrowserEvidenceRoutes({ evidence: browserEvidence.attach({ onChange: (listener) => store.onChange(listener), threadExists: (id) => Boolean(threadOwner(id)) }), threadExists: (id) => Boolean(threadOwner(id)) }));
+ROUTES.push(createBrowserEvidenceRoutes({ evidence: new BrowserEvidence({ root: join(DATA_DIR, "evidence") }).attach({ onChange: (listener) => store.onChange(listener), threadExists: (id) => Boolean(threadOwner(id)) }), threadExists: (id) => Boolean(threadOwner(id)) }));
 const loginRoutes = botLogins.routes((id) => Boolean(store.bot(id))); ROUTES.push(createLoginRoutes(loginRoutes), createVaultRoutes({ logins: loginRoutes, secrets: logins, cards: logins, linked: () => botLogins.linkedSecrets(), keys: mcpKeys, reader: vaultReaders.viewer }));
 const privateRecords = createPrivateRecords({ visibleFor: (auth) => visibleTo(viewerFor(auth)), botExists: (id) => Boolean(store.bot(id)), routine: (id) => routines?.listRoutines().find((routine) => routine.id === id) }); const includedHosting = createIncludedHosting({ credential: () => hostingCredential(), dataDir: DATA_DIR, warn: (line) => console.warn(line) }), appPublisher = createAppPublisher({ hosting: includedHosting, botName: (id) => store.bot(id)?.name ?? "", botFolder: workspaceDir, home: homedir(), env: process.env }); ROUTES.push(createPublishedAppsRoutes({ visibleFor: (auth) => visibleTo(viewerFor(auth)), apps: createPublishedApps({ included: { hosting: includedHosting, publisher: appPublisher }, bots: () => store.bots, rooms: () => store.groups, messages: (threadId) => store.messagesFor(threadId), folders: (bot) => [...new Set([bot.threadId, ...(bot.tasks ?? []).map((task) => task.threadId)].flatMap((threadId) => liveRoots(threadId, bot.id) ?? []))], ownFolder: (botId, threadId) => join(TASK_WORKSPACES_DIR, botId, threadId), pages: () => publishedPages.store.list(), unpublishPage: (pageId) => publishedPages.publisher.unpublish({ pageId }), netlifyToken: (botId, auth, threadId) => savedNetlifyToken(logins, botId, CLOUD_TEAM && !threadId ? null : vaultReaders.turn(threadId ?? ""), auth.kind === "session" ? actorKey(auth) : null), ownChat: (auth, threadId) => auth.kind === "session" && teamHost.privateTo(threadId) === personKey(auth.session), home: homedir(), env: process.env }) })); ROUTES.push(createUsageRoutes({
   dataDir: DATA_DIR, prices: operatorPrices,
@@ -12358,8 +12338,8 @@ const mcpConfig = createMcpConfig({
   changed: () => broadcast({ kind: "mcp.changed" }) });
 const persistAnnouncedMcpServers = (next: Record<string, unknown>) => { persistMcpServers(next); broadcast({ kind: "mcp.changed" }); };
 const postiz = createPostiz({ cfg: () => cfg, mcpOAuth, persistMcpServers: persistAnnouncedMcpServers, mcpConfigBusy: mcpConfig.busy, mcpPolicyRefusal, appCatalog: chatAppsMcp, team: teamConnections, loopback: !CLOUD_HOME && !HOSTED_WORKSPACE }); const configRoutes = createConfigRoutes({
-  store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, usedBrowserSessions, decider,
-  sharedComputers, sharedComputerControl, closeBrowser, browserEngineSwitched,
+  store, cfg, registry, sessions, browserCleanup, browserLive, browserRuntime, decider,
+  sharedComputers, sharedComputerControl,
   hostedModels: Boolean(hostedModels),
   cloudHome: Boolean(CLOUD_HOME), cloudTeam: CLOUD_TEAM !== null, sharedMembership,
   lendingEnabled: () => lendingEnabled() || ownerLends(), providerConfigs, localVmIdleMs, localVmIdles, localVmActiveThreads, localVmLifecycleBusy,
@@ -12368,7 +12348,7 @@ const postiz = createPostiz({ cfg: () => cfg, mcpOAuth, persistMcpServers: persi
   localVmModeChanging: sharedVm.modeChanging,
   providerConfigBusy: { get: () => providerConfigBusy, set: (busy) => { providerConfigBusy = busy; } },
   computerProviderConfigTransitions, managedBoatOwners, providerOperationConflict, perBotLocalVmCountForModeChange,
-  checkedModelSelection, policyModelRefusal, browserSessionSpec, configStatus,
+  checkedModelSelection, policyModelRefusal, configStatus,
   configForAccess: (status, auth) => configForAccess(status as ReturnType<typeof configStatus>, auth.scopes.includes("admin"), auth.kind === "session" ? auth.session : null),
   ...(CLOUD_TEAM ? { ownProfile: (auth: RequestAuth, profile: { name?: string; avatarUrl?: string; aboutMe?: string }) => auth.kind === "session" ? (teamHost.saveMemberProfile(auth.session, profile), true) : false, ownHints: (auth: RequestAuth, hints: string[]) => auth.kind === "session" ? (teamWelcome.save(personKey(auth.session), { hints }), true) : false } : {}),
   resyncOpenCodeProviderKeys, revokeEngineCapabilities, reloadProviders, broadcast, drainQueuedSends, postiz,
@@ -12404,9 +12384,7 @@ ROUTES.push(createComputerRoutes({
 ROUTES.push(createStatusRoutes({
   store, cfg,
   staticDir: STATIC_DIR,
-  sharedWorkspaceFullAccessEnabled, adminActivityRecording, configStatus, broadcast, threadShown, records: privateRecords, boxOn: () => botBox.enabled(),
-  browserEngineInstall: { get: () => browserEngineInstall, set: (install) => { browserEngineInstall = install; } },
-  browserEngineInstallError: { set: (error) => { browserEngineInstallError = error; } },
+  sharedWorkspaceFullAccessEnabled, adminActivityRecording, threadShown, records: privateRecords, boxOn: () => botBox.enabled(),
 }));
 
 ROUTES.push(desktopViewer.route, phoneScreen.route);
@@ -13077,7 +13055,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           const upload = uploadableFiles(params.arguments?.files, messageFileRootsForThread(bot.id, internalCapability.threadId));
           if ("error" in upload) return json(res, 200, { result: { isError: true, content: [{ type: "text", text: upload.error }] } });
           try {
-            params = { ...params, arguments: { ...params.arguments, files: await uploadPaths(upload.files.map((file, i) => ({ file, name: attachmentNameInThread(internalCapability.threadId, params.arguments.files[i]) })), browser.session, browser.spec) } };
+            params = { ...params, arguments: { ...params.arguments, files: await uploadPaths(upload.files.map((file, i) => ({ file, name: attachmentNameInThread(internalCapability.threadId, params.arguments.files[i]) }))) } };
           } catch (error) { requireActiveInternalCapability(); if (!(error instanceof BrowserUploadRefusal)) throw error; return json(res, 200, { result: { isError: true, content: [{ type: "text", text: error.message }] } }); }
         }
         const result = await browserRuntime.agentRpc(browser.session, browser.spec, body.method, params, () => {
@@ -13090,7 +13068,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           if (body.method === "tools/call" && !claimTurnResource(internalCapability, `browser:${browser.session}`)) {
             throw Object.assign(new Error("another thread is using this browser — pause browser work until that thread finishes"), { status: 409 });
           }
-        }, stepContext(bot, internalCapability, () => liveTurnByThread.get(internalCapability.threadId) ?? null));
+        });
         requireActiveInternalCapability(); if (body.method === "tools/call") browserSeats.used(internalCapability, browser.session);
         return json(res, 200, { result });
       }
@@ -15302,14 +15280,13 @@ restoreChannelMessages();
 if (CLOUD_HOME) registerCloudPower(cloudPower = createCloudPower({ dataDir: DATA_DIR, broadcast: (payload) => broadcast(payload), log: (line) => console.warn(line), bootedFromSleep: startedFromSleep, onBootWakeRequest: (at) => cloudHealth?.speed.wakeRequest(at), onWoke: createWokeNotifier({ adminOrigin: CLOUD_HOME.adminOrigin, machineId: CLOUD_HOME.machineId, secret: CLOUD_HOME.bootstrapSecret, log: (line) => console.warn(line) }), probes: {
   turn: () => store.bots.some((bot) => botHasActiveTurn(bot.id)) || store.groups.some(groupIsWorking), run: () => Boolean(routines?.hasActiveRuns()), handoff: () => coordinator.pace() === "busy",
   liveCall: () => liveCalls.current() !== null, computer: () => cloudComputerPower.awake() || boatLifecycleBusyBots.size > 0, nextDueAt: () => { const due = [routines?.nextDueAt() ?? null, proactive.brief.nextWakeAt(), botWaits.nextWakeAt()].filter((at): at is number => at !== null); return due.length ? Math.min(...due) : null; },
-  maintenance: () => workspaceMaintenance.active || providerFleetReloading || providerAuthSessions.active || browserEngineInstall !== null } }));
+  maintenance: () => workspaceMaintenance.active || providerFleetReloading || providerAuthSessions.active } }));
 
 let pausedSent = starterAwake.paused().join(); store.onChange((change) => { if (change.type === "bot.deleted") botHolds.forget("bot", change.botId); if (change.type !== "bot" && change.type !== "bot.deleted") return; const paused = starterAwake.paused().join(); if (paused !== pausedSent) { pausedSent = paused; broadcast({ kind: "config", ...configStatus() }); } });
 server.listen(PORT, listenHost(server), async () => {
   companyRuntimeReady(); cloudHealth?.speed.ready(); void tailnetShare.start(process.env);
   console.log(`openmausbot server on http://127.0.0.1:${PORT}`);
-  personWaits.boot(); browserSweep.start(); startCloudTeamPolicy({ cloudHome: CLOUD_HOME, dataDir: DATA_DIR, managed: managedPolicy, sessions }); startCloudTeamRoster({ cloudHome: CLOUD_HOME, sessions }); moveFreeze.hold(() => appTriggers.start(), () => void appTriggers.stop()); startCloudHomeConnectedApps({ cloudHome: CLOUD_HOME !== null, dataDir: DATA_DIR, cloudGrant: CLOUD_ENV.OMB_CLOUD_CONNECTED_APPS_GRANT, ownKey: () => composio.connectionMode(cfg) === "self-hosted", apply: (access) => { composio.setManagedBrokerAccess(access); broadcast({ kind: "config", ...configStatus() }); } });
-  void afterFirstEngineRead().then(() => { if (builtInBrowserEnabled(cfg)) chromeLauncher.start(); });
+  personWaits.boot(); browserSweep.start(); void afterFirstEngineRead().then(() => { if (builtInBrowserEnabled(cfg)) browserSweep.prepare(); }); startCloudTeamPolicy({ cloudHome: CLOUD_HOME, dataDir: DATA_DIR, managed: managedPolicy, sessions }); startCloudTeamRoster({ cloudHome: CLOUD_HOME, sessions }); moveFreeze.hold(() => appTriggers.start(), () => void appTriggers.stop()); startCloudHomeConnectedApps({ cloudHome: CLOUD_HOME !== null, dataDir: DATA_DIR, cloudGrant: CLOUD_ENV.OMB_CLOUD_CONNECTED_APPS_GRANT, ownKey: () => composio.connectionMode(cfg) === "self-hosted", apply: (access) => { composio.setManagedBrokerAccess(access); broadcast({ kind: "config", ...configStatus() }); } });
   followupsReady = true; engineUpdates.start();
   drainQueuedSends();
   drainQueuedChannelSends();

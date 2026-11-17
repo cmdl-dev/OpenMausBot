@@ -4,16 +4,17 @@
 // OMB's command and environment names, and an AppArmor profile pinned to one
 // exact executable instead of a wildcard path.
 //
-// OMB never turns Chrome's sandbox off by itself on a host. A host that cannot
-// give it one gets the manual setup steps instead (a container, that switch), and
-// only an operator's explicit OMB_BROWSER_SANDBOX=0 launches without it. The
-// computer container image (also run on a VPS) is the exception: it drops
-// capabilities, so its Chrome runs without its own sandbox and the container is
-// the isolation boundary.
+// OMB turns Chrome's sandbox off by itself only in a container or when it runs
+// as root (needsNoSandbox), where a sandboxed Chrome cannot start and the
+// container is the isolation boundary. Anywhere else a host that cannot give
+// Chrome its sandbox gets the manual setup steps instead, and only an
+// operator's explicit OMB_BROWSER_SANDBOX=0 launches without it.
 
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
+
+import { needsNoSandbox } from "./identity.ts";
 
 /** Installs the Linux libraries Chrome needs (as root, once). */
 export const LIBRARIES_COMMAND = "sudo openmausbot browser install --with-deps";
@@ -31,6 +32,11 @@ const CONTAINER_MARKERS = ["/.dockerenv", "/run/.containerenv"];
 
 export function sandboxDisabled(env: Readonly<Record<string, string | undefined>>): boolean {
   return env.OMB_BROWSER_SANDBOX === "0";
+}
+
+/** Whether the bots' Chrome runs in its own sandbox: not when an operator turned it off, in a container, or as root. */
+export function chromeSandbox(env: NodeJS.ProcessEnv): boolean {
+  return !sandboxDisabled(env) && !needsNoSandbox(env);
 }
 
 /** Set on Ubuntu 23.10+: unprivileged user namespaces need an AppArmor profile. */
@@ -58,34 +64,6 @@ profile ${APPARMOR_PROFILE_NAME} ${executable} flags=(unconfined) {
 }
 `;
 }
-
-/**
- * Chrome's Debian dependencies that minimal images leave out, plus fonts so
- * pages do not render as boxes. Ubuntu 24.04 and Debian 13 renamed some with a
- * `t64` suffix; setup installs whichever name the host's apt offers.
- */
-export const DEBIAN_PACKAGES: ReadonlyArray<ReadonlyArray<string>> = [
-  ["libnss3"],
-  ["libglib2.0-0t64", "libglib2.0-0"],
-  ["libatk1.0-0t64", "libatk1.0-0"],
-  ["libatk-bridge2.0-0t64", "libatk-bridge2.0-0"],
-  ["libatspi2.0-0t64", "libatspi2.0-0"],
-  ["libdbus-1-3"],
-  ["libx11-6"],
-  ["libxcb1"],
-  ["libxcomposite1"],
-  ["libxdamage1"],
-  ["libxext6"],
-  ["libxfixes3"],
-  ["libxrandr2"],
-  ["libxkbcommon0"],
-  ["libgbm1"],
-  ["libasound2t64", "libasound2"],
-  ["libexpat1"],
-  ["fonts-liberation"],
-  ["fonts-noto-color-emoji"],
-  ["fonts-noto-cjk"],
-];
 
 export type BrowserHostNeed = "sandbox" | "container" | "libraries";
 

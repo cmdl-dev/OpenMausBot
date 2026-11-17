@@ -164,8 +164,7 @@ export interface ConfigStatus {
   /** First-run progress: whether the welcome tour was finished and which
    * one-time hints were dismissed. Server-owned so it follows the workspace. */
   onboarding?: OnboardingStatus;
-  /** Which browser this server can give bots: the desktop app's surface, the
-   * agent-browser engine, or nothing yet (with the reason). */
+  /** Which browser this server can give bots: its Chrome, or none (with the reason). */
   browserEngine?: BrowserEngineSummary;
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
@@ -197,22 +196,12 @@ export interface ManagedPolicySummary {
 export interface BrowserEngineSummary {
   kind: "engine" | "unavailable";
   reason?: string;
-  installable?: boolean;
+  /** No Chrome here: installing Google Chrome is what gives bots a browser. */
+  installChrome?: true;
   version?: string;
   /** The browser the engine starts, e.g. "Google Chrome 153 (installed)", or while Chrome for Testing downloads,
    * "Chrome for Testing 153.0.8010.47 (downloading: 52 of 182 MB)". */
   chrome?: string;
-  installing?: boolean;
-  installError?: string;
-  /** Whether a browser profile can use "My Chrome", the person's own running
-   * Chrome: only where the bots run on their computer (the desktop app). */
-  myChrome?: boolean;
-  /** On My Cloud, the computer that lends its Chrome. */
-  myChromeOn?: { name: string; device: "PC" | "Mac" | "computer"; online: boolean };
-  /** On My Cloud with no computer lending Chrome: it can be lent from the desktop app. */
-  myChromeLendable?: true;
-  /** browserEngine.engine: "chrome" when the bots' browsers run on OpenMausBot's own Chrome driver. */
-  engine?: "agent-browser" | "chrome";
   /** Self-hosted servers only: whether bots' browsers may open this server's own sites and its local network
    * (browserEngine.egress.localNetwork, off by default). Absent on the desktop and on MausBot Cloud. */
   serverSites?: boolean;
@@ -227,9 +216,6 @@ export interface BrowserEngineSummary {
 export interface BrowserProfile {
   id: string;
   name: string;
-  /** "chrome": the profile's bots use the person's own Chrome (My Chrome).
-   * Absent is the built-in browser. */
-  browser?: "chrome";
   /** Read-only durable Electron routing inherited from legacy profiles.
    * Config PATCH payloads must omit it. */
   partitionId?: string;

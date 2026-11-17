@@ -270,6 +270,7 @@ export function verificationServerArgs(childEnv: NodeJS.ProcessEnv): string[] {
     ...(childEnv.OMB_TEST_STALL_CLOCK === "1" ? hook("stall-clock-hooks.mjs") : []),
     ...(childEnv.OMB_TEST_RESUME_CLOCK === "1" ? hook("resume-clock-hooks.mjs") : []),
     ...(childEnv.OMB_TEST_MEMORY_GATE === "1" ? hook("memory-gate-hooks.mjs") : []),
+    ...(childEnv.OMB_TEST_FAKE_BROWSER ? hook("fake-browser-hooks.mjs") : []),
     join(ROOT, "server", "index.ts"),
   ];
 }
@@ -279,7 +280,9 @@ export async function launchVerificationServer(
   parentEnv: NodeJS.ProcessEnv = process.env,
   signal?: AbortSignal,
   localVm?: { binDir: string; host: string; sshKey: string; staticDir: string },
-  browser?: { binaryPath: string; executablePath: string },
+  /** The Chrome the bots' browser runs, or the driver's fake Chrome (server/testing/fake-browser-hooks.mjs) whose preview
+   * captures wait on `<fakeGates>/capture.gate`, and whose `page` answers fill_login and the tools it names. */
+  browser?: { chrome: string } | { fakeGates: string; page?: { bridge: string; tools?: string[]; startUrl?: string } },
   /** A stand-in enterprise layer (the folder shape core loads) and the key
    * it should accept, so a recipe can prove entitled behaviour offline. */
   enterprise?: { dir: string; licenseKey: string },
@@ -372,10 +375,13 @@ export async function launchVerificationServer(
     OMB_STATIC_DIR: localVm.staticDir,
   });
   if (enterprise) Object.assign(childEnv, { OMB_ENTERPRISE_DIR: enterprise.dir, OMB_LICENSE_KEY: enterprise.licenseKey });
-  if (browser) Object.assign(childEnv, {
-    OMB_AGENT_BROWSER_PATH: browser.binaryPath,
-    AGENT_BROWSER_EXECUTABLE_PATH: browser.executablePath,
-  });
+  if (browser && "chrome" in browser) {
+    childEnv.OMB_CHROME_PATH = browser.chrome;
+    // An operator's explicit opt-out of Chrome's sandbox, for a host whose AppArmor blocks it.
+    if (parentEnv.OMB_BROWSER_SANDBOX === "0") childEnv.OMB_BROWSER_SANDBOX = "0";
+  }
+  if (browser && "fakeGates" in browser) Object.assign(childEnv, { OMB_TEST_FAKE_BROWSER: browser.fakeGates, OMB_CHROME_PATH: process.execPath,
+    ...(browser.page ? { OMB_TEST_FAKE_PAGE: browser.page.bridge, OMB_TEST_FAKE_PAGE_TOOLS: (browser.page.tools ?? []).join(","), ...(browser.page.startUrl ? { OMB_TEST_FAKE_START_URL: browser.page.startUrl } : {}) } : {}) });
   if (boatFixtureApi) childEnv.OMB_BOAT_API = boatFixtureApi;
   if (staticDir) childEnv.OMB_STATIC_DIR = staticDir;
   const child = spawn(process.execPath, verificationServerArgs(childEnv), {

@@ -4,13 +4,13 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
 import { launchCloudSendFixture, type CloudSendFixture } from "./cloud-send-fixture.ts";
 import { ensureUiBrowser, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { launchHomeWorld, shotsDir, welcomed, type HomeWorld } from "./one-workspace-fixture.ts";
 
-const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.info("skipping the one-window UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
 
 const PAIR_FORM = "Boolean(document.querySelector('form input') && /pairing code|Connect to|Sign in to/.test(document.body.innerText))";

@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { NETLIFY_TOKEN_LABEL, SITE_FILE } from "../../server/host/netlify-sites.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { startFakeNetlify } from "../../server/testing/fake-netlify.ts";
@@ -23,7 +23,7 @@ import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const forced = process.env.OMB_UI_E2E === "1";
-const enabled = forced || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = forced || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.log("skipping published apps ui e2e: no agent-browser binary resolves; set OMB_UI_E2E=1 to install the pinned release");
 const LAUNCH_TIMEOUT_MS = forced ? 600_000 : 180_000;
 const TOKEN = "nfp_published_apps_ui_token_0123456789abcdef";

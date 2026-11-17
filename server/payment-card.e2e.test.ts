@@ -28,6 +28,8 @@ it("saves a card the Vault never answers with, and a bot's fill_card off its bro
   };
   try {
     const bot = (await api("POST", "/api/bots", { name: "Payment fixture" }, 201)).bot;
+    // Off its browser: a Linux server has a pinned Chrome for Testing to fetch, so a bot would otherwise work there.
+    await api("PATCH", `/api/bots/${bot.id}`, { browser: false });
     const card = (await api("POST", "/api/vault/cards", { name: "Personal", number: NUMBER, expMonth: 4, expYear: 2031, cvc: "314", bots: [bot.id] }, 201)).card;
     expect(card).toMatchObject({ name: "Personal", brand: "visa", last4: "4242", hasCvc: true, bots: [bot.id] });
     expect((await api("GET", "/api/vault")).cards).toEqual([card]);

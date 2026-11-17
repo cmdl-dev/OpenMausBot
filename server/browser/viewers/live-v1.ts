@@ -4,7 +4,7 @@
 import type { ServerResponse } from "node:http";
 
 import { BROWSER_HELD_ELSEWHERE } from "../../../shared/browser-held.ts";
-import { BROWSER_ASLEEP_ERROR, BROWSER_WAITING, BrowserLiveError, parseBrowserLiveAction } from "../../browser-live.ts";
+import { BROWSER_ASLEEP_ERROR, BROWSER_WAITING, BrowserLiveError, parseBrowserLiveAction } from "./protocol.ts";
 import type { BrowserService, BrowserTarget } from "../service.ts";
 import type { Viewer, ViewerOutput } from "./core.ts";
 

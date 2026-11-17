@@ -72,12 +72,11 @@ service keep the server running across reboots: writes a systemd unit
         (Linux) or a launchd agent (macOS) for the same serve options and
         prints the commands that install it. Run from npx, it first
         installs a copy of this version next to your data for the service.
-browser install: the bots' browser engine (agent-browser, pinned) into the
-        data dir, and Chrome for Testing into the user's browser cache.
-        --with-deps also installs
-        the Linux libraries Chrome needs (run as root once). Then run
-        browser install as the user running serve, from that user's home.
-        status: what the current user and data directory have.
+browser install: gets the bots' Chrome ready: the installed Google Chrome,
+        or Chrome for Testing downloaded into the data dir where none is.
+        --with-deps instead installs the Linux libraries Chrome needs with
+        apt (run as root once). Then run browser install as the user
+        running serve. status: which Chrome the bots' browser runs.
 fleet   many client workspaces on one Linux server, each its own account,
         service, data folder, brand, sign-in list and keys at NAME.HOST
         behind the system Caddy. Plans are printed unless run as root;

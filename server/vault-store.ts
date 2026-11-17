@@ -12,7 +12,7 @@ import { LOGIN_FIELD_MAX, LOGIN_HOSTS_MAX, loginMatchesHost, loginSite, loginUsa
 import { CARD_HOLDER_MAX, CARD_NAME_MAX, CARD_POSTAL_MAX, cardBrand, cardDigits, type VaultCard } from "../shared/payment-cards.ts";
 import { SECRET_VALUE_MAX_BYTES, VAULT_SECRET_NAME_MAX, vaultNameKey, type VaultSecret } from "../shared/vault.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { decryptBrowserState, encryptBrowserState } from "./browser-sites.ts";
+import { unsealText, sealText } from "./sealed-text.ts";
 import type { TotpKey } from "./totp.ts";
 
 export const LOGINS_FILE = "logins.json.enc";
@@ -253,7 +253,7 @@ export class VaultStore {
       const key = this.key(false);
       try {
         if (!key) throw new Error("missing key");
-        const disk = fileSchema.parse(JSON.parse(decryptBrowserState(readFileSync(this.file), key)));
+        const disk = fileSchema.parse(JSON.parse(unsealText(readFileSync(this.file), key)));
         data = { ...disk, logins: disk.logins.map(fromDisk) };
       } catch {
         // Never log an unreadable file's contents.
@@ -274,7 +274,7 @@ export class VaultStore {
     try {
       const key = this.key(false);
       if (!key) throw new Error("missing key");
-      return memberSecretsSchema.parse(JSON.parse(decryptBrowserState(readFileSync(this.memberFile), key))).secrets;
+      return memberSecretsSchema.parse(JSON.parse(unsealText(readFileSync(this.memberFile), key))).secrets;
     } catch {
       if (!this.unreadableWarned) console.warn("saved logins: the members' secrets file could not be opened; it will be replaced on the next save");
       this.unreadableWarned = true;
@@ -289,8 +289,8 @@ export class VaultStore {
     const ownParsed = memberSecretsSchema.parse({ version: 1, secrets: members });
     const key = this.key(true)!;
     mkdirSync(join(this.file, ".."), { recursive: true });
-    writeFileAtomic(this.file, encryptBrowserState(JSON.stringify(parsed), key), { mode: 0o600 });
-    if (members.length || existsSync(this.memberFile)) writeFileAtomic(this.memberFile, encryptBrowserState(JSON.stringify(ownParsed), key), { mode: 0o600 });
+    writeFileAtomic(this.file, sealText(JSON.stringify(parsed), key), { mode: 0o600 });
+    if (members.length || existsSync(this.memberFile)) writeFileAtomic(this.memberFile, sealText(JSON.stringify(ownParsed), key), { mode: 0o600 });
     this.cache = { ...parsed, logins: parsed.logins.map(fromDisk), ...(ownParsed.secrets.length ? { secrets: [...parsed.secrets ?? [], ...ownParsed.secrets] } : {}) };
     this.version++;
   }

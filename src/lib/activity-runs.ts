@@ -5,6 +5,7 @@ import { activityText } from "@/lib/activity-text";
 import { failedTurnCause } from "../../shared/failed-turn";
 import { isStoppedTurnName } from "../../shared/client-cancel";
 import { localDay } from "@/lib/transcript-derivations";
+import { emailDraftOf } from "@/lib/email-send";
 
 export type ActivityTranscriptItem =
   | { kind: "message"; message: Message }
@@ -39,7 +40,7 @@ export function isToolStep(message: Message): message is Message & { tool: NonNu
 }
 
 function foldable(message: Message): boolean {
-  return isToolStep(message) && message.tool.ok === true;
+  return isToolStep(message) && message.tool.ok === true && !emailDraftOf(message);
 }
 
 type TurnFold = Extract<TranscriptItem, { kind: "turn" }>;

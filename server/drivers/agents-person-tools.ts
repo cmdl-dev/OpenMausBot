@@ -35,7 +35,7 @@ export const PERSON_TOOL_DEFINITIONS = [
   {
     name: "notify_person",
     description:
-      "Alert the person on their phone and computer about something that needs their attention now: an important email, a deadline, a problem, or the result they asked to be told about. The note goes in this chat and the alert opens it here. Never for routine status, progress, or \"nothing new\": a routine run that finds nothing important does not call it.",
+      "Alert the person on their phone and computer about something that needs their attention now: an important email, a deadline, a problem, or the result they asked to be told about. The note goes in this chat and the alert opens it here. Never for status, progress, or \"nothing new\": a scheduled check that finds nothing important does not call it.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

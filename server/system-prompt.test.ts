@@ -338,6 +338,9 @@ describe("shared sentences", () => {
     // Triggers have no pending state: the bot sets them up in the same turn and the person undoes from the card.
     expect(TRIGGER_PROMPT).toContain("set it up with trigger action=create in this turn");
     expect(TRIGGER_PROMPT).toContain("Do not ask for confirmation");
+    expect(TRIGGER_PROMPT).toContain("Only notify_person alerts the person's phone and computer");
+    expect(TRIGGER_PROMPT).toContain('schedule {"type":"once","at":RFC3339 with offset}');
+    expect(TRIGGER_PROMPT).toContain("Never promise something later without setting it up in this turn");
     expect(TRIGGER_PROMPT).toContain("Edit, Pause and Undo");
     expect(TRIGGER_PROMPT).toContain("use wait_until instead of staying busy or making a short-interval routine");
     expect(TRIGGER_PROMPT).toContain("give follow_up only when they asked for something to be done at that moment");

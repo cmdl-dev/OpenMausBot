@@ -28,7 +28,7 @@ Dark only for v1. Near-black canvas, white type, grey surfaces, thin borders, no
 
 ### Accent and status
 
-The primary action is a white pill with black text (`--text` fill, `--text-inverse` label). There is no brand hue. Status colors appear only as dots, small badges, and 1px tinted borders.
+The primary action is a white pill with black text (`--text` fill, `--text-inverse` label). There is no brand hue: the one blue control is dictation's Done button (`--accent`). Status colors appear only as dots, small badges, and 1px tinted borders.
 
 | Token | Value | Use |
 |---|---|---|
@@ -36,6 +36,7 @@ The primary action is a white pill with black text (`--text` fill, `--text-inver
 | `--warning` | `#F5B544` | Needs attention, asleep, paused |
 | `--danger` | `#FF5C5C` | Failed run, offline, destructive |
 | `--info` | `#6CA8FF` | Links, running/streaming indicator |
+| `--accent` | `#4A6CF7` | Dictation's Done button |
 | `--success-bg` | `rgba(61,214,140,0.12)` | Status badge fill |
 | `--warning-bg` | `rgba(245,181,68,0.12)` | Status badge fill |
 | `--danger-bg` | `rgba(255,92,92,0.12)` | Status badge fill |

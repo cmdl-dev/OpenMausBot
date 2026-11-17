@@ -19,6 +19,7 @@ export const colors = {
   warning: "#F5B544",
   danger: "#FF5C5C",
   info: "#6CA8FF",
+  accent: "#4A6CF7",
   successBg: "rgba(61,214,140,0.12)",
   warningBg: "rgba(245,181,68,0.12)",
   dangerBg: "rgba(255,92,92,0.12)",

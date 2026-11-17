@@ -19,14 +19,19 @@ export function SheetContent({ label, header, children }: { label: string; heade
   const { height } = useWindowDimensions();
   const { bottom } = useSafeAreaInsets();
   return (
-    <View accessibilityLabel={label} style={styles.sheet}>
+    <View accessibilityLabel={label}>
       {/* react-native-screens draws the grabber on iOS only. */}
       {Platform.OS === "android" ? <View style={styles.grabber} /> : null}
-      {header}
-      {/* A "fitToContents" sheet measures its content, so the body needs a bounded height rather than flex: 1. */}
+      {/* react-native-screens 4.30 places a sheet's ScrollView on iOS only when it follows a single header view, so the
+          header must not be flattened into its children, and the ScrollView's height is the sheet's less the header's. */}
+      <View collapsable={false} style={styles.header}>
+        {header}
+      </View>
+      {/* A "fitToContents" sheet measures its content, so the body needs a bounded height rather than flex: 1. An iOS
+          sheet already keeps clear of the home indicator; Android's runs to the screen's edge. */}
       <ScrollView
         style={[styles.body, { maxHeight: height * BODY_SHARE }]}
-        contentContainerStyle={{ paddingBottom: Math.max(bottom, space[4]) }}
+        contentContainerStyle={{ paddingBottom: Platform.OS === "ios" ? space[2] : Math.max(bottom, space[4]) }}
         keyboardShouldPersistTaps="handled"
         alwaysBounceVertical={false}
       >
@@ -37,7 +42,7 @@ export function SheetContent({ label, header, children }: { label: string; heade
 }
 
 const styles = StyleSheet.create({
-  sheet: { paddingTop: space[4] },
+  header: { paddingTop: space[4] },
   body: { flexGrow: 0 },
-  grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.surface3, marginBottom: space[2] },
+  grabber: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.surface3, marginTop: space[2] },
 });

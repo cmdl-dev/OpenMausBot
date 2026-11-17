@@ -2,10 +2,11 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import { ArrowUp, Camera, FileText, ImageIcon, Mic, Paperclip, Square, X, type LucideIcon } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View, type TextInputInstance } from "react-native";
 import { composeMessage, type SentAttachment } from "@/api/attachments";
 import { problemText } from "@/api/errors";
+import { DictationBar } from "@/components/dictation-bar";
 import { IconButton } from "@/components/icon-button";
 import { Txt } from "@/components/text";
 import { useConnection } from "@/state/connection";
@@ -36,6 +37,9 @@ interface Chip {
 }
 
 const PHOTO_LIMIT = 5;
+
+/** How long Done waits for the recognizer's last words before keeping what it has. */
+const FINAL_RESULT_MS = 1500;
 
 /** How long after Send the field refuses a whole line arriving at once. */
 const ECHO_WINDOW_MS = 600;
@@ -70,9 +74,11 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const [chips, setChips] = useState<Chip[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [listening, setListening] = useState(false);
-  const spokenFrom = useRef("");
-  const dictating = useRef(false);
+  const [dictation, setDictation] = useState<{ spoken: string; finishing: boolean } | null>(null);
+  const listening = useRef(false);
+  const textBefore = useRef("");
+  const spoken = useRef("");
+  const keepSpoken = useRef(true);
   const clearedAt = useRef(0);
   const input = useRef<TextInputInstance>(null);
 
@@ -89,33 +95,44 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const canSend = (text.trim().length > 0 || ready.length > 0) && !uploading;
   const showStop = Boolean(onStop) && !canSend && !uploading;
 
-  useSpeechRecognitionEvent("start", () => setListening(true));
-  useSpeechRecognitionEvent("end", () => {
-    dictating.current = false;
-    setListening(false);
-  });
   useSpeechRecognitionEvent("result", (event) => {
-    if (!dictating.current) return;
-    setText(joined(spokenFrom.current, event.results[0]?.transcript ?? ""));
+    if (!listening.current) return;
+    spoken.current = event.results[0]?.transcript ?? "";
+    setDictation((current) => current && { ...current, spoken: spoken.current });
   });
+  useSpeechRecognitionEvent("end", () => finishDictation());
   useSpeechRecognitionEvent("error", (event) => {
-    setListening(false);
     if (event.error !== "aborted" && event.error !== "no-speech") setNote("Dictation stopped. Tap the mic to try again.");
+    finishDictation();
   });
 
-  async function toggleDictation() {
-    if (listening) {
-      ExpoSpeechRecognitionModule.stop();
-      return;
-    }
+  useEffect(
+    () => () => {
+      if (listening.current) ExpoSpeechRecognitionModule.abort();
+    },
+    [],
+  );
+
+  function finishDictation() {
+    if (!listening.current) return;
+    listening.current = false;
+    if (keepSpoken.current && spoken.current) setText(joined(textBefore.current, spoken.current));
+    setDictation(null);
+  }
+
+  async function startDictation() {
     setNote(null);
+    setMenuOpen(false);
     const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permission.granted) {
       setNote("Dictation needs microphone and speech recognition access. Turn them on for SteinHub in Settings.");
       return;
     }
-    spokenFrom.current = text;
-    dictating.current = true;
+    textBefore.current = text;
+    spoken.current = "";
+    keepSpoken.current = true;
+    listening.current = true;
+    setDictation({ spoken: "", finishing: false });
     ExpoSpeechRecognitionModule.start({
       lang: locale(),
       interimResults: true,
@@ -123,7 +140,20 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
       addsPunctuation: true,
       requiresOnDeviceRecognition: ExpoSpeechRecognitionModule.supportsOnDeviceRecognition(),
       iosTaskHint: "dictation",
+      volumeChangeEventOptions: { enabled: true, intervalMillis: 80 },
     });
+  }
+
+  function doneDictating() {
+    setDictation((current) => current && { ...current, finishing: true });
+    ExpoSpeechRecognitionModule.stop();
+    setTimeout(finishDictation, FINAL_RESULT_MS);
+  }
+
+  function cancelDictation() {
+    keepSpoken.current = false;
+    ExpoSpeechRecognitionModule.abort();
+    finishDictation();
   }
 
   function attach(picks: Pick[]) {
@@ -188,10 +218,6 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
 
   async function send() {
     if (!canSend) return;
-    if (dictating.current) {
-      dictating.current = false;
-      ExpoSpeechRecognitionModule.abort();
-    }
     const words = text.trim();
     const kept = chips;
     clearedAt.current = Date.now();
@@ -240,50 +266,46 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
         </View>
       ) : null}
       {menuOpen ? <AttachMenu onChoose={pickFromMenu} /> : null}
-      <View style={styles.pill}>
-        <IconButton
-          icon={menuOpen ? X : Paperclip}
-          label={menuOpen ? "Close attach menu" : "Attach"}
-          dimension={40}
-          color={colors.text2}
-          onPress={() => setMenuOpen((open) => !open)}
-        />
-        <TextInput
-          ref={input}
-          accessibilityLabel="Message"
-          value={text}
-          onChangeText={typed}
-          placeholder={listening ? "Listening…" : `Ask ${botName} anything`}
-          placeholderTextColor={colors.text3}
-          selectionColor={colors.text}
-          multiline
-          style={styles.input}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={listening ? "Stop dictation" : "Dictate"}
-          accessibilityState={{ selected: listening }}
-          onPress={() => void toggleDictation()}
-          style={[styles.mic, listening && styles.micOn]}
-        >
-          <Mic size={size.icon} color={listening ? colors.textInverse : colors.text2} strokeWidth={size.iconStroke} />
-        </Pressable>
-        {showStop ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={[styles.send, styles.sendReady]}>
-            <Square size={14} color={colors.textInverse} fill={colors.textInverse} strokeWidth={size.iconStroke} />
-          </Pressable>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Send"
-            accessibilityState={{ disabled: !canSend }}
-            onPress={() => void send()}
-            style={[styles.send, canSend ? styles.sendReady : styles.sendIdle]}
-          >
-            <ArrowUp size={size.icon} color={canSend ? colors.textInverse : colors.text3} strokeWidth={size.iconStroke} />
-          </Pressable>
-        )}
-      </View>
+      {dictation ? (
+        <DictationBar transcript={dictation.spoken} finishing={dictation.finishing} onCancel={cancelDictation} onDone={doneDictating} />
+      ) : (
+        <View style={styles.pill}>
+          <IconButton
+            icon={menuOpen ? X : Paperclip}
+            label={menuOpen ? "Close attach menu" : "Attach"}
+            dimension={40}
+            color={colors.text2}
+            onPress={() => setMenuOpen((open) => !open)}
+          />
+          <TextInput
+            ref={input}
+            accessibilityLabel="Message"
+            value={text}
+            onChangeText={typed}
+            placeholder={`Ask ${botName} anything`}
+            placeholderTextColor={colors.text3}
+            selectionColor={colors.text}
+            multiline
+            style={styles.input}
+          />
+          <IconButton icon={Mic} label="Dictate" dimension={40} color={colors.text2} onPress={() => void startDictation()} />
+          {showStop ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={[styles.send, styles.sendReady]}>
+              <Square size={14} color={colors.textInverse} fill={colors.textInverse} strokeWidth={size.iconStroke} />
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send"
+              accessibilityState={{ disabled: !canSend }}
+              onPress={() => void send()}
+              style={[styles.send, canSend ? styles.sendReady : styles.sendIdle]}
+            >
+              <ArrowUp size={size.icon} color={canSend ? colors.textInverse : colors.text3} strokeWidth={size.iconStroke} />
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -356,8 +378,6 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
     maxHeight: type.callout.lineHeight * 6 + space[4],
   },
-  mic: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  micOn: { backgroundColor: colors.danger },
   send: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   sendReady: { backgroundColor: colors.text },
   sendIdle: { backgroundColor: colors.surface3 },

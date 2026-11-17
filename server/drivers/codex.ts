@@ -1,4 +1,4 @@
-import { decodeRoutedCodexConfig, managedCodexArgs, endpointCodexArgs, type CodexEndpointConfig } from "./codex-endpoint-config.ts";
+import { managedCodexArgs, endpointCodexArgs } from "./codex-endpoint-config.ts"; import { decodeCodexConfig as decodeConfig, type CodexConfig } from "./codex-config.ts";
 export { managedCodexArgs, endpointCodexArgs } from "./codex-endpoint-config.ts";
 import { codexActionFailure } from "./codex-action-notice.ts";
 import { codexToolSurfaceArgs } from "./codex-tool-surface.ts";
@@ -57,7 +57,7 @@ import { codexAccountEmail, codexHome } from "./codex-identity.ts";
 import { keepChatsOutOfCodexHistory, linkSharedCodexHome } from "./codex-shared-home.ts";
 import { containsControlCharacter, mcpAppApprovalForm, mcpAppApprovalText, mcpElicitationDeclined, plainRecord } from "./codex-app-approval.ts";
 import { archivedNativeCodexThread, CODEX_MISSING_CREDENTIALS, codexProviderMismatch, CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, CodexRpcError, codexSignInExpired, codexPlanModelRefused, codexSignInRefused, codexUserError, codexUserFailure, missingNativeCodexThread, type CodexRoute } from "./codex-errors.ts";
-import { codexLoginCheck, readCodexLogin, storedCodexLogin } from "./codex-login.ts";
+import { codexLoginCheck, readCodexLogin, storedCodexLogin } from "./codex-login.ts"; import { codexDefaultConfigProvider, withoutOfficialRows } from "./codex-config-provider.ts"; import { ROUTER_SNAPSHOT, routerModelCatalog } from "./router-models.ts";
 import { keyRejected, noteKeyAccepted, noteKeyRejected } from "../key-rejections.ts";
 import { classifyResumeFailure, mayReplay, rebuiltSessionNotice, recoveryPromptFor } from "../resume-recovery.ts";
 import { extractMcpImages } from "../mcp-tool-images.ts"; import { codexImageInputs, withoutInlineImages } from "./codex-images.ts";
@@ -74,28 +74,6 @@ import { CALL_TOOL, DESCRIBE_TOOL, SEARCH_TOOL, directoryCallTarget } from "../m
 export { decodeCodexSelection, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
 
 const DRIVER_KIND = "codex";
-
-export interface CodexConfig {
-  cli: string;
-  fullAuto: boolean;
-  authMode?: "chatgpt-plan";
-  managed?: CodexEndpointConfig;
-  endpoint?: CodexEndpointConfig;
-}
-
-function decodeConfig(raw: unknown): CodexConfig {
-  const o = (raw ?? {}) as Record<string, unknown>;
-  if (o.authMode !== undefined && o.authMode !== "chatgpt-plan") throw new Error("Unknown Codex sign-in mode.");
-  if (o.authMode && o.managed) throw new Error("ChatGPT plan and Company billing cannot be combined.");
-  if (o.endpoint && (o.authMode || o.managed)) throw new Error("Direct API, ChatGPT plan and Company billing cannot be combined.");
-  return {
-    cli: typeof o.cli === "string" ? o.cli : "codex",
-    fullAuto: o.fullAuto === true,
-    ...(o.authMode === "chatgpt-plan" ? { authMode: "chatgpt-plan" as const } : {}),
-    ...(o.endpoint ? { endpoint: decodeRoutedCodexConfig(o.endpoint as object, "Direct API") } : {}),
-    ...(o.managed && typeof o.managed === "object" ? { managed: decodeRoutedCodexConfig(o.managed) } : {}),
-  };
-}
 
 const PRIVATE_ENV_FAMILIES = ["OMB_GATE_CONFIG_", "OMB_REMOTE_MCP_CONFIG_"];
 const PROXY_LITERAL_ENV = ["NODE_USE_ENV_PROXY", "NO_PROXY", "no_proxy"];
@@ -361,7 +339,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     let planSigningOut = false;
     let disposed = false;
     let planWarning: string | undefined;
-    let models = plan ? { default: "", options: [] } : routed ? { default: routed.models[0], options: routed.models.map(id => ({ id, label: id, ...(config.endpoint ? { custom: true } : {}) })) } : STATIC_CODEX_MODELS;
+    let models = plan ? { default: "", options: [] } : config.router && routed ? routerModelCatalog(routed.models, STATIC_CODEX_MODELS) : routed ? { default: routed.models[0], options: routed.models.map(id => ({ id, label: id, ...(config.endpoint ? { custom: true } : {}) })) } : STATIC_CODEX_MODELS;
     const refreshModels = async (preserveExisting = false) => {
       if (routed) return;
       if (planAuth) {
@@ -1531,6 +1509,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
   };
 
   const readCliVersion = cliVersionProbe(config.cli);
+  let officialRowsUnusable = false;
   const snapshot = async (): Promise<ProviderSnapshot> => {
     if (planUnavailable) return { state: "unavailable", authenticated: false, chatgptPlan: true, reason: planUnavailable, authenticationUnavailableReason: planUnavailable };
     const env = childEnv();
@@ -1540,12 +1519,15 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     const warning = planWarning ?? (planAuth && !planRenewal.noteVersion(version) ? "Update Codex to 0.165.0 or newer to renew ChatGPT credentials during a running task." : undefined);
     if (planAuth) return { state: "available", version, chatgptPlan: true, billing: "subscription", ...await planAuth.snapshot(), update: await codexReleaseUpdate(version, config.cli),
       ...(warning ? { warning: { title: "Check ChatGPT connection", message: warning } } : {}) };
-    if (config.endpoint) return { state: "available", version, authenticated: Boolean(input.environment.OPENMAUSBOT_CODEX_API_KEY && input.environment.CODEX_HOME), billing: "metered" };
+    if (config.endpoint) return { state: "available", version, authenticated: Boolean(input.environment.OPENMAUSBOT_CODEX_API_KEY && input.environment.CODEX_HOME), ...(config.router ? ROUTER_SNAPSHOT : { billing: "metered" }) };
     if (config.managed) return { state: "available", version, authenticated: Boolean(input.environment.OPENMAUSBOT_COMPANY_API_KEY && input.environment.CODEX_HOME), billing: "metered" };
     const previousCliVersion = modelsCliVersion;
     modelsCliVersion = version;
     if (previousCliVersion !== null && previousCliVersion !== version) await refreshModels();
-    const login = await readCodexLogin(config.cli, env), authenticated = login.status === "signed-in";
+    const login = await readCodexLogin(config.cli, env), provider = login.status === "signed-out" ? codexDefaultConfigProvider(env) : null;
+    officialRowsUnusable = provider !== null;
+    if (provider) return { state: "available", version, authenticated: true, account: { organization: provider.name, method: "api-key" }, update: await codexReleaseUpdate(version, config.cli), billing: "subscription" };
+    const authenticated = login.status === "signed-in";
     if (authenticated && loginRejected()) {
       return { state: "available", version, authenticated: false, reason: CODEX_SIGN_IN_EXPIRED,
         update: await codexReleaseUpdate(version, config.cli), billing: "subscription" };
@@ -1618,7 +1600,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     displayName: input.displayName,
     enabled: input.enabled,
     get models() {
-      return models;
+      return officialRowsUnusable ? withoutOfficialRows(models) : models;
     },
     quickModelsUsable: smallModelsUsable,
     refreshModels,

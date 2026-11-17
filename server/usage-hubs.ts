@@ -13,7 +13,10 @@ export interface UsageHub {
   id: string;
   label: string;
   url: string;
-  managementKey: string;
+  /** Absent on a Router connected for its models only: it then has no usage meters. */
+  managementKey?: string;
+  /** Connected in Settings → Engines as a Router, which owns this record and its engines. */
+  router?: true;
 }
 
 /** What the settings page sees of a hub. */
@@ -86,12 +89,20 @@ export class UsageHubStore {
     return list.flatMap((entry) => {
       const hub = record(entry);
       const id = text(hub?.id), label = text(hub?.label), url = text(hub?.url), managementKey = text(hub?.managementKey);
-      return id && label && url && managementKey ? [{ id, label, url, managementKey }] : [];
+      const router = hub?.router === true;
+      if (!id || !label || !url || (!managementKey && !router)) return [];
+      return [{ id, label, url, ...(managementKey ? { managementKey } : {}), ...(router ? { router: true as const } : {}) }];
     }).slice(0, MAX_HUBS);
   }
 
+  /** The usage-only hubs; a Router's record is shown and changed with its Router. */
   views(): UsageHubView[] {
-    return this.hubs().map(({ id, label, url }) => ({ id, label, url }));
+    return this.hubs().filter((hub) => !hub.router).map(({ id, label, url }) => ({ id, label, url }));
+  }
+
+  /** The hubs whose accounts' usage can be read. */
+  metered(): UsageHub[] {
+    return this.hubs().filter((hub) => hub.managementKey);
   }
 
   /** Checks the key by listing the hub's accounts before it is saved. */
@@ -102,6 +113,7 @@ export class UsageHubStore {
     if (!managementKey || managementKey.length > 512) throw new HubError("Paste the hub's management key.");
     const url = hubBaseUrl(input.url);
     const hubs = this.hubs();
+    if (hubs.some((saved) => saved.router && saved.url === url)) throw new HubError("This address is a connected Router. Add its management key in Settings → Engines → Router.");
     if (hubs.length >= MAX_HUBS) throw new HubError(`At most ${MAX_HUBS} usage hubs.`);
     const hub = { id: randomUUID(), label, url, managementKey };
     await hubAccounts(hub, fetchImpl);
@@ -110,9 +122,28 @@ export class UsageHubStore {
     return { id: hub.id, label, url };
   }
 
+  /** Saves a Router's record, checking a management key by listing the hub's accounts first. A usage hub already
+   * saved for the same address becomes the Router's, keeping its management key when none was entered. */
+  async saveRouter(hub: { id: string; label: string; url: string; managementKey?: string }, fetchImpl: HubFetch = defaultFetch): Promise<void> {
+    const hubs = this.hubs();
+    const managementKey = hub.managementKey ?? hubs.find((other) => !other.router && other.url === hub.url)?.managementKey;
+    const saved: UsageHub = { id: hub.id, label: hub.label, url: hub.url, ...(managementKey ? { managementKey } : {}), router: true };
+    if (saved.managementKey) await hubAccounts(saved, fetchImpl);
+    const others = hubs.filter((other) => other.id !== hub.id && other.url !== hub.url);
+    if (others.length >= MAX_HUBS) throw new HubError(`At most ${MAX_HUBS} usage hubs and Routers.`);
+    this.save([...others, saved]);
+    clearHubUsageCache();
+  }
+
+  removeRouter(id: string): void {
+    this.save(this.hubs().filter((hub) => hub.id !== id));
+    clearHubUsageCache();
+  }
+
+  /** Removes a usage-only hub; a Router's record goes only with its Router. */
   remove(id: string): boolean {
     const hubs = this.hubs();
-    const kept = hubs.filter((hub) => hub.id !== id);
+    const kept = hubs.filter((hub) => hub.id !== id || hub.router);
     if (kept.length === hubs.length) return false;
     this.save(kept);
     clearHubUsageCache();

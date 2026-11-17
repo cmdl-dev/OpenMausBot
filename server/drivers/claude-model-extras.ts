@@ -1,6 +1,8 @@
 import type { ModelCatalog } from "../contracts.ts";
 import { bundledEngineCatalog } from "../model-manifest/bundled.ts";
+import { currentEngineCatalog } from "../model-manifest/manifest.ts";
 import { CLAUDE_MODEL_ID } from "../model-manifest/schema.ts";
+import { routerModelCatalog } from "./router-models.ts";
 
 export { CLAUDE_MODEL_ID };
 export { currentEngineCatalog, withCliVersionGate } from "../model-manifest/manifest.ts";
@@ -58,7 +60,9 @@ export function claudeModelExtras(settings: Record<string, unknown>, env: Record
 /** The bundled list, before any download: the picker reads `currentEngineCatalog("claude")`, which starts from this. */
 export const STATIC_CLAUDE_MODELS: ModelCatalog = bundledEngineCatalog("claude");
 
-/** An endpoint serves only its own models, each flagged `custom` so a `custom` instance's picker lists it. */
-export function endpointModelCatalog(models: string[] | undefined): ModelCatalog | null {
+/** An endpoint serves only its own models, each flagged `custom` so a `custom` instance's picker lists it; a Router's are
+ * Anthropic's own. */
+export function endpointModelCatalog(models: string[] | undefined, router = false): ModelCatalog | null {
+  if (models && router) return routerModelCatalog(models, currentEngineCatalog("claude"));
   return models ? { default: models[0], options: models.map((id) => ({ id, label: id, custom: true })) } : null;
 }

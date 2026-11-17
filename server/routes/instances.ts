@@ -27,7 +27,9 @@ import {
   withClaudeBedrockInfo,
 } from "../claude-bedrock.ts";
 import { updateClaudeCli } from "../claude-update.ts";
-import { persistableInstanceConfigs, saveConfig, withInstanceCli, type AppConfig } from "../config.ts";
+import { DATA_DIR, persistableInstanceConfigs, saveConfig, withInstanceCli, type AppConfig } from "../config.ts";
+import { applyRouter, readRouterModels, routerAddress, routerApiKey, routerConnectSchema, routerEngines, routerIdOf, routerUpdateSchema, routerViews, withRouterInfo, type RouterIdentity } from "../routers.ts";
+import { HubError, UsageHubStore } from "../usage-hubs.ts";
 import { addEndpoint, addEndpointSchema, endpointBaseUrl, isAddedEndpoint, localServerAlreadyAdded, withEndpointUrls } from "../openai-compat-endpoints.ts";
 import { findOllama, probeOllama } from "../drivers/ollama.ts";
 import type { InstanceConfigMap, ModelSelection, ProviderInstance } from "../contracts.ts";
@@ -74,8 +76,35 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
     persistProviderInstance, configStatus, broadcast, testCliBinary, cliProbeEnvironment, threadBusy,
     botForThread, activeGroupTurnForBot,
   } = deps;
+  const usageHubs = new UsageHubStore(DATA_DIR);
   const describeInstances = async () => hostedModels ? deps.describeInstances()
-    : withEndpointUrls(withCodexEndpointInfo(withClaudeBedrockInfo(withClaudeEndpointInfo(await deps.describeInstances(), cfg.instances ?? {}), cfg.instances ?? {}), cfg.instances ?? {}), cfg.instances ?? {});
+    : withRouterInfo(withEndpointUrls(withCodexEndpointInfo(withClaudeBedrockInfo(withClaudeEndpointInfo(await deps.describeInstances(), cfg.instances ?? {}), cfg.instances ?? {}), cfg.instances ?? {}), cfg.instances ?? {}), cfg.instances ?? {}, usageHubs.hubs());
+  const routers = () => routerViews(usageHubs.hubs(), persistableInstanceConfigs(cfg));
+  /** Saves the Router and rewrites its engines from the models it lists now; one engine restarts at a time. */
+  const saveRouter = async (router: RouterIdentity, apiKey: string, managementKey: string | undefined) => {
+    const models = await readRouterModels(router.url, apiKey);
+    await usageHubs.saveRouter({ ...router, ...(managementKey ? { managementKey } : {}) });
+    const instances = persistableInstanceConfigs(cfg);
+    for (const instanceId of applyRouter(instances, router, apiKey, models)) {
+      providerInstancesChanging.add(instanceId);
+      try { await persistProviderInstance(instanceId, instances); } finally { providerInstancesChanging.delete(instanceId); }
+    }
+  };
+  /** Runs a Router change while no other provider change is, and no bot is mid-turn on one of `engines`. */
+  const changeRouter = async (res: Parameters<RouteHandler>[0]["res"], json: Parameters<RouteHandler>[0]["json"], engines: string[], change: () => Promise<number>) => {
+    if (providerConfigBusy.get()) return json(res, 409, { error: "provider settings are already being updated" });
+    if (busyProviderSelections().some((selection) => engines.includes(selection.instanceId))) {
+      return json(res, 409, { error: "Wait for bots using this Router to finish before changing it." });
+    }
+    providerConfigBusy.set(true);
+    try {
+      const status = await change();
+      return json(res, status, { routers: routers(), instances: await describeInstances() });
+    } catch (error) {
+      if (error instanceof HubError) return json(res, 400, { error: error.message });
+      throw error;
+    } finally { providerConfigBusy.set(false); }
+  };
   /** Bots, their backups and threads, the new-bot default, or a turn running on it: a provider in use can't go away. */
   const providerInUse = (instanceId: string): boolean => cfg.defaultModelSelection?.instanceId === instanceId || store.bots.some((bot) =>
     bot.modelSelection.instanceId === instanceId || bot.fallback?.some(candidate => candidate.instanceId === instanceId) || store.tasks(bot.id).some((task) => task.modelSelection?.instanceId === instanceId)) ||
@@ -222,6 +251,64 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
       } finally { providerConfigBusy.set(false); }
     }
 
+    if (path === "/api/routers" || path.startsWith("/api/routers/")) {
+      if (hostedModels || !ownerOrAdmin(auth)) return json(res, 403, { error: "Only the owner of this server can connect a Router." });
+      if (method === "GET" && path === "/api/routers") return json(res, 200, { routers: routers() });
+      if (method !== "GET" && method !== "DELETE" && !String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+        return json(res, 415, { error: "content-type must be application/json" });
+      }
+      if (method === "POST" && path === "/api/routers") {
+        const parsed = routerConnectSchema.safeParse(await readBody(req, 16384));
+        if (!parsed.success) return json(res, 400, { error: "Enter the Router's address and one of its API keys." });
+        return changeRouter(res, json, [], async () => {
+          const url = routerAddress(parsed.data.url);
+          if (usageHubs.hubs().some((hub) => hub.router && hub.url === url)) throw new HubError("This Router is already connected.");
+          await saveRouter({ id: randomUUID(), label: parsed.data.label ?? "Router", url }, parsed.data.apiKey, parsed.data.managementKey);
+          return 201;
+        });
+      }
+      const routerPath = /^\/api\/routers\/([\w-]+)(\/refresh)?$/.exec(path);
+      const hub = routerPath ? usageHubs.hubs().find((saved) => saved.router && saved.id === routerPath[1]) : undefined;
+      if (!routerPath || !hub) return json(res, 404, { error: "No such Router." });
+      const engines = routerEngines(persistableInstanceConfigs(cfg), hub.id);
+      const savedKey = routerApiKey(persistableInstanceConfigs(cfg), hub.id);
+      if (method === "POST" && routerPath[2]) {
+        if (!savedKey) return json(res, 400, { error: "Enter the Router's API key again." });
+        return changeRouter(res, json, engines, async () => { await saveRouter(hub, savedKey, hub.managementKey); return 200; });
+      }
+      if (method === "PATCH" && !routerPath[2]) {
+        const parsed = routerUpdateSchema.safeParse(await readBody(req, 16384));
+        if (!parsed.success) return json(res, 400, { error: "Check the Router's name, address and keys." });
+        return changeRouter(res, json, engines, async () => {
+          const url = parsed.data.url === undefined ? hub.url : routerAddress(parsed.data.url);
+          const moved = url !== hub.url;
+          if (moved && usageHubs.hubs().some((other) => other.router && other.id !== hub.id && other.url === url)) throw new HubError("That Router is already connected.");
+          // A saved key belongs only to the address it was entered for.
+          const apiKey = parsed.data.apiKey ?? (moved ? null : savedKey);
+          if (!apiKey) throw new HubError("Enter the Router's API key again for the new address.");
+          const managementKey = parsed.data.managementKey === "" ? undefined : parsed.data.managementKey ?? (moved ? undefined : hub.managementKey);
+          await saveRouter({ id: hub.id, label: parsed.data.label ?? hub.label, url }, apiKey, managementKey);
+          return 200;
+        });
+      }
+      if (method === "DELETE" && !routerPath[2]) {
+        if (engines.some(providerInUse)) {
+          return json(res, 409, { error: "Choose another model for the bots and the default model using this Router before removing it." });
+        }
+        return changeRouter(res, json, engines, async () => {
+          const instances = persistableInstanceConfigs(cfg);
+          for (const instanceId of engines) {
+            delete instances[instanceId];
+            providerInstancesChanging.add(instanceId);
+            try { await persistProviderInstance(instanceId, instances); } finally { providerInstancesChanging.delete(instanceId); }
+          }
+          usageHubs.removeRouter(hub.id);
+          return 200;
+        });
+      }
+      return json(res, 405, { error: "method not allowed" });
+    }
+
     const endpointPatch = /^\/api\/instances\/([\w.-]+)\/(claude|codex)-endpoint$/.exec(path);
     if (method === "PATCH" && endpointPatch) {
       if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
@@ -339,6 +426,16 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
         }
         if (action === "refresh-models") {
           const endpoint = persistableInstanceConfigs(cfg)[instanceId];
+          const routerHub = usageHubs.hubs().find((hub) => hub.router && hub.id === routerIdOf(endpoint));
+          const routerKey = routerHub ? routerApiKey(persistableInstanceConfigs(cfg), routerHub.id) : null;
+          const routerBusy = routerHub ? busyProviderSelections().some((selection) => routerEngines(persistableInstanceConfigs(cfg), routerHub.id).includes(selection.instanceId)) : false;
+          if (routerHub && routerKey && !routerBusy) {
+            if (providerConfigBusy.get()) return json(res, 409, { error: "provider settings are already being updated" });
+            providerConfigBusy.set(true);
+            try { await saveRouter(routerHub, routerKey, routerHub.managementKey); }
+            catch (error) { if (error instanceof HubError) return json(res, 400, { error: error.message }); throw error; }
+            finally { providerConfigBusy.set(false); }
+          }
           if (endpoint && (isClaudeEndpoint(endpoint) || isCodexEndpoint(endpoint)) && isGatewayEndpoint(endpoint) && !hasExplicitModel(endpoint)) {
             if (providerConfigBusy.get()) return json(res, 409, { error: "provider settings are already being updated" });
             providerConfigBusy.set(true);
@@ -539,6 +636,7 @@ export function createInstanceRoutes(deps: InstanceRouteDeps): RouteHandler {
       if (providerConfigBusy.get()) return json(res, 409, { error: "provider settings are already being updated" });
       const instances = persistableInstanceConfigs(cfg);
       if (!Object.hasOwn(instances, instanceId)) return json(res, 404, { error: "unknown instance" });
+      if (routerIdOf(instances[instanceId])) return json(res, 400, { error: "This account belongs to a Router. Remove the Router in Settings → Engines instead." });
       const addedChatgpt = instances[instanceId].driver === "codex" && instanceId.startsWith("chatgpt-");
       const addedAntigravity = instances[instanceId].driver === "antigravityAgent" && instanceId.startsWith("antigravity-");
       if (!addedChatgpt && !addedAntigravity && !isCodexEndpoint(instances[instanceId]) && !isAddedEndpoint(instanceId, instances[instanceId]) && (instances[instanceId].driver !== "claudeAgent" || instanceId === "claude")) {

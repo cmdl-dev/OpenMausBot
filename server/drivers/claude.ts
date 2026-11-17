@@ -17,7 +17,7 @@ import { projectMcpServers } from "./claude-project-mcp.ts";
 import { botSettingsFor, folderSettingsEnv, withBotSettings } from "./claude-bot-settings.ts";
 import { claudeBilling, claudeCallUsage } from "./claude-billing.ts";
 import { claudeAuthFailure, claudeAuthRecovery, claudeOAuthExpired } from "./claude-auth-recovery.ts"; import { AWS_CREDENTIAL_ENV_KEYS, bedrockResultError, withBedrockCredentialError } from "./claude-bedrock-aws.ts";
-import { CLAUDE_MODEL_ID, STATIC_CLAUDE_MODELS, claudeModelExtras, currentEngineCatalog, endpointModelCatalog, withCliVersionGate } from "./claude-model-extras.ts";
+import { CLAUDE_MODEL_ID, STATIC_CLAUDE_MODELS, claudeModelExtras, currentEngineCatalog, endpointModelCatalog, withCliVersionGate } from "./claude-model-extras.ts"; import { ROUTER_SNAPSHOT } from "./router-models.ts";
 import { claudeAgentsMount, claudeToolSearchSetting } from "./claude-tool-search.ts"; import { claudeDisabledNativeSkillRules, unusableBuiltIns } from "./claude-unusable-tools.ts"; import { EMAIL_READ_TOOL_NAMES } from "../../shared/email.ts";
 import { claudeElicitations } from "./claude-elicitation.ts"; import { spawnContractDiff } from "./claude-spawn-contract.ts";
 import { readCostHistory, recordCostState } from "./claude-cost-history.ts";
@@ -272,7 +272,7 @@ export interface ClaudeConfig {
   permissionMode: "acceptEdits" | "auto" | "bypassPermissions";
   tools?: string[];
   disallowedTools?: string[];
-  requireApiKey?: boolean; bedrock?: boolean;
+  requireApiKey?: boolean; bedrock?: boolean; router?: string;
 }
 
 export { STATIC_CLAUDE_MODELS };
@@ -643,7 +643,7 @@ function decodeConfig(raw: unknown): ClaudeConfig {
     permissionMode: (mode as ClaudeConfig["permissionMode"]) ?? "acceptEdits",
     ...(tools !== undefined ? { tools } : {}),
     ...(disallowedTools !== undefined ? { disallowedTools } : {}),
-    ...(o.requireApiKey === true ? { requireApiKey: true } : {}), ...(o.bedrock === true ? { bedrock: true } : {}),
+    ...(o.requireApiKey === true ? { requireApiKey: true } : {}), ...(o.bedrock === true ? { bedrock: true } : {}), ...(typeof o.router === "string" && o.router && o.endpointModels ? { router: o.router } : {}),
   };
 }
 
@@ -783,7 +783,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     let cliVersion: ClaudeCliVersion | null = null;
     let cliVersionChecked = false;
     let models = config.managedModels ? { default: config.managedModels[0], options: config.managedModels.map(id => ({ id, label: id })) }
-      : endpointModelCatalog(config.endpointModels) ?? currentEngineCatalog("claude");
+      : endpointModelCatalog(config.endpointModels, config.router !== undefined) ?? currentEngineCatalog("claude");
     const orgBlocks = createOrgModelBlocks(() => engineHomes.everyHome(catalogEnv), (blocked) => { models = withOrgBlocks(models, blocked); });
     const refreshModels = async () => {
       if (config.managed || config.endpointModels) return;
@@ -1916,7 +1916,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       if (config.requireApiKey && !input.environment.ANTHROPIC_API_KEY) return { state: "unavailable", version, reason: NO_ANTHROPIC_KEY };
       const probed: typeof lastAuth = config.requireApiKey ? { authenticated: true } : throughGateway(await claudeAuthStatus(config.cli, env), env, readClaudeAuthSettings(env, input.environment).env);
       const auth = probed.authenticated === undefined ? lastAuth : (lastAuth = probed);
-      return { state: "available", version, ...auth, ...claudeBilling(env, auth.account), ...(update ? { update } : {}), ...(warning ? { warning } : {}) };
+      return { state: "available", version, ...auth, ...(config.router ? ROUTER_SNAPSHOT : claudeBilling(env, auth.account)), ...(update ? { update } : {}), ...(warning ? { warning } : {}) };
     };
 
     /** One-shot call, prompt on stdin (approval summaries can hold secrets), no tools or MCP servers. */

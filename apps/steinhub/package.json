@@ -62,8 +62,7 @@
     "moduleNameMapper": {
       "^lucide-react-native$": "<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
       "^react-native-enriched-markdown$": "<rootDir>/src/testing/mocks/enriched-markdown.tsx",
-      "^expo-speech-recognition$": "<rootDir>/src/testing/mocks/expo-speech-recognition.ts",
-      "^@/components/motion$": "<rootDir>/src/testing/mocks/motion.ts"
+      "^expo-speech-recognition$": "<rootDir>/src/testing/mocks/expo-speech-recognition.ts"
     },
     "setupFiles": [
       "react-native-gesture-handler/jestSetup"

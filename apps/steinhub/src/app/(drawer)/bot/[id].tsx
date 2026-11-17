@@ -1,16 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { Brain, Cpu, MessageSquare, Sparkles } from "lucide-react-native";
-import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { Group, Row, SectionLabel } from "@/components/list";
-import { ModelSheet } from "@/components/model-sheet";
 import { Screen } from "@/components/screen";
 import { StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { PageTopBar } from "@/components/top-bar";
-import { useConnection } from "@/state/connection";
 import { useWorld } from "@/state/world";
 import { colors, size, space } from "@/theme";
 
@@ -19,8 +16,6 @@ const iconProps = { size: size.icon, color: colors.text2, strokeWidth: size.icon
 export default function BotProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const world = useWorld();
-  const connection = useConnection();
-  const [choosingModel, setChoosingModel] = useState(false);
   const bot = world.bot(id) ?? (world.source === "demo" ? world.bots[0] : null);
   if (!bot) {
     return (
@@ -52,7 +47,7 @@ export default function BotProfileScreen() {
 
       <SectionLabel>Setup</SectionLabel>
       <Group>
-        <Row title="Model" value={bot.model} leading={<Cpu {...iconProps} />} chevron onPress={() => setChoosingModel(true)} />
+        <Row title="Model" value={bot.model} leading={<Cpu {...iconProps} />} chevron onPress={() => router.push({ pathname: "/sheets/model", params: { bot: bot.id } })} />
         <Row title="Memory" subtitle="What this bot remembers about you" leading={<Brain {...iconProps} />} chevron />
         {world.source === "demo" ? <Row title="Skills" value="6" leading={<Sparkles {...iconProps} />} chevron /> : null}
       </Group>
@@ -70,14 +65,6 @@ export default function BotProfileScreen() {
           />
         ))}
       </Group>
-      <ModelSheet
-        bot={bot}
-        engines={world.engines}
-        hostName={world.host.name}
-        open={choosingModel}
-        onPick={(selection) => connection.setModel(bot.id, selection)}
-        onClose={() => setChoosingModel(false)}
-      />
     </Screen>
   );
 }

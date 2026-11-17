@@ -2,6 +2,7 @@ import { DarkTheme, Stack, ThemeProvider, type Theme } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { sheetScreenOptions } from "@/components/sheet";
 import { ConnectionProvider } from "@/state/connection";
 import { colors } from "@/theme";
 
@@ -31,6 +32,10 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="(drawer)" />
             <Stack.Screen name="onboarding" options={{ presentation: "fullScreenModal" }} />
+            <Stack.Screen name="sheets/bot-picker" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/bot-menu" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/new-folder" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/model" options={sheetScreenOptions} />
           </Stack>
         </ThemeProvider>
       </ConnectionProvider>

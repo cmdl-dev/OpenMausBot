@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
-import { BotPicker } from "@/components/bot-picker";
 import { Chip } from "@/components/chip";
 import { Composer } from "@/components/composer";
 import { Screen } from "@/components/screen";
@@ -32,7 +31,6 @@ export default function HomeScreen() {
   useEffect(() => {
     if (requestedBot) setChosenId(requestedBot);
   }, [requestedBot]);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const bot = world.bot(chosenId ?? undefined) ?? world.bots[0] ?? null;
@@ -58,7 +56,7 @@ export default function HomeScreen() {
   return (
     <Screen
       scroll={false}
-      header={<ChatTopBar botName={bot?.name ?? world.host.name} right="inbox" unread={unread} onPressTitle={bot ? () => setPickerOpen(true) : undefined} />}
+      header={<ChatTopBar botName={bot?.name ?? world.host.name} right="inbox" unread={unread} onPressTitle={bot ? () => router.push({ pathname: "/sheets/bot-picker", params: { selected: bot.id } }) : undefined} />}
       footer={
         bot ? (
           <View>
@@ -100,9 +98,6 @@ export default function HomeScreen() {
           </Txt>
         </View>
       </View>
-      {bot ? (
-        <BotPicker visible={pickerOpen} bots={world.bots} selectedId={bot.id} onSelect={setChosenId} onClose={() => setPickerOpen(false)} />
-      ) : null}
     </Screen>
   );
 }

@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import { router, type Href } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import {
@@ -17,15 +16,13 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { problemText } from "@/api/errors";
 import { Avatar } from "@/components/avatar";
-import { BotActions, type BotAction } from "@/components/bot-actions";
-import { FolderSheet } from "@/components/folder-sheet";
 import { IconButton } from "@/components/icon-button";
 import { CountBadge, StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
+import { useBotCommands } from "@/state/bot-commands";
 import { useConnection } from "@/state/connection";
 import { ago, initials, type BotSection, type BotView, type FolderView, type ThreadView } from "@/state/views";
 import { useWorld } from "@/state/world";
@@ -37,11 +34,9 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
   const world = useWorld();
   const connection = useConnection();
   const { session } = connection;
-  const live = world.source === "live";
+  const commands = useBotCommands();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [actionsFor, setActionsFor] = useState<BotView | null>(null);
-  const [folderFor, setFolderFor] = useState<BotView | null>(null);
   const needsYou = world.inboxIsSample ? 0 : world.inbox.filter((row) => row.tab === "needs-you").length;
   const footer = world.person ?? {
     name: world.host.name,
@@ -62,39 +57,9 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
     else go({ pathname: "/", params: { bot: bot.id } });
   }
 
-  function failed(error: unknown) {
-    Alert.alert("That didn't work", problemText(error, world.host.name));
-  }
-
   async function newThread(bot: BotView, folderId?: string) {
-    if (!live) {
-      go({ pathname: "/", params: { bot: bot.id } });
-      return;
-    }
-    try {
-      const threadId = await connection.newThread(bot.id, folderId);
-      go({ pathname: "/chat/[id]", params: { id: threadId } });
-    } catch (error) {
-      failed(error);
-    }
-  }
-
-  function confirmDelete(bot: BotView) {
-    Alert.alert(`Delete ${bot.name}?`, `${bot.name} and its threads are removed from ${world.host.name}. This can't be undone.`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => void connection.deleteBot(bot.id).catch(failed) },
-    ]);
-  }
-
-  function act(bot: BotView, action: BotAction) {
-    if (action === "new-thread") void newThread(bot);
-    else if (action === "new-folder") setFolderFor(bot);
-    else if (action === "edit-profile") go({ pathname: "/bot/[id]", params: { id: bot.id } });
-    else if (action === "copy-id" && bot.threadId) void Clipboard.setStringAsync(bot.threadId);
-    else if (!live) return;
-    else if (action === "pin") void connection.setPinned(bot.id, !bot.pinned).catch(failed);
-    else if (action === "mark-read" && bot.threadId) void connection.markRead(bot.id, bot.threadId).catch(failed);
-    else if (action === "delete") confirmDelete(bot);
+    const href = await commands.newThread(bot, folderId);
+    if (href) go(href);
   }
 
   function flip(set: ReadonlySet<string>, key: string): ReadonlySet<string> {
@@ -149,8 +114,8 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
                       onOpen={() => openBot(bot)}
                       onOpenThread={(threadId) => go({ pathname: "/chat/[id]", params: { id: threadId } })}
                       onNewThread={(folderId) => void newThread(bot, folderId)}
-                      onNewFolder={() => setFolderFor(bot)}
-                      onMore={() => setActionsFor(bot)}
+                      onNewFolder={() => router.push({ pathname: "/sheets/new-folder", params: { bot: bot.id } })}
+                      onMore={() => router.push({ pathname: "/sheets/bot-menu", params: { bot: bot.id } })}
                     />
                   ))}
             </View>
@@ -176,21 +141,6 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
         </View>
         <IconButton icon={Settings} label="Settings" onPress={() => go("/settings")} />
       </View>
-
-      <BotActions bot={actionsFor} onAction={act} onClose={() => setActionsFor(null)} />
-      <FolderSheet
-        botName={folderFor?.name ?? ""}
-        visible={folderFor !== null}
-        onClose={() => setFolderFor(null)}
-        onCreate={async (folder) => {
-          if (!folderFor || !live) return;
-          try {
-            await connection.newFolder(folderFor.id, folder);
-          } catch (error) {
-            throw new Error(problemText(error, world.host.name));
-          }
-        }}
-      />
     </SafeAreaView>
   );
 }

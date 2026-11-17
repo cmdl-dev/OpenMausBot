@@ -1,67 +1,56 @@
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { problemText } from "@/api/errors";
 import { Button } from "@/components/button";
-import { Sheet } from "@/components/sheet";
+import { SheetContent } from "@/components/sheet";
 import { Txt } from "@/components/text";
+import { useConnection } from "@/state/connection";
+import { useWorld } from "@/state/world";
 import { colors, radius, space, type } from "@/theme";
 
 const EMOJIS = ["📁", "💼", "🛒", "📦", "📈", "🧾", "✉️", "🛠️", "🎮", "⭐"];
 const MAX_NAME = 80;
 
 /** Name a new folder for a bot's threads, with an emoji if wanted. */
-export function FolderSheet({
-  botName,
-  visible,
-  onCreate,
-  onClose,
-}: {
-  botName: string;
-  visible: boolean;
-  onCreate: (folder: { name: string; emoji?: string }) => Promise<void>;
-  onClose: () => void;
-}) {
+export default function NewFolderSheet() {
+  const { bot: botId } = useLocalSearchParams<{ bot: string }>();
+  const world = useWorld();
+  const connection = useConnection();
+  const bot = world.bot(botId);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function close() {
-    setName("");
-    setEmoji(undefined);
-    setError(null);
-    onClose();
-  }
-
   async function create() {
+    if (!bot) return;
     setBusy(true);
     setError(null);
     try {
-      await onCreate({ name: name.trim(), ...(emoji ? { emoji } : {}) });
-      close();
+      if (world.source === "live") await connection.newFolder(bot.id, { name: name.trim(), ...(emoji ? { emoji } : {}) });
+      router.back();
     } catch (failure) {
-      setError(
-        failure instanceof Error && failure.message
-          ? failure.message
-          : "Couldn't make the folder. Try again.",
-      );
+      setError(problemText(failure, world.host.name));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Sheet open={visible} onClose={close} label="New folder" avoidKeyboard>
-      <View style={styles.sheet}>
-        <Txt variant="headline">New folder</Txt>
-        <Txt variant="subhead" tone="secondary">
-          For {botName}&apos;s threads.
-        </Txt>
-        <Txt
-          variant="footnote"
-          tone="secondary"
-          weight="500"
-          style={styles.label}
-        >
+    <SheetContent
+      label="New folder"
+      header={
+        <View style={styles.header}>
+          <Txt variant="headline">New folder</Txt>
+          <Txt variant="subhead" tone="secondary">
+            {bot ? `For ${bot.name}'s threads.` : "This bot isn't on the computer any more."}
+          </Txt>
+        </View>
+      }
+    >
+      <View style={styles.form}>
+        <Txt variant="footnote" tone="secondary" weight="500">
           Name
         </Txt>
         <TextInput
@@ -73,14 +62,13 @@ export function FolderSheet({
           placeholder="Listings"
           placeholderTextColor={colors.text3}
           selectionColor={colors.text}
+          returnKeyType="done"
+          onSubmitEditing={() => {
+            if (name.trim() && !busy) void create();
+          }}
           style={styles.input}
         />
-        <Txt
-          variant="footnote"
-          tone="secondary"
-          weight="500"
-          style={styles.label}
-        >
+        <Txt variant="footnote" tone="secondary" weight="500" style={styles.label}>
           Icon
         </Txt>
         <View style={styles.emojis}>
@@ -113,24 +101,15 @@ export function FolderSheet({
             {error}
           </Txt>
         ) : null}
-        <Button
-          label={busy ? "Creating…" : "Create folder"}
-          block
-          disabled={busy || !name.trim()}
-          onPress={() => void create()}
-        />
+        <Button label={busy ? "Creating…" : "Create folder"} block disabled={!bot || busy || !name.trim()} onPress={() => void create()} />
       </View>
-    </Sheet>
+    </SheetContent>
   );
 }
 
 const styles = StyleSheet.create({
-  sheet: {
-    paddingHorizontal: space[4],
-    paddingTop: space[1],
-    paddingBottom: space[4],
-    gap: space[2],
-  },
+  header: { paddingHorizontal: space[5], paddingBottom: space[2], gap: space[1] },
+  form: { paddingHorizontal: space[5], gap: space[2] },
   label: { marginTop: space[2] },
   input: {
     ...type.callout,
@@ -142,12 +121,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderStrong,
   },
-  emojis: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[2],
-    marginBottom: space[3],
-  },
+  emojis: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginBottom: space[3] },
   emoji: {
     minWidth: 44,
     height: 44,

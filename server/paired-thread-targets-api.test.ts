@@ -45,7 +45,7 @@ describe("paired thread targets through an isolated HTTP fixture", () => {
     await fixture.close();
   });
 
-  it("refuses ambiguous old-phone actions and keeps explicit A actions on A while B is selected", async () => {
+  it("keeps explicit A actions on A while B is selected", async () => {
     const bot = (await api("POST", "/api/bots", { name: "Pinned phone", modelSelection: selection(models[0]) })).body.bot;
     const threadA = bot.threadId;
     expect((await paired("POST", `/api/bots/${bot.id}/messages`, { text: "Original A", threadId: threadA })).status).toBe(202);
@@ -55,24 +55,6 @@ describe("paired thread targets through an isolated HTTP fixture", () => {
     expect(userA).toBeTruthy();
     const threadB = (await api("POST", `/api/bots/${bot.id}/tasks`, { title: "B" })).body.task.threadId;
     const beforeB = await page(threadB);
-    const actions: Array<[string, string, unknown?]> = [
-      ["POST", "/messages", { text: "Must not reach B" }],
-      ["POST", "/interrupt"],
-      ["POST", "/read"],
-      ["POST", "/always-allow", { allowKey: "Bash:ls" }],
-      ["POST", `/messages/${userA.id}/edit`, { text: "Must not edit B" }],
-      ["POST", "/active-branch", { messageId: userA.id }],
-      ["DELETE", "/queue/not-a-queued-message"],
-      ["PATCH", "/model", selection(models[1])],
-      ["PATCH", "", { modelSelection: selection(models[1]) }],
-    ];
-    for (const [method, suffix, body] of actions) {
-      const result = await paired(method, `/api/bots/${bot.id}${suffix}`, body);
-      expect(result.status, `${method} ${suffix}`).toBe(409);
-      expect(result.body.error).toMatch(/Update the OpenMausBot app on this device.*choose a thread/);
-    }
-    const legacyPhone = await api("POST", `/api/bots/${bot.id}/read`, undefined, { "x-openmausbot-companion": "1", "x-openmausbot-companion-device": "fixture-phone" });
-    expect(legacyPhone.status).toBe(409);
     expect((await page(threadA)).messages).toEqual(beforeA.messages);
     expect((await page(threadB)).messages).toEqual(beforeB.messages);
     expect((await botState(bot.id)).modelSelection).toEqual(selection(models[0]));

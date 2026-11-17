@@ -793,7 +793,7 @@ describe("Group Local VM ownership on the real isolated server", () => {
     writeFileSync(cuaDescriptor, JSON.stringify({ mode: "embedded", socketPath: "/fixture/cua.sock", mcpCommand: "/fixture/cua-driver", mcpArgs: ["mcp"], mcpEnv: {} }));
     await appHandsItOver();
     try {
-      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local" });
+      await api("PATCH", `/api/bots/${bots[0].id}`, { computer: "local", browser: false });
       await send(group.id);
       const sent = await dump() as { systemPrompt: string };
       const c = computer(sent);

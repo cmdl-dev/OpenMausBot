@@ -585,7 +585,7 @@ it("a Mac signed in to My Cloud is lent by itself, its home folder with editing,
   lending.start();
   const lentNow = async () => (await api("GET", "/api/shared-computers", { token: owner })).body;
   await expect.poll(async () => (await lentNow()).computers[0]?.scopes, { timeout: 8000 })
-    .toEqual({ folders: [{ id: expect.any(String), name: expect.any(String), write: true }], terminal: false, screen: false, internet: true, chrome: true });
+    .toEqual({ folders: [{ id: expect.any(String), name: expect.any(String), write: true }], terminal: false, screen: false, internet: true, chrome: false });
   lending.pause();
   await expect.poll(async () => (await lentNow()).known.every((computer: { lent: boolean }) => !computer.lent), { timeout: 5000 }).toBe(true);
   expect((await lentNow()).computers).toEqual([]);

@@ -15,7 +15,7 @@ const INPUT = cn(KEY_FIELD, "font-sans");
 
 /** CLIProxyAPI hubs (such as Router) whose connected Claude and Codex accounts Plan usage also lists. */
 export function UsageHubs({ onChange }: { onChange: () => void }) {
-  const [hubs, setHubs] = useState<UsageHubView[] | null>(null);
+  const [hubs, setHubs] = useState<UsageHubView[]>([]);
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("Router");
   const [url, setUrl] = useState("");
@@ -65,7 +65,7 @@ export function UsageHubs({ onChange }: { onChange: () => void }) {
     <div data-usage-hubs className="mt-4 border-t border-hairline/30 pt-3">
       <div className="mb-0.5 text-[13px] font-medium leading-[18px] text-ink">{t("usageHubs.title")}</div>
       <p className="mb-2 text-[12px] leading-4 text-ink-secondary">{t("usageHubs.subtitle")}</p>
-      {(hubs ?? []).map((hub) => (
+      {hubs.map((hub) => (
         <div key={hub.id} className="flex items-center justify-between gap-2 py-1.5">
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] leading-5 text-ink">{hub.label}</div>

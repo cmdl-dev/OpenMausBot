@@ -117,6 +117,7 @@ export const VITEST_SUBSETS = {
       "server/cloud-team.e2e.test.ts",
       "server/host/brief-words.test.ts",
       "server/host/lending-lifts.test.ts",
+      "server/lent-codex.e2e.test.ts",
       "server/lent-folders.e2e.test.ts",
       "server/move-chosen-bots.e2e.test.ts",
       "server/one-home-keep.e2e.test.ts",

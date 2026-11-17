@@ -35,7 +35,7 @@ export type NotifyKind =
   /** Something OpenMausBot changed on its own that the person hears about
    * once: a tool turned off for the bots it doesn't start for. */
   | "notice"
-  /** A bot flagged something important for the person with notify_person. */
+  /** A bot flagged something important for the person with notify_person, on a personal install or a team's. */
   | "alert";
 
 export interface Notification {

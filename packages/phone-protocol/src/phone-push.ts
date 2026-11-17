@@ -34,17 +34,26 @@ export const PUSH_ID = /^[\w-]{1,120}$/;
 export const PUSH_NAME_MAX = 80;
 export const PUSH_TITLE_MAX = 200;
 
-/** The kinds a closed app is woken for: a bot waits on the person (approval, question, sign-in), or a reply is ready.
- * Everything else reaches the phone only while it is connected. */
+/** The kinds a closed app is woken for: a bot waits on the person (approval, question, sign-in), a reply is ready, a bot
+ * flagged something important (alert), or a wait the person asked for is over. Everything else reaches the phone only
+ * while it is connected. */
 export const PUSH_KINDS = ["approval", "question", "sign-in", "done", "alert", "wait"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
-/** What a registration without `kinds` gets: the kinds every phone had before alerts and waits could be pushed. */
+
+/** What a registration without `kinds` gets: the kinds a phone was pushed before `alert` and `wait` existed. */
 export const DEFAULT_PUSH_KINDS: readonly PushKind[] = ["approval", "question", "sign-in", "done"];
 
-/** A window in which pushes still arrive but silently: "HH:MM" in 24 hours, in an IANA time zone; it may cross midnight. */
-export interface QuietHours {
+/** An app's bundle id, the APNs topic of a direct push. */
+export const PUSH_BUNDLE_ID = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+/** A quiet-hours bound, 24-hour "HH:MM". */
+export const PUSH_QUIET_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+/** Hours the phone wants pushes silent: they still arrive, without sound or a lit screen. `start` after `end` crosses
+ * midnight. */
+export interface PushQuietHours {
   start: string;
   end: string;
+  /** An IANA zone, such as America/Los_Angeles. */
   timeZone: string;
 }
 
@@ -58,14 +67,15 @@ export interface PhonePushRegistration {
   /** The kinds this phone wants pushed, from its own notification switches. Absent: `DEFAULT_PUSH_KINDS`. Empty: none,
    * the registration is kept. */
   kinds?: PushKind[];
-  /** APNs only: the app's bundle id when it is not the official app. A server holding its own APNs key for that bundle
-   * sends to Apple directly; otherwise the relay is used. */
+  /** The app's bundle id when it is not the official app. A server holding its own APNs key for that bundle sends to
+   * Apple directly; otherwise the relay is used. */
   bundle?: string;
-  quiet?: QuietHours;
+  quiet?: PushQuietHours;
 }
 
 /** Whether pushes can leave this server at all: `off` until the owner switches phone push on, `no-account` while it
- * holds no installation credential to reach the relay with. */
+ * holds no installation credential to reach the relay with. A device whose bundle this server holds an APNs key for
+ * reads `on` without either. */
 export type PhonePushState = "on" | "off" | "no-account";
 
 /** A registration as the phone may read it back: never the token, never another phone's. */
@@ -75,7 +85,7 @@ export interface PublicPushDevice {
   pairing?: string;
   kinds: PushKind[];
   bundle?: string;
-  quiet?: QuietHours;
+  quiet?: PushQuietHours;
   updatedAt: number;
 }
 
@@ -94,7 +104,10 @@ export interface PhonePushNotification {
   threadId: string;
   roomId?: string;
   roomName?: string;
+  /** The message a tap opens the conversation at. */
   messageId?: string;
+  /** `alert` only: the bot's own headline for the lock screen. Every other kind is content-free. */
+  body?: string;
 }
 
 export interface PushRelaySendRequest {
@@ -115,6 +128,27 @@ export interface PhonePushData {
   roomId?: string;
   roomName?: string;
   pairing?: string;
+  messageId?: string;
+}
+
+/** A push this server sends Apple itself, for an app whose APNs key it holds. `omb` is what the phone reads. */
+export interface DirectApnsPayload {
+  aps: {
+    alert: { title: string; body?: string };
+    /** Absent inside quiet hours. */
+    sound?: "default";
+    "thread-id": string;
+    "interruption-level": "active" | "passive";
+  };
+  omb: {
+    v: typeof PHONE_PUSH_WIRE_VERSION;
+    kind: string;
+    botId: string;
+    threadId: string;
+    messageId?: string;
+    roomId?: string;
+    pairing?: string;
+  };
 }
 
 /** The relay's error codes a server acts on. Anything else is transient. */

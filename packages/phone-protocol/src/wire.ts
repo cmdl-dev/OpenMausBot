@@ -440,7 +440,7 @@ export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCard
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "burst" | "digest" | "compaction" | "call" | "widget" | "app";
-  text?: string;
+  text?: string; /** A note flagged with notify_person: `text` is the note, `title` the headline their phone showed. */ alert?: { title: string };
   digest?: TurnDigest;
   /** kind "compaction" with no `compaction` record: the engine condensed its own session. A marker for people, never context. */
   engineCompaction?: true;
@@ -456,8 +456,6 @@ export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCard
      * collapsed transcript, never as message body, and the model's replay folds it back after `text`. */
     | { kind: "audio"; path: string; mime: string; durationMs?: number; text?: string }
   >;
-  /** A note a bot posted with notify_person: the person was notified and opens the conversation here. */
-  alert?: { title: string };
   card?: OptionCardData;
   /** widget rows (kind "widget"): a bot-authored UI tree. `text` is its
    * readable fallback for clients that do not know the kind. */

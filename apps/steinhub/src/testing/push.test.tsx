@@ -134,6 +134,8 @@ test("a tapped notification opens its conversation at the message it points at, 
 test("the push's data is read whether it comes direct or through the relay, and kinds follow the switches", () => {
   expect(pushTarget({ omb: { threadId: "t1", messageId: "m2" } })).toEqual({ threadId: "t1", messageId: "m2" });
   expect(pushTarget({ body: JSON.stringify({ v: 1, threadId: "t9" }) })).toEqual({ threadId: "t9" });
+  expect(pushTarget({ body: { v: 1, kind: "alert", threadId: "t3", messageId: "m7" } })).toEqual({ threadId: "t3", messageId: "m7" });
+  expect(pushTarget({ v: 1, kind: "wait", threadId: "t4" })).toEqual({ threadId: "t4" });
   expect(pushTarget({ omb: { threadId: "../etc" } })).toBeNull();
   expect(pushKinds({ needsYou: false, alerts: true, reminders: false, replies: true })).toEqual(["alert", "done"]);
   expect(quietHours({ on: false, start: "22:00", end: "07:00" })).toBeUndefined();

@@ -1,4 +1,4 @@
-import type { PhonePushState, PushKind, QuietHours } from "@openmausbot/phone-protocol/phone-push.ts";
+import type { PhonePushState, PushKind, PushQuietHours } from "@openmausbot/phone-protocol/phone-push.ts";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
@@ -21,7 +21,7 @@ export function pushKinds(notify: NotifyChoices): PushKind[] {
   ];
 }
 
-export function quietHours(quiet: Quiet, timeZone = localTimeZone()): QuietHours | undefined {
+export function quietHours(quiet: Quiet, timeZone = localTimeZone()): PushQuietHours | undefined {
   return quiet.on ? { start: quiet.start, end: quiet.end, timeZone } : undefined;
 }
 
@@ -33,11 +33,13 @@ function localTimeZone(): string {
   }
 }
 
-/** Where a tapped push should open: its conversation, at its message when it names one. */
+/** Where a tapped push should open: its conversation, at its message when it names one. A push carries its fields under
+ * `omb` and `body`; expo-notifications (SDK 58) hands the app either the `body` object itself or the whole payload. */
 export function pushTarget(data: unknown): { threadId: string; messageId?: string } | null {
   if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
-  const raw = typeof record.omb === "object" && record.omb ? record.omb : typeof record.body === "string" ? safeJson(record.body) : record;
+  const nested = record.omb ?? record.body;
+  const raw = typeof nested === "string" ? safeJson(nested) : nested && typeof nested === "object" ? nested : record;
   if (!raw || typeof raw !== "object") return null;
   const fields = raw as Record<string, unknown>;
   const threadId = typeof fields.threadId === "string" && /^[\w-]{1,128}$/.test(fields.threadId) ? fields.threadId : null;
@@ -150,7 +152,7 @@ function usePush(): PushState {
         kinds: kinds ? (kinds.split(",") as PushKind[]) : [],
         ...(bundleId() ? { bundle: bundleId() } : {}),
         ...(sessionDevice && PAIRING.test(sessionDevice) ? { pairing: sessionDevice } : {}),
-        ...(JSON.parse(quiet) ? { quiet: JSON.parse(quiet) as QuietHours } : {}),
+        ...(JSON.parse(quiet) ? { quiet: JSON.parse(quiet) as PushQuietHours } : {}),
       });
       if (!current) return;
       setServer(answer.push);

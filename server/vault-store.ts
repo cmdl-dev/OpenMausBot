@@ -10,6 +10,7 @@ import { z } from "zod";
 import { HELD_SECRET_MASK } from "../shared/redact.ts";
 import { LOGIN_FIELD_MAX, LOGIN_HOSTS_MAX, loginMatchesHost, loginSite, loginUsableBy, type LoginBots, type LoginPlace, type LoginSummary } from "../shared/logins.ts";
 import { SECRET_VALUE_MAX_BYTES, VAULT_SECRET_NAME_MAX, vaultNameKey, type VaultSecret } from "../shared/vault.ts";
+import { CARD_NAME_MAX, CARD_PARTS, CARD_TEXT_MAX, expiryLabel, groupCardNumber, type CardBrand, type ParsedCard, type VaultCard } from "../shared/payment-card.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { decryptBrowserState, encryptBrowserState } from "./browser-sites.ts";
 import type { TotpKey } from "./totp.ts";
@@ -59,11 +60,28 @@ const diskSecretSchema = z.object({
   lastUsedAt: z.number().optional(),
 });
 
-// The previous release parses this file with a non-strict object, so it reads its logins and skips `secrets`.
+const diskCardSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(CARD_NAME_MAX),
+  number: z.string().regex(/^\d{12,19}$/u),
+  brand: z.enum(["visa", "mastercard", "amex", "discover", "diners", "jcb", "unionpay", "card"]),
+  expMonth: z.number().int().min(1).max(12),
+  expYear: z.number().int().min(2000).max(2200),
+  securityCode: z.string().regex(/^\d{3,4}$/u),
+  nameOnCard: z.string().max(CARD_TEXT_MAX).optional(),
+  postalCode: z.string().max(CARD_TEXT_MAX).optional(),
+  bots: botsSchema,
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  lastUsedAt: z.number().optional(),
+});
+
+// The previous release parses this file with a non-strict object, so it reads its logins and skips `secrets` and `cards`.
 const fileSchema = z.object({
   version: z.literal(1),
   logins: z.array(diskLoginSchema),
   secrets: z.array(diskSecretSchema).optional(),
+  cards: z.array(diskCardSchema).optional(),
   onePassword: z.object({ token: z.string().min(1), connectedAt: z.number() }).optional(),
   /** Vault id → the bots that may use its logins; a vault not named here is for every bot. Kept across reconnects. */
   onePasswordGrants: z.record(z.string(), botsSchema).optional(),
@@ -88,6 +106,31 @@ type StoreFile = Omit<DiskFile, "logins" | "secrets"> & { logins: StoredLogin[];
 /** One saved secret with its value. Server-only: no route returns this. `person`: a Team Cloud member's own, typed
  * into a card in their private chat; absent: the team's (every secret off a Team Cloud). */
 export type StoredSecret = z.infer<typeof diskSecretSchema> & { person?: string };
+/** One saved card with its number and security code. Server-only: no route returns this. */
+export type StoredCard = z.infer<typeof diskCardSchema>;
+
+/** A card's parts as the saved secrets a bot asks for by name, handed over as any saved secret is. */
+function cardSecrets(card: StoredCard): StoredSecret[] {
+  const values: Record<(typeof CARD_PARTS)[number], string | undefined> = {
+    number: card.number,
+    expiry: expiryLabel(card.expMonth, card.expYear),
+    "security code": card.securityCode,
+    "name on card": card.nameOnCard,
+    "billing postal code": card.postalCode,
+  };
+  return CARD_PARTS.flatMap((part, index) => {
+    const value = values[part];
+    return value ? [{ id: `${card.id}-p${index}`, name: `${card.name} ${part}`, value, source: "settings" as const, bots: card.bots,
+      createdAt: card.createdAt, updatedAt: card.updatedAt, ...(card.lastUsedAt === undefined ? {} : { lastUsedAt: card.lastUsedAt }) }] : [];
+  });
+}
+
+export function summarizeCard(card: StoredCard): VaultCard {
+  return {
+    id: card.id, name: card.name, brand: card.brand as CardBrand, last4: card.number.slice(-4), expMonth: card.expMonth, expYear: card.expYear, bots: card.bots,
+    createdAt: card.createdAt, updatedAt: card.updatedAt, ...(card.lastUsedAt === undefined ? {} : { lastUsedAt: card.lastUsedAt }),
+  };
+}
 
 /** Who reads the Vault: `person`'s own secrets, and the team's when `team`. */
 export interface VaultReader {
@@ -333,12 +376,19 @@ export class VaultStore {
       this.write({ ...data, logins: data.logins.map((login) => login.id === id ? { ...login, lastUsedAt: at } : login) });
     } else if (data.secrets?.some((secret) => secret.id === id)) {
       this.write({ ...data, secrets: data.secrets.map((secret) => secret.id === id ? { ...secret, lastUsedAt: at } : secret) });
+    } else if (data.cards?.some((card) => cardSecrets(card).some((part) => part.id === id))) {
+      this.write({ ...data, cards: data.cards.map((card) => cardSecrets(card).some((part) => part.id === id) ? { ...card, lastUsedAt: at } : card) });
     }
   }
 
   /** One saved secret with its value, for handing to a bot. */
   secret(id: string): StoredSecret | null {
-    return this.read().secrets?.find((secret) => secret.id === id) ?? null;
+    return this.usable(this.read()).find((secret) => secret.id === id) ?? null;
+  }
+
+  /** The saved secrets and every saved card's parts, as a bot may be handed them. */
+  private usable(data: StoreFile): StoredSecret[] {
+    return [...data.secrets ?? [], ...(data.cards ?? []).flatMap(cardSecrets)];
   }
 
   listSecrets(reader: VaultReader): VaultSecret[] {
@@ -346,16 +396,16 @@ export class VaultStore {
   }
 
   /** The secret `botId` may use by this name, as a ref or a file, in a turn `reader` names: one kept to some bots before
-   * one for every bot, then the newest. */
+   * one for every bot, then the newest, then the person's own before the team's. */
   usableSecret(name: string, botId: string, delivery: "ref" | "file", reader: VaultReader): StoredSecret | null {
     const key = vaultNameKey(name);
-    const matches = (this.read().secrets ?? []).filter((secret) => vaultNameKey(secret.name) === key && loginUsableBy(secret, botId) &&
+    const matches = this.usable(this.read()).filter((secret) => vaultNameKey(secret.name) === key && loginUsableBy(secret, botId) &&
       secretReadable(secret, reader) && (delivery === "ref" || !secret.refOnly));
-    return matches.sort((a, b) => Number(b.bots !== "all") - Number(a.bots !== "all") || b.updatedAt - a.updatedAt)[0] ?? null;
+    return matches.sort((a, b) => Number(b.bots !== "all") - Number(a.bots !== "all") || b.updatedAt - a.updatedAt || Number(Boolean(b.person)) - Number(Boolean(a.person)))[0] ?? null;
   }
 
   secretNamesFor(botId: string, reader: VaultReader): Array<{ name: string; refOnly?: true }> {
-    return (this.read().secrets ?? []).filter((secret) => loginUsableBy(secret, botId) && secretReadable(secret, reader))
+    return this.usable(this.read()).filter((secret) => loginUsableBy(secret, botId) && secretReadable(secret, reader))
       .map(({ name, refOnly }) => ({ name, ...(refOnly ? { refOnly } : {}) }));
   }
 
@@ -433,6 +483,7 @@ export class VaultStore {
 
   /** A deleted bot leaves every secret kept to it; a secret kept only to it goes with it. */
   forgetBot(botId: string): void {
+    this.forgetBotCards(botId);
     const data = this.read();
     if (!data.secrets) return;
     const touched: string[] = [];
@@ -519,7 +570,52 @@ export class VaultStore {
       ...data.logins.flatMap((login) => [login.password, ...(login.totp ? [login.totp.secret] : [])]),
       ...(data.onePassword ? [data.onePassword.token] : []),
       ...(data.secrets ?? []).map((secret) => secret.value),
+      ...(data.cards ?? []).flatMap((card) => [card.number, groupCardNumber(card.number)]),
     ];
+  }
+
+  /** Cards are the team's: on a Team Cloud a member sees none. */
+  listCards(reader: VaultReader): VaultCard[] {
+    return reader.team ? (this.read().cards ?? []).map(summarizeCard).sort((a, b) => a.name.localeCompare(b.name)) : [];
+  }
+
+  /** The same number saved again replaces the card it was. */
+  saveCard(input: ParsedCard & { bots: LoginBots }): VaultCard {
+    const data = this.read();
+    const cards = data.cards ?? [];
+    const at = this.now();
+    const same = cards.find((card) => card.number === input.number);
+    const card: StoredCard = {
+      id: same?.id ?? randomUUID(), name: input.name, number: input.number, brand: input.brand, expMonth: input.expMonth, expYear: input.expYear,
+      securityCode: input.securityCode, ...(input.nameOnCard ? { nameOnCard: input.nameOnCard } : {}), ...(input.postalCode ? { postalCode: input.postalCode } : {}),
+      bots: input.bots, createdAt: same?.createdAt ?? at, updatedAt: at, ...(same?.lastUsedAt === undefined ? {} : { lastUsedAt: same.lastUsedAt }),
+    };
+    this.write({ ...data, cards: same ? cards.map((one) => one.id === same.id ? card : one) : [...cards, card] });
+    if (same) for (const part of cardSecrets(same)) this.secretChanged(part.id);
+    return summarizeCard(card);
+  }
+
+  removeCard(id: string): boolean {
+    const data = this.read();
+    const gone = data.cards?.find((card) => card.id === id);
+    if (!gone) return false;
+    const cards = data.cards!.filter((card) => card.id !== id);
+    const { cards: _cards, ...rest } = data;
+    this.write(cards.length ? { ...rest, cards } : rest);
+    for (const part of cardSecrets(gone)) this.secretChanged(part.id);
+    return true;
+  }
+
+  private forgetBotCards(botId: string): void {
+    const data = this.read();
+    if (!data.cards?.some((card) => card.bots !== "all" && card.bots.includes(botId))) return;
+    const at = this.now();
+    const cards = data.cards.flatMap((card) => {
+      if (card.bots === "all" || !card.bots.includes(botId)) return [card];
+      const bots = card.bots.filter((id) => id !== botId);
+      return bots.length ? [{ ...card, bots, updatedAt: at }] : [];
+    });
+    this.write({ ...data, cards });
   }
 }
 

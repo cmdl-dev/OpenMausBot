@@ -393,3 +393,33 @@ describe("the held-secret scrubber", () => {
     expect(redactSecretsInText("My password is fake-hunter2, enjoy.")).toBe("My password is fake-hunter2, enjoy.");
   });
 });
+
+describe("saved cards", () => {
+  const card = { name: "Visa ending 4242", number: "4242424242424242", brand: "visa" as const, expMonth: 8, expYear: 2029, securityCode: "737", bots: "all" as const };
+
+  it("keep the number sealed, mask it in text in either spacing, and leave a bot that is deleted", () => {
+    const store = new VaultStore({ dataDir: dir, now: () => 5_000 });
+    const saved = store.saveCard({ ...card, bots: ["pepper", "quill"] });
+    const sealed = readFileSync(join(dir, LOGINS_FILE));
+    for (const word of [card.number, "4242", "737", "Visa ending"]) expect(sealed.includes(Buffer.from(word)), word).toBe(false);
+    expect(store.secretValues()).toEqual(expect.arrayContaining([card.number, "4242 4242 4242 4242"]));
+
+    store.forgetBot("pepper");
+    expect(store.listCards(TEAM_READER)).toMatchObject([{ id: saved.id, bots: ["quill"] }]);
+    store.forgetBot("quill");
+    expect(store.listCards(TEAM_READER)).toEqual([]);
+  });
+
+  it("a part handed to a bot marks its card used, and the previous release keeps reading the file", () => {
+    const store = new VaultStore({ dataDir: dir, now: () => 7_000 });
+    store.create({ ...at("example.com"), username: "alice", password: PASSWORD, source: "settings", bots: "all" });
+    const saved = store.saveCard(card);
+    const part = store.usableSecret("visa ending 4242 security code", "pepper", "ref", TEAM_READER)!;
+    expect(part).toMatchObject({ value: "737" });
+    expect(store.secret(part.id)?.value).toBe("737");
+    store.markUsed(part.id);
+    expect(new VaultStore({ dataDir: dir }).listCards(TEAM_READER)).toEqual([{ ...saved, lastUsedAt: 7_000 }]);
+    const disk = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
+    expect(previousRelease.parse(disk).logins).toHaveLength(1);
+  });
+});

@@ -4,7 +4,16 @@ import { File } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
-import { desktopClient, type AppCatalogReply, type AppConnection, type AppConnectionsReply, type DesktopClient } from "@/api/client";
+import {
+  desktopClient,
+  type AppCatalogReply,
+  type AppConnection,
+  type AppConnectionsReply,
+  type DesktopClient,
+  type NewVaultItem,
+  type VaultKind,
+  type VaultReply,
+} from "@/api/client";
 import { asDesktopError, type DesktopError } from "@/api/errors";
 import { startLiveEvents, type LiveEvents, type LinkState } from "@/api/live-events";
 import { pair, type PairingInvite } from "@/api/pairing";
@@ -49,6 +58,11 @@ export interface Connection {
   appStatus(slug: string): Promise<AppConnection | null>;
   /** Starts a sign-in on the computer and resolves to the page the person finishes it on. */
   connectApp(slug: string, alias?: string): Promise<string>;
+  /** The Vault's logins, secrets and cards, by name only: no value ever comes back. */
+  vault(): Promise<VaultReply>;
+  /** Sends a value to the computer's Vault once. */
+  addToVault(item: NewVaultItem): Promise<void>;
+  removeFromVault(kind: VaultKind, id: string): Promise<void>;
 }
 
 const ConnectionContext = createContext<Connection | null>(null);
@@ -67,6 +81,12 @@ const SAMPLE_APPS: { catalog: AppCatalogReply; connected: AppConnectionsReply } 
     ],
   },
   connected: { configured: true, services: { gmail: { connected: true, accounts: [{ id: "a1", alias: "Personal", status: "ACTIVE" }] } } },
+};
+/** The demo world's Vault. Card numbers are the networks' published test numbers. */
+const SAMPLE_VAULT: VaultReply = {
+  logins: [{ id: "l1", site: "zillow.com", hosts: ["zillow.com"], username: "ada@example.com", hasTotp: true, source: "settings", bots: "all", lastUsedAt: Date.now() - 86_400_000 }],
+  secrets: [{ id: "s1", name: "Stripe secret key", source: "card", bots: "all" }],
+  cards: [{ id: "c1", name: "Visa ending 4242", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, bots: "all", createdAt: 1, updatedAt: 1 }],
 };
 const PAGE_SIZE = 60;
 
@@ -282,6 +302,24 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [mode, client],
   );
 
+  const vault = useCallback(async () => (mode === "demo" ? SAMPLE_VAULT : await client().vault()), [mode, client]);
+
+  const addToVault = useCallback(
+    async (item: NewVaultItem) => {
+      if (mode === "demo") throw new Error("Saving to the Vault needs a paired computer.");
+      await client().addToVault(item);
+    },
+    [mode, client],
+  );
+
+  const removeFromVault = useCallback(
+    async (kind: VaultKind, itemId: string) => {
+      if (mode === "demo") throw new Error("Changing the Vault needs a paired computer.");
+      await client().removeFromVault(kind, itemId);
+    },
+    [mode, client],
+  );
+
   const runRoutine = useCallback(
     async (routineId: string) => {
       await client().runRoutine(routineId);
@@ -397,8 +435,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setModel,
       markRead,
       deleteBot,
+      vault,
+      addToVault,
+      removeFromVault,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, setModel, markRead, deleteBot],
+    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, setModel, markRead, deleteBot, vault, addToVault, removeFromVault],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

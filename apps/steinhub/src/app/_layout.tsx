@@ -43,6 +43,8 @@ export default function RootLayout() {
             <Stack.Screen name="sheets/bot-menu" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/new-folder" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/model" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/vault-add" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/vault-item" options={sheetScreenOptions} />
           </Stack>
         </ThemeProvider>
       </ConnectionProvider>

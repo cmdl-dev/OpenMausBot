@@ -6,6 +6,7 @@ import type {
   TaskResponse,
   WireMessagePage,
 } from "@openmausbot/phone-protocol/responses.ts";
+import type { NewCardInput, VaultCard } from "@openmausbot/phone-protocol/payment-card.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import { createSseParser } from "@/api/sse";
@@ -59,6 +60,48 @@ export interface AppConnectionsReply {
   configured: boolean;
   services: Record<string, AppConnection>;
 }
+
+/** Which bots may use a saved item: every bot, or the ones named. */
+export type VaultBots = "all" | string[];
+
+/** One saved login on GET /api/vault: never its password. phone-protocol has no type for this reply yet. */
+export interface VaultLogin {
+  id: string;
+  site: string;
+  hosts: string[];
+  username: string;
+  hasTotp: boolean;
+  source: "card" | "settings" | "1password";
+  bots: VaultBots;
+  lastUsedAt?: number;
+}
+
+/** One saved or linked secret on GET /api/vault: its name only. */
+export interface VaultSecretRow {
+  id: string;
+  name: string;
+  source: "card" | "settings" | "linked";
+  /** Who a linked one comes from, such as 1password. */
+  provider?: string;
+  bots: VaultBots;
+  lastUsedAt?: number;
+}
+
+export interface VaultReply {
+  logins: VaultLogin[];
+  secrets: VaultSecretRow[];
+  /** Absent from a computer that keeps no cards yet. */
+  cards?: VaultCard[];
+}
+
+export type NewVaultItem =
+  | { kind: "login"; site: string; username: string; password: string; totp?: string; bots: VaultBots }
+  | { kind: "secret"; name: string; value: string; bots: VaultBots }
+  | ({ kind: "card" } & NewCardInput);
+
+export type VaultKind = NewVaultItem["kind"];
+
+const VAULT_PATHS: Record<VaultKind, string> = { login: "/api/logins", secret: "/api/vault/secrets", card: "/api/vault/cards" };
 
 export interface StreamFrame {
   frame: ServerFrame;
@@ -122,6 +165,9 @@ export function desktopClient(transport: Transport) {
     setRoutineEnabled: (routineId: string, enabled: boolean) =>
       transport.request<{ routine: Routine }>("PATCH", `/api/routines/${id(routineId)}`, { enabled }),
     runRoutine: (routineId: string) => transport.request<unknown>("POST", `/api/routines/${id(routineId)}/run`, {}),
+    vault: () => transport.request<VaultReply>("GET", "/api/vault"),
+    addToVault: ({ kind, ...fields }: NewVaultItem) => transport.request<unknown>("POST", VAULT_PATHS[kind], fields),
+    removeFromVault: (kind: VaultKind, itemId: string) => transport.request<unknown>("DELETE", `${VAULT_PATHS[kind]}/${id(itemId)}`),
     /** The live stream, without screen frames: a phone draws no live desktop yet. */
     events: (since: string | null, onFrame: (frame: StreamFrame) => void, signal: AbortSignal) => {
       const query = new URLSearchParams({ screens: "off" });

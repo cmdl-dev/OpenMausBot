@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Bell, FlaskConical, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
+import { Bell, FlaskConical, LockKeyhole, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
 import { Alert, StyleSheet, Switch, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Group, Row, SectionLabel } from "@/components/list";
@@ -95,6 +95,7 @@ export default function SettingsScreen() {
 
       <SectionLabel>Privacy & security</SectionLabel>
       <Group>
+        <Row title="Vault" subtitle="Passwords, keys and cards your bots can use" leading={<LockKeyhole {...iconProps} />} chevron onPress={() => router.push("/vault")} />
         <Row
           title="Face ID lock"
           leading={<ScanFace {...iconProps} />}

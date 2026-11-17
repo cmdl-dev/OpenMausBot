@@ -30,6 +30,8 @@ export default function DrawerLayout() {
       <Drawer.Screen name="computers" options={{ title: "Computers" }} />
       <Drawer.Screen name="apps" options={{ title: "Apps" }} />
       <Drawer.Screen name="settings" options={{ title: "Settings" }} />
+      <Drawer.Screen name="vault/index" options={{ title: "Vault" }} />
+      <Drawer.Screen name="vault/add" options={{ title: "Add to Vault" }} />
     </Drawer>
   );
 }

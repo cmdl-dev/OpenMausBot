@@ -1,4 +1,5 @@
 import type { LoginBots, LoginSummary, OnePasswordStatus } from "../../shared/logins";
+import type { NewCardInput, VaultCard } from "../../shared/payment-card";
 import type { LinkedSecret, VaultChoice, VaultSecret } from "../../shared/vault";
 import type { ComputerHelpRef } from "../../shared/wire";
 import { api } from "@/state/store";
@@ -8,6 +9,7 @@ import { api } from "@/state/store";
 export interface VaultList {
   logins: LoginSummary[];
   secrets: Array<VaultSecret | LinkedSecret>;
+  cards?: VaultCard[];
   onePassword: OnePasswordStatus;
 }
 
@@ -30,6 +32,15 @@ export async function changeSecret(id: string, change: { name?: string; value?: 
 /** The MCP servers that lost their key with it. */
 export async function deleteSecret(id: string): Promise<string[]> {
   return (await api<{ keysOff?: string[] }>(`/api/vault/secrets/${encodeURIComponent(id)}`, { method: "DELETE" })).keysOff ?? [];
+}
+
+/** The same number saved again replaces that card. */
+export async function addCard(card: NewCardInput): Promise<VaultCard> {
+  return (await api<{ card: VaultCard }>("/api/vault/cards", { method: "POST", body: JSON.stringify(card) })).card;
+}
+
+export async function deleteCard(id: string): Promise<void> {
+  await api(`/api/vault/cards/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /** The NAME=value lines of a pasted .env file. `export`, quotes and trailing comments are dropped; a later line with the

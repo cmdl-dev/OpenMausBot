@@ -138,7 +138,7 @@ describe("the Vault routes", () => {
 
     expect((await ari("GET", "/api/vault")).body.secrets.map((one: { id: string }) => one.id)).toEqual([team.id]);
     expect(await ada("GET", "/api/vault")).toMatchObject({ status: 200, cache: "no-store", body: { logins: [], secrets: [{ id: own.id, name: "Stripe secret key" }], onePassword: { connected: false } } });
-    expect((await ben("GET", "/api/vault")).body).toEqual({ logins: [], secrets: [], onePassword: { connected: false } });
+    expect((await ben("GET", "/api/vault")).body).toEqual({ logins: [], secrets: [], cards: [], onePassword: { connected: false } });
 
     for (const [who, caller] of [["an admin", ari], ["another member", ben]] as const) {
       expect((await caller("DELETE", `/api/vault/secrets/${own.id}`)).status, who).toBe(404);
@@ -162,7 +162,60 @@ describe("the Vault routes", () => {
   it("off a Team Cloud show a session without admin nothing, and a member's own never exist there", async () => {
     const { call } = await serve();
     await call("POST", "/api/vault/secrets", { name: "Stripe secret key", value: VALUE });
-    expect((await call("GET", "/api/vault", undefined, "application/json", "member:p_phone000000000000000000")).body).toEqual({ logins: [], secrets: [], onePassword: { connected: false } });
+    expect((await call("GET", "/api/vault", undefined, "application/json", "member:p_phone000000000000000000")).body).toEqual({ logins: [], secrets: [], cards: [], onePassword: { connected: false } });
     expect((await call("GET", "/api/vault")).body.secrets).toHaveLength(1);
+  });
+});
+
+describe("the Vault's cards", () => {
+  // Card networks' published test numbers: nobody's real card.
+  const VISA = "4242424242424242";
+  const AMEX = "378282246310005";
+  const now = () => new Date(Date.UTC(2026, 10, 17));
+
+  it("add, list and remove a card, and never return its number or security code", async () => {
+    const { store, call, answers } = await serve();
+    const added = await call("POST", "/api/vault/cards", { number: "4242 4242 4242 4242", expiry: "08/29", securityCode: "737", nameOnCard: "Ada Lovelace", postalCode: "94107", bots: ["pepper"] });
+    expect(added).toMatchObject({ status: 201, body: { card: { name: "Visa ending 4242", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, bots: ["pepper"] } } });
+    expect((await call("GET", "/api/vault")).body.cards).toEqual([added.body.card]);
+
+    expect(store.secretNamesFor("pepper", TEAM_READER)).toEqual(expect.arrayContaining([
+      { name: "Visa ending 4242 number" }, { name: "Visa ending 4242 expiry" }, { name: "Visa ending 4242 security code" },
+      { name: "Visa ending 4242 name on card" }, { name: "Visa ending 4242 billing postal code" },
+    ]));
+    expect(store.usableSecret("Visa ending 4242 number", "pepper", "ref", TEAM_READER)?.value).toBe(VISA);
+    expect(store.usableSecret("Visa ending 4242 expiry", "pepper", "ref", TEAM_READER)?.value).toBe("08/29");
+    expect(store.usableSecret("Visa ending 4242 number", "pepper", "file", TEAM_READER)?.value).toBe(VISA);
+    expect(store.usableSecret("Visa ending 4242 number", "quill", "ref", TEAM_READER)).toBeNull();
+
+    expect((await call("DELETE", `/api/vault/cards/${added.body.card.id}`)).body).toEqual({ ok: true });
+    expect((await call("DELETE", `/api/vault/cards/${added.body.card.id}`)).status).toBe(404);
+    expect(store.usableSecret("Visa ending 4242 number", "pepper", "ref", TEAM_READER)).toBeNull();
+    for (const answer of answers) {
+      expect(answer).not.toContain(VISA);
+      expect(answer).not.toContain("737");
+    }
+  });
+
+  it("refuse a number that fails its check digit, a past expiry and a short security code", async () => {
+    const { call } = await serve();
+    expect(await call("POST", "/api/vault/cards", { number: "4242424242424241", expiry: "08/29", securityCode: "737" })).toMatchObject({ status: 400, body: { field: "number" } });
+    expect(await call("POST", "/api/vault/cards", { number: VISA, expiry: "13/29", securityCode: "737" })).toMatchObject({ status: 400, body: { field: "expiry" } });
+    expect(await call("POST", "/api/vault/cards", { number: VISA, expiry: `01/${now().getFullYear() % 100 - 1}`, securityCode: "737" })).toMatchObject({ status: 400, body: { field: "expired" } });
+    expect(await call("POST", "/api/vault/cards", { number: AMEX, expiry: "08/29", securityCode: "737" })).toMatchObject({ status: 400, body: { field: "securityCode" } });
+    expect(await call("POST", "/api/vault/cards", { number: AMEX, expiry: "08/2029", securityCode: "7373", name: "Work Amex" })).toMatchObject({ status: 201, body: { card: { name: "Work Amex", brand: "amex", last4: "0005" } } });
+    expect((await call("POST", "/api/vault/cards", { number: VISA, expiry: "08/29", securityCode: "737" }, "text/plain")).status).toBe(415);
+    expect((await call("GET", "/api/vault/cards")).status).toBe(405);
+  });
+
+  it("the same number saved again replaces the card, and a member sees no cards and can't add one", async () => {
+    const { store, call } = await serve(null, true);
+    const first = await call("POST", "/api/vault/cards", { number: VISA, expiry: "08/29", securityCode: "737" }, "application/json", "admin:p_admin");
+    const again = await call("POST", "/api/vault/cards", { number: VISA, expiry: "09/30", securityCode: "123", name: "Travel" }, "application/json", "admin:p_admin");
+    expect(again.body.card).toMatchObject({ id: first.body.card.id, name: "Travel", expMonth: 9, expYear: 2030 });
+    expect(store.listCards(TEAM_READER)).toHaveLength(1);
+    expect((await call("GET", "/api/vault", undefined, "application/json", "member:p_member")).body.cards).toEqual([]);
+    expect((await call("POST", "/api/vault/cards", { number: VISA, expiry: "08/29", securityCode: "737" }, "application/json", "member:p_member")).status).toBe(403);
+    expect((await call("DELETE", `/api/vault/cards/${first.body.card.id}`, undefined, "application/json", "member:p_member")).status).toBe(403);
   });
 });

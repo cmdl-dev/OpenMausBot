@@ -71,7 +71,7 @@ import { askText, runSkill, runSteps, runSummary, showRun, skillPrompt } from "@
 import { useShowRunCard } from "@/lib/run-card-preferences";
 import { useColorUserBubbles } from "@/lib/user-bubble-preference";
 import { userBubbleStyle } from "@/lib/user-bubble-tone";
-import { ToolActivity } from "./ToolActivity";
+import { ToolStepRow } from "./EmailSendCard";
 import { DataResultChip } from "./DataResultChip"; import { PublishedPageCard } from "./PublishedPageCard";
 import { ThreadRefText } from "./ThreadRefs"; import { WatchScreenButton } from "./WatchScreenButton";
 import { optionsCardRow } from "./OptionsCardRow";
@@ -619,7 +619,7 @@ const ActivityChip = memo(function ActivityChip({ message, place = "auto" }: { m
   if (message.threadRef) return <ThreadChip message={message} threadId={threadId} />; if (message.relay) return <TeammateChip message={message} />;
   const comm = message.comm;
   if (comm) return <RoomHandoffChip message={message} comm={comm} bots={bots} dispatch={dispatch} threadId={threadId} />;
-  return <ToolActivity tool={tool} live={liveTools.has(message.id)} place={toolPlace(tool.name, place)} source={{ threadId, messageId: message.id }} />;
+  return <ToolStepRow message={message} tool={tool} live={liveTools.has(message.id)} place={toolPlace(tool.name, place)} source={{ threadId, messageId: message.id }} />;
 });
 
 const RoomHandoffChip = ({ message, comm, bots, dispatch, threadId }: { message: Message; comm: NonNullable<Message["comm"]>; bots: readonly Bot[]; dispatch: Dispatch<Action>; threadId: string }) => { const store = useStoreRef(); return <HandoffChip message={message} bots={bots} threadId={threadId} title={t("chat.openConversationWith", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, store.state().groups)} />; };
@@ -743,7 +743,7 @@ const MessagesList = memo(function MessagesList({
                   />
                 );
               }
-              if (!showToolCalls && !m.comm && !m.threadRef && !m.relay && !m.dataResult) return null;
+              if (!showToolCalls && quietRow(m, false)) return null;
               return <ActivityChip message={m} place={place} />;
             }
             case "digest":

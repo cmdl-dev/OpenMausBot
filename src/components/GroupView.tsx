@@ -20,7 +20,7 @@ import { BotAvatar } from "./Avatar";
 import { ScreenFrame } from "./ScreenFrame";
 import { RoomHoldsBanner } from "./RoomHoldsBanner";
 import { ThreadChip } from "./ThreadChip";
-import { ToolActivity } from "./ToolActivity";
+import { ToolStepRow } from "./EmailSendCard";
 import { ThreadRefText } from "./ThreadRefs";
 import { TurnPresence } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
@@ -115,7 +115,7 @@ export function RoomToolChip({ message, roomId, threadId, live = false }: { mess
   if (comm && comm.groupId !== roomId) {
     return <HandoffChip message={message} bots={state.bots} threadId={threadId} title={t("room.openBot", { name: comm.withName })} onClick={() => openRoomThread(dispatch, comm, state.groups)} />;
   }
-  if (!comm) return <ToolActivity tool={tool} live={live} source={threadId ? { threadId, messageId: message.id } : undefined} />;
+  if (!comm) return <ToolStepRow message={message} tool={tool} live={live} source={threadId ? { threadId, messageId: message.id } : undefined} />;
   return (
     <div className="flex justify-start">
       <div

@@ -43,6 +43,15 @@ jest.mock("expo-clipboard", () => ({
   setStringAsync: async () => true,
 }));
 
+const mockNativePaste = { accepting: [] as boolean[], listener: null as null | ((images: Array<{ uri: string; width: number; height: number }>) => void) };
+jest.mock("../../modules/steinhub-paste", () => ({
+  acceptPastedImages: (on: boolean) => mockNativePaste.accepting.push(on),
+  addPastedImagesListener: (listener: (images: Array<{ uri: string; width: number; height: number }>) => void) => {
+    mockNativePaste.listener = listener;
+    return { remove: () => {} };
+  },
+}));
+
 function DrawerWithoutAnimation() {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
@@ -71,7 +80,7 @@ const SCOUT = {
   activeLeafId: null,
 } as unknown as BotsResponse["bots"][number];
 
-test("an image on the clipboard pastes into the message from Paste image, and goes up to the computer", async () => {
+async function openHome() {
   secureValues.clear();
   secureValues.set("steinhub.demo", "off");
   secureValues.set("steinhub.session", JSON.stringify(SESSION));
@@ -89,7 +98,11 @@ test("an image on the clipboard pastes into the message from Paste image, and go
   await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/" });
   await act(async () => events.frame({ kind: "hello", cursor: "s:1", resumed: false }));
   await waitFor(() => expect(desktop.calls.some((call) => call.path === "/api/bots")).toBe(true));
+  return desktop;
+}
 
+test("an image on the clipboard pastes into the message from Paste image, and goes up to the computer", async () => {
+  const desktop = await openHome();
   const field = await screen.findByLabelText("Message");
   expect(screen.queryByLabelText("Paste image")).toBeNull();
   await fireEvent(field, "focus");
@@ -103,4 +116,21 @@ test("an image on the clipboard pastes into the message from Paste image, and go
 
   await act(async () => mockClipboard.listeners.forEach((listener) => listener()));
   expect(await screen.findByLabelText("Paste image")).toBeTruthy();
+});
+
+test("an image pasted into the field itself, or from the keyboard's suggestion, is attached while the field has focus", async () => {
+  const desktop = await openHome();
+  const field = await screen.findByLabelText("Message");
+  await fireEvent(field, "focus");
+  expect(mockNativePaste.accepting.at(-1)).toBe(true);
+
+  mockWritten.set("file:///tmp/pasted-1.jpg", new TextEncoder().encode("keyboard-jpeg"));
+  await act(async () => mockNativePaste.listener?.([{ uri: "file:///tmp/pasted-1.jpg", width: 4, height: 4 }]));
+  await waitFor(() => expect(desktop.calls.filter((call) => call.path === "/api/attachments")).toHaveLength(1));
+  expect(new TextDecoder().decode(desktop.calls.find((call) => call.path === "/api/attachments")!.body as Uint8Array)).toBe("keyboard-jpeg");
+
+  await fireEvent(field, "blur");
+  expect(mockNativePaste.accepting.at(-1)).toBe(false);
+  await act(async () => mockNativePaste.listener?.([{ uri: "file:///tmp/pasted-1.jpg", width: 4, height: 4 }]));
+  expect(desktop.calls.filter((call) => call.path === "/api/attachments")).toHaveLength(1);
 });

@@ -11,6 +11,7 @@ import { IconButton } from "@/components/icon-button";
 import { PasteImageButton, savePastedImage, useClipboardImage } from "@/components/paste-image";
 import { Txt } from "@/components/text";
 import { useConnection } from "@/state/connection";
+import { acceptPastedImages, addPastedImagesListener } from "../../modules/steinhub-paste";
 import { colors, radius, size, space, type } from "@/theme";
 
 export interface ComposerProps {
@@ -102,6 +103,8 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const [menuOpen, setMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasFocus = useRef(false);
+  const attachRef = useRef<(picks: Pick[]) => void>(() => {});
   const clipboard = useClipboardImage();
   const [pastedAt, setPastedAt] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -137,8 +140,17 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
     finishDictation();
   });
 
+  useEffect(() => {
+    const subscription = addPastedImagesListener((images) => {
+      if (!hasFocus.current) return;
+      attachRef.current(images.map((image, index) => ({ uri: image.uri, name: `pasted-${Date.now()}-${index + 1}.jpg`, mime: "image/jpeg", kind: "image" })));
+    });
+    return () => subscription?.remove();
+  }, []);
+
   useEffect(
     () => () => {
+      if (hasFocus.current) acceptPastedImages(false);
       if (listening.current) ExpoSpeechRecognitionModule.abort();
       if (blurTimer.current) clearTimeout(blurTimer.current);
     },
@@ -208,6 +220,8 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
       );
     }
   }
+
+  attachRef.current = attach;
 
   function paste(dataUri: string) {
     setPastedAt(clipboard.version);
@@ -329,9 +343,13 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
             onChangeText={typed}
             onFocus={() => {
               if (blurTimer.current) clearTimeout(blurTimer.current);
+              hasFocus.current = true;
+              acceptPastedImages(true);
               setFocused(true);
             }}
             onBlur={() => {
+              hasFocus.current = false;
+              acceptPastedImages(false);
               blurTimer.current = setTimeout(() => setFocused(false), PASTE_LINGER_MS);
             }}
             placeholder={`Ask ${botName} anything`}

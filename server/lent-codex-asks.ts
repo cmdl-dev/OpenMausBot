@@ -4,6 +4,7 @@
 import { newId } from "./contracts.ts";
 import { optionCardsForTools } from "./message-db.ts";
 import { buildNotification } from "./notify.ts";
+import { serverLine } from "./server-lines.ts";
 import type { CodexAppAccess, CodexAppAccessAsk } from "./shared-computers.ts";
 import type { BotRecord } from "./store.ts";
 import { turnWaitedOnPerson } from "./waiting-on-person.ts";
@@ -44,7 +45,7 @@ export function askLentCodexApp(
 ): Promise<boolean> {
   if (signal.aborted) return Promise.resolve(false);
   const { store } = bus;
-  const title = `Let Codex on ${computer} use ${access.app}?`;
+  const title = serverLine(undefined, "server.lentCodex.title", { computer, app: access.app });
   const room = store.groupByThread(owner.threadId);
   const requestId = newId();
   return new Promise<boolean>((resolve) => {
@@ -54,7 +55,7 @@ export function askLentCodexApp(
       ...(room && bot ? { from: { botId: bot.id, name: bot.name, color: bot.color } } : {}),
       card: {
         title,
-        subtitle: `${bot?.name ?? "The bot"} gave Codex on ${computer} a job. Allowing covers ${access.app} until that job ends.`,
+        subtitle: serverLine(undefined, "server.lentCodex.subtitle", { bot: bot?.name ?? serverLine(undefined, "server.lentCodex.someBot"), computer, app: access.app }),
         options: ["Allow for this job", "Deny"],
         requestId,
         requestType: "permission",

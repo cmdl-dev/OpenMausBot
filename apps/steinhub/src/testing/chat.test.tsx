@@ -67,6 +67,18 @@ const CARD: WireMessage = {
 
 const PAGE: WireMessagePage = {
   messages: [
+    { id: "m0", role: "user", kind: "text", text: 'The lease\n\n<attached-image path="/api/attachments/lease.jpg" name="lease.jpg" />', at: AT - 3 },
+    {
+      id: "m0b",
+      role: "bot",
+      kind: "text",
+      text: "",
+      at: AT - 2,
+      attachments: [
+        { kind: "image", path: "/api/attachments/chart.png", mime: "image/png", name: "chart.png" },
+        { kind: "image", path: "/api/attachments/screen.png", mime: "image/png", name: "screen.png", fromTool: true },
+      ],
+    },
     { id: "m1", role: "user", kind: "text", text: "Draft a counter offer", at: AT },
     { id: "m2", role: "bot", kind: "text", text: "Here's a draft at $2,450.", at: AT + 1 },
     CARD,
@@ -191,4 +203,18 @@ test("scrolled up, an arrow takes the thread back to the latest message", async 
 
   await scrollTo(1360);
   expect(screen.queryByLabelText("Scroll to the latest message")).toBeNull();
+});
+
+test("a tap on an image in the chat opens it full screen from the computer, and Close goes back", async () => {
+  await openChat();
+  expect(screen.getByLabelText("Open chart.png")).toBeTruthy();
+  expect(screen.queryByLabelText("Open screen.png")).toBeNull();
+
+  await fireEvent.press(screen.getByLabelText("Open lease.jpg"));
+  expect(screen).toHavePathname("/image");
+  const image = await screen.findByLabelText("lease.jpg");
+  expect(image.props.source).toEqual({ uri: "http://mac.local:8810/api/attachments/lease.jpg", headers: { authorization: "Bearer device-token-1" } });
+
+  await fireEvent.press(screen.getByLabelText("Close image"));
+  expect(screen).toHavePathname("/chat/t1");
 });

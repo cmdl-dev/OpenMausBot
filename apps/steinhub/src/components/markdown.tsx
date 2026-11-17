@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { Linking, Platform, StyleSheet } from "react-native";
 import { EnrichedMarkdownText, type MarkdownStyle } from "react-native-enriched-markdown";
 import { colors, radius, type } from "@/theme";
@@ -82,6 +83,7 @@ export function Markdown({ children, fadesIn = false }: { children: string; fade
       selectable
       containerStyle={styles.container}
       onLinkPress={({ url }) => void Linking.openURL(url).catch(() => undefined)}
+      onImagePress={({ url, altText }) => router.push({ pathname: "/image", params: { url, name: altText } })}
     />
   );
 }

@@ -26,6 +26,11 @@ const dark = {
   dangerBg: "rgba(255,92,92,0.12)",
   infoBg: "rgba(108,168,255,0.12)",
   warningBorder: "rgba(245,181,68,0.25)",
+
+  viewer: "#000000",
+  onViewer: "#FFFFFF",
+  onViewer2: "rgba(255,255,255,0.6)",
+  viewerControl: "rgba(255,255,255,0.15)",
 };
 
 export type Palette = typeof dark;
@@ -55,6 +60,11 @@ const light: Palette = {
   dangerBg: "rgba(217,45,45,0.10)",
   infoBg: "rgba(37,99,217,0.10)",
   warningBorder: "rgba(168,106,12,0.30)",
+
+  viewer: "#000000",
+  onViewer: "#FFFFFF",
+  onViewer2: "rgba(255,255,255,0.6)",
+  viewerControl: "rgba(255,255,255,0.15)",
 };
 
 // RN 0.88: an override set by a run before an in-app restart outlives it, so "system" clears it before reading.

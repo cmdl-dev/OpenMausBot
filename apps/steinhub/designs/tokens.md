@@ -37,6 +37,10 @@ The primary action is a white pill with black text (`--text` fill, `--text-inver
 | `--danger` | `#FF5C5C` | Failed run, offline, destructive |
 | `--info` | `#6CA8FF` | Links, running/streaming indicator |
 | `--accent` | `#4A6CF7` | Dictation's Done button |
+| `--viewer` | `#000000` | The full-screen image viewer, black in either theme |
+| `--on-viewer` | `#FFFFFF` | The viewer's close button and messages |
+| `--on-viewer-2` | `rgba(255,255,255,0.6)` | The viewer's "Pinch to zoom" hint |
+| `--viewer-control` | `rgba(255,255,255,0.15)` | The viewer's close button fill |
 | `--success-bg` | `rgba(61,214,140,0.12)` | Status badge fill |
 | `--warning-bg` | `rgba(245,181,68,0.12)` | Status badge fill |
 | `--danger-bg` | `rgba(255,92,92,0.12)` | Status badge fill |

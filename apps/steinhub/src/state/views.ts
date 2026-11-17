@@ -100,7 +100,7 @@ export interface HandoffView {
 
 export type MessageView =
   | { id: string; from: "user"; text: string; attachments?: SentAttachment[]; pending?: "sending" | "failed" }
-  | { id: string; from: "bot"; text: string; at?: number; streaming?: boolean }
+  | { id: string; from: "bot"; text: string; at?: number; streaming?: boolean; images?: SentAttachment[] }
   | { id: string; from: "working" }
   | HandoffView
   | ApprovalView;
@@ -354,8 +354,9 @@ export function messageViews(
       views.push(cardView(message, message.card));
       continue;
     }
-    if (HIDDEN_KINDS.has(message.kind) || !message.text) continue;
-    views.push({ id: message.itemId ? replyKey(message.itemId) : message.id, from: "bot", text: message.text, at: message.at });
+    const images = sentImages(message);
+    if (HIDDEN_KINDS.has(message.kind) || (!message.text && !images.length)) continue;
+    views.push({ id: message.itemId ? replyKey(message.itemId) : message.id, from: "bot", text: message.text ?? "", at: message.at, ...(images.length ? { images } : {}) });
   }
   for (const send of extras.pending ?? []) {
     views.push({ id: `send:${send.sendId}`, from: "user", ...userLine(send.text), pending: send.failed ? "failed" : "sending" });
@@ -364,6 +365,13 @@ export function messageViews(
   for (const item of streaming) views.push({ id: replyKey(item.key), from: "bot", text: settledMarkdown(item.text), streaming: true });
   if (!streaming.length && extras.busy) views.push({ id: "working", from: "working" });
   return views;
+}
+
+/** The pictures a bot sent with a reply; screenshots its tools took while it worked stay out of the chat. */
+function sentImages(message: WireMessage): SentAttachment[] {
+  return (message.attachments ?? []).flatMap((file) =>
+    file.kind === "image" && !file.fromTool ? [{ kind: "image" as const, path: file.path, name: file.name ?? "Image" }] : [],
+  );
 }
 
 /** One key for a reply while it streams and once it is saved, so its row stays on screen between the two. */

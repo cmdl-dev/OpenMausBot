@@ -179,6 +179,10 @@ function ReplyHeader({ bot, note, live }: { bot: BotView; note?: string; live?: 
   );
 }
 
+function openImage(file: SentAttachment) {
+  router.push({ pathname: "/image", params: { path: attachmentUrlPath(file.path), name: file.name } });
+}
+
 function SentFiles({ files }: { files: SentAttachment[] }) {
   const { attachmentSource } = useConnection();
   return (
@@ -186,7 +190,9 @@ function SentFiles({ files }: { files: SentAttachment[] }) {
       {files.map((file) => {
         const source = file.kind === "image" ? attachmentSource(attachmentUrlPath(file.path)) : null;
         return source ? (
-          <Image key={file.path} accessibilityLabel={file.name} source={source} style={styles.sentImage} />
+          <Pressable key={file.path} accessibilityRole="imagebutton" accessibilityLabel={`Open ${file.name}`} onPress={() => openImage(file)}>
+            <Image source={source} style={styles.sentImage} />
+          </Pressable>
         ) : (
           <View key={file.path} style={styles.sentFile}>
             <FileText size={16} color={colors.text2} strokeWidth={size.iconStroke} />
@@ -300,8 +306,9 @@ function BotReply({ message, bot }: { message: Extract<MessageView, { from: "bot
   return (
     <View style={styles.reply}>
       <ReplyHeader bot={bot} note={message.streaming ? "Writing" : message.at ? clock(message.at) : "9:40"} live={message.streaming} />
-      <Markdown fadesIn={streamed}>{message.text}</Markdown>
-      {message.text ? null : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
+      {message.text ? <Markdown fadesIn={streamed}>{message.text}</Markdown> : null}
+      {message.images ? <SentFiles files={message.images} /> : null}
+      {message.text || message.images ? null : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
     </View>
   );
 }

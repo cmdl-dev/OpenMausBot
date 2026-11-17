@@ -57,6 +57,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="(drawer)" />
             <Stack.Screen name="onboarding" options={{ presentation: "fullScreenModal" }} />
+            <Stack.Screen name="image" options={{ presentation: "fullScreenModal", animation: "fade", contentStyle: { backgroundColor: colors.viewer } }} />
             <Stack.Screen name="sheets/bot-picker" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/bot-menu" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/new-folder" options={sheetScreenOptions} />

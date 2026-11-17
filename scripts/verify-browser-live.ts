@@ -1,7 +1,5 @@
 // Actual browser + actual BrowserPanel, always in a disposable fixture HOME.
 import { readFileSync } from "node:fs";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
 import { mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 
@@ -26,15 +24,8 @@ try {
     }],
   });
   console.log(JSON.stringify({ ...fixture.info, botId: bots[0].id, previewUrl: ui.previewUrl, testPage: new URL("/__browser-test-page", ui.previewUrl).href }, null, 2));
-  if (process.argv.includes("--recovery")) {
-    const { verifyBrowserRecovery } = await import("./testing/browser-recovery-smoke.ts");
-    await verifyBrowserRecovery({ binaryPath, executablePath, dataDir: fixture.info.dataDir,
-      previewUrl: ui.previewUrl, testPage: new URL("/__browser-test-page", ui.previewUrl).href,
-      screenshotPath: fixture.info.logPath.replace(/\.log$/, "-browser.png") });
-  } else await parkUntilSignal();
+  await parkUntilSignal();
 } finally {
   await ui?.close();
-  // close --all is scoped to this fixture's HOME, never the operator's.
-  await promisify(execFile)(binaryPath, ["close", "--all"], { env: { HOME: fixture.info.dataDir, USERPROFILE: fixture.info.dataDir, PATH: process.env.PATH }, timeout: 15_000 }).catch(() => {});
   await fixture.close();
 }

@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { sheetScreenOptions } from "@/components/sheet";
 import { ConnectionProvider } from "@/state/connection";
+import { useOpenChiefOnLaunch } from "@/state/launch";
 import { colors } from "@/theme";
 
 const navigationTheme: Theme = {
@@ -23,12 +24,18 @@ export const unstable_settings = {
   anchor: "(drawer)",
 };
 
+function OpenChiefOnLaunch() {
+  useOpenChiefOnLaunch();
+  return null;
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <ConnectionProvider>
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
+          <OpenChiefOnLaunch />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="(drawer)" />
             <Stack.Screen name="onboarding" options={{ presentation: "fullScreenModal" }} />

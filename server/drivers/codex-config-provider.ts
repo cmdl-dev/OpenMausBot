@@ -5,7 +5,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { decodeCodexSelection } from "./codex-catalog.ts";
+import type { ModelCatalog } from "../contracts.ts";
+import { decodeCodexSelection, OFFICIAL_CODEX_PROVIDER } from "./codex-catalog.ts";
 import { codexHome } from "./codex-identity.ts";
 
 /** Providers Codex defines itself. */
@@ -83,6 +84,47 @@ function scanValue(lines: string[], at: number, text: string): { raw: string | n
 
 /** Every key under `model_providers.<id>`, whether set in its table, a subtable, a parent table or dotted. */
 function providerTable(text: string, provider: string): Entry[] {
+  return tomlEntries(text).flatMap(({ path, raw }) =>
+    path[0] === "model_providers" && path[1] === provider ? [{ path: path.slice(2), raw }] : []);
+}
+
+export interface CodexConfigProvider {
+  id: string;
+  name: string;
+}
+
+/** The provider config.toml makes Codex's default when it is not OpenAI's and asks for no OpenAI sign-in.
+ * codex-cli 0.166.0 runs such a provider's turns on its own credential (an `auth` command, `env_key` or bearer token)
+ * while `codex login status`, which reads only auth.json, says "Not logged in". */
+export function codexDefaultConfigProvider(env: Record<string, string | undefined>): CodexConfigProvider | null {
+  const home = codexHome(env);
+  if (!home) return null;
+  let text: string;
+  try {
+    text = readFileSync(join(home, "config.toml"), "utf8");
+  } catch {
+    return null;
+  }
+  const entries = tomlEntries(text);
+  const chosen = entries.find((entry) => entry.path.length === 1 && entry.path[0] === "model_provider");
+  const id = chosen ? stringValue(chosen.raw) : null;
+  if (!id || id === "openai") return null;
+  const own = providerTable(text, id);
+  const setting = (key: string) => own.find((entry) => entry.path.length === 1 && entry.path[0] === key)?.raw;
+  if (setting("requires_openai_auth") === "true") return null;
+  if (!BUILT_IN.has(id) && !own.length) return null;
+  const name = setting("name");
+  return { id, name: (name ? stringValue(name) : null) || id };
+}
+
+/** The catalog without official rows: they always run on OpenAI's provider, which needs a ChatGPT or API-key login. */
+export function withoutOfficialRows(catalog: ModelCatalog): ModelCatalog {
+  const options = catalog.options.filter((option) => decodeCodexSelection(option.id).modelProvider !== OFFICIAL_CODEX_PROVIDER);
+  return { ...catalog, default: options.some((option) => option.id === catalog.default) ? catalog.default : options[0]?.id ?? "", options };
+}
+
+/** Each key of the file with its full dotted path (table header included) and its TOML value as written. */
+function tomlEntries(text: string): Entry[] {
   const entries: Entry[] = [];
   const lines = text.split(/\r?\n/);
   let table: string[] | null = [];
@@ -101,7 +143,7 @@ function providerTable(text: string, provider: string): Entry[] {
     index = next;
     const key = splitKey(match[1]!);
     const path = table && key ? [...table, ...key] : [];
-    if (raw && path[0] === "model_providers" && path[1] === provider) entries.push({ path: path.slice(2), raw });
+    if (raw && path.length) entries.push({ path, raw });
   }
   return entries;
 }

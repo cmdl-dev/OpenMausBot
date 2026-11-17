@@ -32,7 +32,7 @@ export function officialModels(codex: boolean): string[] {
 }
 
 /** Reads at most `limit` bytes, so a gateway cannot make the server buffer an unbounded body. */
-async function readCatalog(response: Response, limit: number): Promise<string | null> {
+export async function readCatalog(response: Response, limit: number): Promise<string | null> {
   const reader = response.body?.getReader();
   if (!reader) return "";
   const chunks: Uint8Array[] = [];

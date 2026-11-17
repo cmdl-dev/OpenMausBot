@@ -137,7 +137,7 @@ export function createStatusRoutes(deps: StatusRouteDeps): RouteHandler {
       res.setHeader("cache-control", "no-store");
       const accounts = planAccountsFromInstances(instanceConfigs(cfg));
       const refresh = url.searchParams.get("refresh") === "1";
-      const hubs = usageHubs.hubs();
+      const hubs = usageHubs.metered();
       const [report, hubRows] = await Promise.all([loadPlanUsage({ accounts, refresh }), loadHubUsage(hubs, { refresh })]);
       return json(res, 200, { ...report, providers: withHubRows(report.providers, accounts, hubs, hubRows) });
     }

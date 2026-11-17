@@ -21,11 +21,12 @@ export const codexEndpointUpdateSchema = codexEndpointSchema.partial().refine(va
 type Fields = Partial<z.infer<typeof codexEndpointSchema>>;
 
 function configOf(entry: InstanceConfig) {
-  return (entry.config ?? {}) as { cli?: string; endpoint?: { url: string; models: string[]; model?: string } };
+  return (entry.config ?? {}) as { cli?: string; endpoint?: { url: string; models: string[]; model?: string }; router?: string };
 }
 
+/** A direct API the person added, not a Router's engine. */
 export function isCodexEndpoint(entry: InstanceConfig | undefined): boolean {
-  if (entry?.driver !== "codex") return false;
+  if (entry?.driver !== "codex" || configOf(entry).router !== undefined) return false;
   const endpoint = configOf(entry).endpoint;
   return Boolean(endpoint && typeof endpoint.url === "string" && endpointBaseUrl(endpoint.url)
     && Array.isArray(endpoint.models) && endpoint.models.every(model => typeof model === "string"));

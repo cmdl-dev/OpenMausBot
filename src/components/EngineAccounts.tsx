@@ -198,7 +198,7 @@ function AccountRow({ group, instance, signingIn, onSignIn, onSignInDone }: {
   // This server cannot run the provider's sign-in (a remote browser for a local-only flow): say why, offer nothing.
   const blocked = instance.snapshot.authenticationUnavailableReason;
   const detail = blocked && state !== "signedIn" ? blocked : state === "signedIn"
-    ? account?.method === "api-key" ? t("accounts.apiKey") : [account?.email, account?.organization].filter(Boolean).join(" · ") || t("accounts.signedIn")
+    ? account?.method === "api-key" ? [account.organization, t("accounts.apiKey")].filter(Boolean).join(" · ") : [account?.email, account?.organization].filter(Boolean).join(" · ") || t("accounts.signedIn")
     : state === "signedOut" ? t("accounts.notSignedIn")
     : state === "unknown" ? t("accounts.unknown")
     : instance.snapshot.reason ?? t("onboarding.engines.needsSetup");

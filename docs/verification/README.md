@@ -317,6 +317,10 @@ endpoint in Settings and its turn against the fake Claude CLI: its own
 directory, its model and routing, the token kept out of the engine list, and
 edits that keep the saved token.
 
+The [Router recipe](router.md) connects a fake CLIProxyAPI Router as a Claude
+and an OpenAI account, runs a turn through it, and checks its keys, usage,
+model refresh and removal.
+
 The [provider recovery recipe](provider-recovery.md) verifies real Grok image
 transport and Claude authentication against loopback APIs, plus scoped thread
 approvals and provider safety errors in an isolated desktop UI.

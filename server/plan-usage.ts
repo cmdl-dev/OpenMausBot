@@ -163,8 +163,8 @@ export function planAccountsFromInstances(instances: InstanceConfigMap): PlanAcc
       driver,
       environment: { ...entry.environment },
       ...(configDir ? { configDir } : {}),
-      // Reading ~/.codex/auth.json for a ChatGPT-plan provider would report (and hold it on) another account's limit.
-      ...(config?.authMode === "chatgpt-plan" || (driver === "claude" && config?.usageMeter === false) ? { noUsage: true as const } : {}),
+      // Reading ~/.codex/auth.json for a ChatGPT-plan provider would report (and hold it on) another account's limit; a Router engine's usage is its hub's.
+      ...(config?.authMode === "chatgpt-plan" || typeof config?.router === "string" || (driver === "claude" && config?.usageMeter === false) ? { noUsage: true as const } : {}),
     });
   }
   return accounts;

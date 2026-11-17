@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHROME_BROWSER_SYSTEM_PROMPT } from "../browser/prompt.ts";
 import { LocalBackend } from "../browser/backends.ts";
@@ -22,7 +22,9 @@ import { createBrowserHost, type BrowserHostDeps } from "./browser.ts";
 
 type Host = ReturnType<typeof createBrowserHost>;
 const hosts: Host[] = [];
-afterEach(async () => { await Promise.all(hosts.splice(0).map((host) => host.browserRuntime.closeAll())); });
+// A named Chrome, so the host has a bots' browser on every runner; these checks never start it.
+beforeEach(() => { vi.stubEnv("OMB_CHROME_PATH", process.execPath); });
+afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(hosts.splice(0).map((host) => host.browserRuntime.closeAll())); });
 
 const turn = { threadId: "thread-1", generation: "gen-1" };
 

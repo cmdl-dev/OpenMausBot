@@ -175,8 +175,9 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     };
   }
   type Integration = { command: string; args: string[]; env: Record<string, string> };
-  /** Null is never returned today; callers keep handling it for a browser that cannot be named. */
+  /** Null when this server has no Chrome for the bots' browser, so a turn is never given browser tools that cannot start. */
   async function browserIntegration(botId: string, profile: string | undefined, turn?: { threadId: string; generation: string }, audience = browserAudience(turn?.threadId)): Promise<{ profile: string; session: string; spec: ReturnType<ChromeEngine["spec"]>; integration: Integration } | null> {
+    if (!browserReady()) return null;
     const profileTarget = profile && profile !== "guest" ? browserProfilePartitionTarget(cfg, profile) : null;
     const partitionId = profile === "guest" ? "guest" : (profileTarget?.partitionId ?? "");
     const { session, spec } = chromeSpec(botId, profile, audience);

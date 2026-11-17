@@ -77,13 +77,13 @@ export function luhnValid(digits: string): boolean {
 export function cardBrand(digits: string): CardBrand {
   const first2 = Number(digits.slice(0, 2));
   const first4 = Number(digits.slice(0, 4));
-  if (/^4/u.test(digits)) return "visa";
+  if (digits.startsWith("4")) return "visa";
   if ((first2 >= 51 && first2 <= 55) || (first4 >= 2221 && first4 <= 2720)) return "mastercard";
   if (first2 === 34 || first2 === 37) return "amex";
   if (/^(?:6011|65|64[4-9])/u.test(digits)) return "discover";
   if (/^(?:30[0-5]|36|38|39)/u.test(digits)) return "diners";
   if (first4 >= 3528 && first4 <= 3589) return "jcb";
-  if (/^62/u.test(digits)) return "unionpay";
+  if (digits.startsWith("62")) return "unionpay";
   return "card";
 }
 

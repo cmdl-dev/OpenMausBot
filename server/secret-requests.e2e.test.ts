@@ -5,7 +5,7 @@
 // private files; the ref secret only in the MCP server settings it was saved into.
 import { randomBytes } from "node:crypto";
 import { type ChildProcess, spawn } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { createInterface } from "node:readline";
@@ -21,6 +21,15 @@ const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const HOST = "omb-t-5ec2e7f1a0b9.fly.dev";
 const FILE_CANARY = `sk_test_FILECANARY${randomBytes(12).toString("hex")}`;
 const REF_CANARY = `ntn_REFCANARY${randomBytes(12).toString("hex")}`;
+/** A random Visa-range number with a valid check digit: nobody's card. */
+const CARD_CANARY = (() => {
+  const body = `4${[...randomBytes(14)].map((byte) => byte % 10).join("")}`;
+  const sum = [...body].reverse().reduce((total, digit, index) => {
+    const doubled = index % 2 === 0 ? Number(digit) * 2 : Number(digit);
+    return total + (doubled > 9 ? doubled - 9 : doubled);
+  }, 0);
+  return `${body}${(10 - (sum % 10)) % 10}`;
+})();
 const bootstrap = randomBytes(32).toString("base64url");
 let home = "";
 let base = "";
@@ -62,6 +71,7 @@ async function pairOwner(): Promise<string> {
 
 async function proxyFor(start: () => Promise<void>) {
   const dump = join(home, "spawn.json");
+  rmSync(dump, { force: true });
   await start();
   let agents: { command: string; args: string[]; env: Record<string, string> } | undefined;
   await expect.poll(() => {
@@ -211,4 +221,30 @@ it("keeps a file secret and a ref secret out of every record, and the bot uses e
     expect(where).not.toContain(FILE_CANARY);
     expect(where).not.toContain(REF_CANARY);
   }
+}, hostTimeout(60_000));
+
+it("hands a saved card's parts to a bot by name, and keeps the number out of every answer and record", async () => {
+  const added = await api("POST", "/api/vault/cards", { number: CARD_CANARY, expiry: "08/39", securityCode: "4821", name: "Travel card", postalCode: "94107" });
+  expect(added).toMatchObject({ status: 201, body: { card: { name: "Travel card", brand: "visa", last4: CARD_CANARY.slice(-4), expMonth: 8, expYear: 2039, bots: "all" } } });
+  expect((await api("GET", "/api/vault")).body.cards).toEqual([added.body.card]);
+
+  const bot = (await api("POST", "/api/bots", { name: "Booker", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } })).body.bot;
+  const tools = await proxyFor(async () => {
+    expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "Book the flight with my travel card." })).status).toBe(202);
+  });
+  const handed = (await tools.call("request_credential", { label: "Travel card number", reason: "To pay for the flight.", delivery: "file" })).text;
+  const file = /saved Travel card number to the file (\S+vault-[\w-]+)\./u.exec(handed)?.[1] ?? "";
+  expect(file, handed).not.toBe("");
+  expect(readFileSync(file, "utf8")).toBe(CARD_CANARY);
+  const expiry = (await tools.call("request_credential", { label: "Travel card expiry", reason: "To pay for the flight.", delivery: "file" })).text;
+  expect(readFileSync(/to the file (\S+vault-[\w-]+)\./u.exec(expiry)?.[1] ?? "", "utf8")).toBe("08/39");
+  const messages = (await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages;
+  expect(messages.some((message: any) => message.kind === "secret"), "a saved card needs no card in chat").toBe(false);
+
+  expect((await api("DELETE", `/api/vault/cards/${added.body.card.id}`)).body).toEqual({ ok: true });
+  const gone = await tools.call("request_credential", { label: "Travel card number", reason: "To pay for the flight.", delivery: "file" });
+  expect(gone.text).toMatch(/^A secure card for Travel card number is now in this conversation/u);
+
+  expect(filesHolding(home, CARD_CANARY)).toEqual([relative(home, file)]);
+  for (const where of [...said, log]) expect(where).not.toContain(CARD_CANARY);
 }, hostTimeout(60_000));

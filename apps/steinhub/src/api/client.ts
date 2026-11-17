@@ -115,6 +115,7 @@ export interface MemoryFile {
 
 /** GET /api/bots/:id/memory: its MEMORY.md, and the topic and log files beside it. */
 export interface MemoryReply {
+  /** MEMORY.md; a server that no longer sends it here answers it at /memory/file. */
   text: string;
   topics: MemoryFile[];
   logs: MemoryFile[];

@@ -17,7 +17,7 @@ export default function MemoryFileScreen() {
   const title = (path.split("/").pop() ?? path).replace(/\.md$/i, "");
 
   return (
-    <Screen header={<PageTopBar leading="back" />}>
+    <Screen header={<PageTopBar leading="back" />} refresh={{ refreshing: loaded.reloading, onRefresh: loaded.reload }}>
       <LargeTitle>{title}</LargeTitle>
       {loaded.state === "loading" ? (
         <Txt variant="subhead" tone="tertiary" style={styles.note}>

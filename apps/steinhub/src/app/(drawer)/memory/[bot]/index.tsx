@@ -32,7 +32,7 @@ export default function MemoryScreen() {
   }
 
   return (
-    <Screen header={<PageTopBar leading="back" />}>
+    <Screen header={<PageTopBar leading="back" />} refresh={{ refreshing: loaded.reloading, onRefresh: loaded.reload }}>
       <LargeTitle>Memory</LargeTitle>
       {bot ? (
         <Txt variant="subhead" tone="secondary" style={styles.lede}>

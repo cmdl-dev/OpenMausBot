@@ -304,7 +304,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [client]);
 
   const memory = useCallback(
-    async (botId: string) => (mode === "demo" ? SAMPLE_MEMORY : await client().memory(botId)),
+    async (botId: string) => {
+      if (mode === "demo") return SAMPLE_MEMORY;
+      const api = client();
+      const reply = await api.memory(botId);
+      return typeof reply.text === "string" ? reply : { ...reply, text: (await api.memoryFile(botId, "MEMORY.md")).text };
+    },
     [mode, client],
   );
 

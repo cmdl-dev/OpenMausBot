@@ -1,7 +1,7 @@
 import type { InboxRow, InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { BotsResponse } from "@openmausbot/phone-protocol/responses.ts";
 import type { RoutinesReply } from "@/api/client";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import type { Session } from "@/api/session";
 import { fakeFetch, jsonResponse, pushStream, streamResponse, type Call } from "@/testing/fake-desktop";
@@ -121,6 +121,23 @@ describe("a bot's memory", () => {
   test("a bot that remembers nothing says so", async () => {
     await launch("/memory/b2", { "GET /api/bots/b2/memory": jsonResponse(200, { text: "", topics: [], logs: [] }) });
     expect(await screen.findByText("Scout doesn't remember anything yet.")).toBeTruthy();
+  });
+
+  test("what the bot saves shows when the screen comes back into view, and on pull to refresh", async () => {
+    let memory = { text: "", topics: [] as unknown[], logs: [] as unknown[] };
+    await launch("/memory/b2", { "GET /api/bots/b2/memory": () => jsonResponse(200, memory) });
+    expect(await screen.findByText("Scout doesn't remember anything yet.")).toBeTruthy();
+
+    memory = { ...memory, text: "- Prefers window seats." };
+    await act(async () => router.push("/bot/b2"));
+    await act(async () => router.back());
+    expect(await screen.findByText(/Prefers window seats/)).toBeTruthy();
+
+    memory = { ...memory, text: "- Prefers aisle seats now." };
+    let scroller = screen.getByLabelText("MEMORY.md").parent;
+    while (scroller && !scroller.props.refreshControl) scroller = scroller.parent;
+    await act(async () => scroller?.props.refreshControl.props.onRefresh());
+    expect(await screen.findByText(/Prefers aisle seats now/)).toBeTruthy();
   });
 
   test("a computer that won't share memory says what to do instead", async () => {

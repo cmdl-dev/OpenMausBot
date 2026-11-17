@@ -1,7 +1,6 @@
-import { Laptop, Monitor, Network, Plus, Server, type LucideIcon } from "lucide-react-native";
+import { Laptop, Monitor, Network, Server, type LucideIcon } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
-import { Button } from "@/components/button";
 import { SampleNote } from "@/components/notice";
 import { Screen } from "@/components/screen";
 import { StatusDot } from "@/components/status";
@@ -17,16 +16,7 @@ const MAX_AVATARS = 3;
 export default function ComputersScreen() {
   const world = useWorld();
   return (
-    <Screen
-      header={
-        <View style={styles.bar}>
-          <PageTopBar leading="menu" />
-          <View style={styles.add}>
-            <Button label="Add" icon={Plus} variant="secondary" small />
-          </View>
-        </View>
-      }
-    >
+    <Screen header={<PageTopBar leading="menu" />}>
       <LargeTitle>Computers</LargeTitle>
       <View style={styles.cards}>
         {world.computers.map((computer) => (
@@ -39,7 +29,7 @@ export default function ComputersScreen() {
         </View>
       ) : null}
       <Txt variant="footnote" tone="tertiary" style={styles.note}>
-        Bots run tasks on these computers. The desktop host runs OpenMausBot and relays to the others.
+        Bots run tasks on these computers. The desktop host runs OpenMausBot and relays to the others. Add a computer from OpenMausBot on the host.
       </Txt>
     </Screen>
   );
@@ -121,8 +111,6 @@ function Meter({ label, value }: { label: string; value: number }) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  bar: { position: "relative" },
-  add: { position: "absolute", right: space[4], top: 0, bottom: 0, justifyContent: "center" },
   cards: { gap: space[3], paddingHorizontal: space[4] },
   card: {
     backgroundColor: colors.surface1,

@@ -50,6 +50,11 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
   }
 
   const threadsOf = (bot: BotView) => world.threads.filter((thread) => thread.botId === bot.id);
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const found = needle
+    ? world.threads.filter((thread) => thread.title.toLowerCase().includes(needle) || (world.bot(thread.botId)?.name.toLowerCase().includes(needle) ?? false))
+    : null;
 
   function openBot(bot: BotView) {
     const latest = threadsOf(bot)[0]?.id ?? bot.threadId;
@@ -79,13 +84,30 @@ export function AppDrawer({ navigation }: DrawerContentComponentProps) {
           placeholderTextColor={colors.text3}
           selectionColor={colors.text}
           style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
         />
       </View>
 
-      <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
-        <NavItem icon={Inbox} label="Inbox" count={needsYou} onPress={() => go("/inbox")} />
+      <ScrollView style={styles.fill} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {found ? (
+          found.length ? (
+            <View style={styles.results}>
+              {found.map((thread) => (
+                <ThreadRow key={thread.id} thread={thread} onPress={() => go({ pathname: "/chat/[id]", params: { id: thread.id } })} />
+              ))}
+            </View>
+          ) : (
+            <Txt variant="subhead" tone="tertiary" style={styles.noResults}>
+              No chats match.
+            </Txt>
+          )
+        ) : null}
+        {found ? null : <NavItem icon={Inbox} label="Inbox" count={needsYou} onPress={() => go("/inbox")} />}
 
-        {world.sections.map((section: BotSection) => {
+        {found ? null : world.sections.map((section: BotSection) => {
           const folded = collapsed.has(section.name);
           const Chevron = folded ? ChevronRight : ChevronDown;
           return (
@@ -336,6 +358,8 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   searchInput: { ...type.callout, flex: 1, color: colors.text, paddingVertical: 0 },
+  results: { marginHorizontal: space[2] },
+  noResults: { paddingHorizontal: space[4], paddingTop: space[2] },
   sectionHeader: { flexDirection: "row", alignItems: "center", minHeight: size.tap, paddingHorizontal: space[4], paddingTop: space[3] },
   item: {
     minHeight: size.tap,

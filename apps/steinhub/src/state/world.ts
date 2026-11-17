@@ -43,7 +43,7 @@ export interface World {
   inbox: InboxRow[];
   /** The clock inbox rows are aged against; the sample inbox keeps its own morning. */
   inboxNow: number;
-  /** The computer serves no inbox to phones yet, so the inbox shows the sample world even when paired. */
+  /** The paired computer serves no inbox to this phone, so the inbox shows the sample world. */
   inboxIsSample: boolean;
   automations: AutomationView[];
   automationsLoaded: boolean;
@@ -124,9 +124,9 @@ export function useWorld(): World {
         paired: formatDate(session.pairedAt),
         status,
       },
-      inbox: sample.inbox,
-      inboxNow: sample.SAMPLE_NOW,
-      inboxIsSample: true,
+      inbox: world.inbox ?? sample.inbox,
+      inboxNow: world.inbox ? Date.now() : sample.SAMPLE_NOW,
+      inboxIsSample: world.inbox === null,
       automations: world.routines.map((routine) => automationView(routine, world.runs, hostName)),
       automationsLoaded: world.routinesLoaded,
       computers: [

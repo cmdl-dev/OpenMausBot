@@ -7,6 +7,7 @@ import type {
   WireMessagePage,
 } from "@openmausbot/phone-protocol/responses.ts";
 import type { NewCardInput, VaultCard } from "@openmausbot/phone-protocol/payment-card.ts";
+import type { InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import { createSseParser } from "@/api/sse";
@@ -103,6 +104,29 @@ export type VaultKind = NewVaultItem["kind"];
 
 const VAULT_PATHS: Record<VaultKind, string> = { login: "/api/logins", secret: "/api/vault/secrets", card: "/api/vault/cards" };
 
+/** One Markdown file of a bot's memory on GET /api/bots/:id/memory. phone-protocol has no type for this reply yet. */
+export interface MemoryFile {
+  /** Relative to the bot's folder, such as memory/people.md. */
+  path: string;
+  name: string;
+  bytes: number;
+  modifiedAt: number;
+}
+
+/** GET /api/bots/:id/memory: its MEMORY.md, and the topic and log files beside it. */
+export interface MemoryReply {
+  text: string;
+  topics: MemoryFile[];
+  logs: MemoryFile[];
+}
+
+/** GET /api/bots/:id/memory/file?path=. */
+export interface MemoryDocReply {
+  path: string;
+  text: string;
+  exists: boolean;
+}
+
 export interface StreamFrame {
   frame: ServerFrame;
   /** The SSE `id`, the cursor a reconnect resumes from. */
@@ -121,7 +145,7 @@ function parseFrame(data: string): ServerFrame | null {
   }
 }
 
-/** Every desktop route SteinHub uses, typed by phone-protocol. Each is on the companion's allowlist. */
+/** Every desktop route SteinHub uses, typed by phone-protocol. */
 export function desktopClient(transport: Transport) {
   return {
     baseUrl: transport.baseUrl,
@@ -168,6 +192,12 @@ export function desktopClient(transport: Transport) {
     vault: () => transport.request<VaultReply>("GET", "/api/vault"),
     addToVault: ({ kind, ...fields }: NewVaultItem) => transport.request<unknown>("POST", VAULT_PATHS[kind], fields),
     removeFromVault: (kind: VaultKind, itemId: string) => transport.request<unknown>("DELETE", `${VAULT_PATHS[kind]}/${id(itemId)}`),
+    // The desktop companion's allowlist leaves out memory and the inbox; a server the phone paired with directly serves both.
+    memory: (botId: string) => transport.request<MemoryReply>("GET", `/api/bots/${id(botId)}/memory`),
+    memoryFile: (botId: string, path: string) =>
+      transport.request<MemoryDocReply>("GET", `/api/bots/${id(botId)}/memory/file?path=${id(path)}`),
+    inbox: () => transport.request<InboxView>("GET", "/api/inbox"),
+    inboxReadAll: () => transport.request<InboxView>("POST", "/api/inbox/read-all", {}),
     /** The live stream, without screen frames: a phone draws no live desktop yet. */
     events: (since: string | null, onFrame: (frame: StreamFrame) => void, signal: AbortSignal) => {
       const query = new URLSearchParams({ screens: "off" });

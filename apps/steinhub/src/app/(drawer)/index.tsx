@@ -25,17 +25,20 @@ function greeting(hour: number): string {
 export default function HomeScreen() {
   const world = useWorld();
   const { send } = useConnection();
-  const { bot: requestedBot } = useLocalSearchParams<{ bot?: string }>();
+  const { bot: requestedBot, draft: requestedDraft } = useLocalSearchParams<{ bot?: string; draft?: string }>();
   const [chosenId, setChosenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
 
   useEffect(() => {
     if (requestedBot) setChosenId(requestedBot);
   }, [requestedBot]);
-  const [draft, setDraft] = useState("");
+  useEffect(() => {
+    if (requestedDraft) setDraft(requestedDraft);
+  }, [requestedDraft]);
   const [error, setError] = useState<string | null>(null);
   const bot = world.bot(chosenId ?? undefined) ?? world.bots[0] ?? null;
   const firstName = world.person?.name.split(" ")[0];
-  const unread = world.source === "demo" ? world.inbox.some((row) => row.unread) : world.bots.some((candidate) => candidate.state.tone === "warning");
+  const unread = world.inboxIsSample ? world.bots.some((candidate) => candidate.state.tone === "warning") : world.inbox.some((row) => row.unread);
 
   async function sendFirst(text: string) {
     if (!bot) return;

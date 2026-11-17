@@ -36,6 +36,14 @@ function matches(automation: AutomationView, filter: Filter): boolean {
   return filter === "all" || automation.state === filter;
 }
 
+const NEW_AUTOMATION_DRAFT = "Set up an automation that ";
+
+/** A bot sets an automation up from a sentence, so a new one starts as a chat with the Chief of Staff. */
+function newAutomation(world: World) {
+  const bot = world.bots.find((candidate) => candidate.chief) ?? world.bots[0];
+  router.navigate({ pathname: "/", params: { ...(bot ? { bot: bot.id } : {}), draft: NEW_AUTOMATION_DRAFT } });
+}
+
 export default function AutomationsScreen() {
   const world = useWorld();
   const { automations } = world;
@@ -46,7 +54,7 @@ export default function AutomationsScreen() {
   const active = visible.filter((automation) => automation.state === "active");
 
   return (
-    <Screen header={<PageTopBar leading="menu" action={{ icon: Plus, label: "New automation" }} />}>
+    <Screen header={<PageTopBar leading="menu" action={{ icon: Plus, label: "New automation", onPress: () => newAutomation(world) }} />}>
       <LargeTitle>Automations</LargeTitle>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {FILTERS.map((option) => (

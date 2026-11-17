@@ -1,3 +1,4 @@
+import type { InboxRow, InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { BotsResponse, CompanionEndpointsSnapshot, InstancesResponse, WireMessagePage } from "@openmausbot/phone-protocol/responses.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
@@ -37,6 +38,8 @@ export interface LiveWorld {
   modelLabels: Record<string, string>;
   engines: EngineView[];
   host: { serverName: string; version?: string } | null;
+  /** The computer's inbox rows; null until it answers, and while it serves none to this phone. */
+  inbox: InboxRow[] | null;
 }
 
 export const emptyWorld: LiveWorld = {
@@ -51,6 +54,7 @@ export const emptyWorld: LiveWorld = {
   modelLabels: {},
   engines: [],
   host: null,
+  inbox: null,
 };
 
 export type WorldAction =
@@ -65,6 +69,7 @@ export type WorldAction =
   | { type: "sendDropped"; threadId: string; sendId: string }
   | { type: "message"; threadId: string; message: WireMessage }
   | { type: "routine"; routine: Routine }
+  | { type: "inbox"; view: InboxView }
   | { type: "frame"; frame: ServerFrame };
 
 const MAX_MESSAGES = 400;
@@ -192,6 +197,8 @@ export function worldReducer(world: LiveWorld, action: WorldAction): LiveWorld {
       return withMessage(world, action.threadId, action.message);
     case "routine":
       return { ...world, routines: upsert(world.routines, action.routine, (a, b) => a.id === b.id) };
+    case "inbox":
+      return { ...world, inbox: action.view.rows };
     case "frame": {
       const frame = action.frame;
       switch (frame.kind) {

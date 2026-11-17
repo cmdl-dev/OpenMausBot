@@ -111,6 +111,8 @@ export interface RunView {
   outcome: Status;
   summary: string;
   duration?: string;
+  /** The conversation the run reported to or ran in. */
+  threadId?: string;
 }
 
 export interface AutomationView {
@@ -439,6 +441,7 @@ function runView(run: RoutineRun, now: number): RunView {
     outcome: RUN_TONE[run.status] ?? "success",
     summary: summary.slice(0, 140),
     duration: run.startedAt && run.finishedAt ? duration(run.finishedAt - run.startedAt) : undefined,
+    threadId: (run.report?.state === "posted" ? run.report.threadId : undefined) ?? run.threadId ?? run.resultsThreadId ?? run.executionThreadId,
   };
 }
 

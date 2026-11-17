@@ -128,19 +128,24 @@ don't have it.
 | Apps: connected apps with their accounts, then every app that can be added, searchable; Connect, Add account (named) | **Live**. The sign-in itself finishes in the phone's browser, and the row waits for the new account | `GET /api/connectors/catalog`, `GET /api/connectors/connected`, `GET /api/connectors?services=`, `POST /api/connectors/:slug/authorize {alias?}` |
 | Computers | **Partly live**: the paired computer (name, version, bot count, connection state) | `GET /api/companion/endpoints` |
 | Settings, Pairing section | **Live**: computer, app version, pairing date, this phone, re-pair, unpair (forgets locally) | stored session |
-| Bot profile | **Live** header, model and threads | `GET /api/bots` |
-| Inbox | **Sample data**, with a note on screen | none (see gaps) |
-| Other computers, notifications, appearance, Face ID, memory, skills | Sample or static | none, or not wired yet |
+| Bot profile | **Live** header, model and threads; New chat starts one with that bot | `GET /api/bots` |
+| Memory: the bot's MEMORY.md, its topic notes and daily notes, read-only | **Live** from a server the phone paired with directly; the desktop companion refuses it, and the screen says so | `GET /api/bots/:id/memory`, `GET /api/bots/:id/memory/file?path=` |
+| Inbox: lines, Approve and Deny on approval cards, Mark all as read, open a line's conversation | **Live** from a server the phone paired with directly, read again on `notify` frames and when the screen shows. **Sample data**, with a note and nothing to press, from a computer that serves none (the desktop companion) | `GET /api/inbox`, `POST /api/inbox/read-all`, `POST /api/threads/:id/respond` |
+| Drawer search | **Live**: filters the conversations already loaded by title and bot name | none |
+| New automation | **Live**: a new chat with the Chief of Staff, drafted "Set up an automation that " | `POST /api/bots/:id/messages` |
+| Other computers | Sample, with a note | none (see gaps) |
 
 ## Gaps that need desktop changes
 
 These are proposals. Nothing here changes desktop or server code.
 
-1. **Inbox.** The harness serves `GET /api/inbox`, `GET /api/inbox/count` and
-   `POST /api/inbox/read-all` (`server/routes/inbox.ts`), but the companion
-   allowlist has none of them. Proposal: add the two GETs and `read-all` to
-   `ALLOWED` in `companion/src/routes.ts`, and add an `inbox` frame (or reuse
-   `inboxChangedAt` on the task) so the phone knows when to reload.
+1. **Inbox and memory through the companion.** A server the phone paired with
+   directly serves `GET /api/inbox`, `POST /api/inbox/read-all` and
+   `GET /api/bots/:id/memory[/file]`, but the desktop companion's allowlist has
+   none of them, so a phone paired with the desktop app sees the sample inbox
+   and no memory. Proposal: add them to `ALLOWED` in `companion/src/routes.ts`,
+   and add an `inbox` frame (or reuse `inboxChangedAt` on the task) so the phone
+   reloads the inbox without waiting for a `notify` frame.
 2. **Other computers.** `GET /api/computers/vps`, `/api/computers/boxes`,
    `/api/shared-computers` and `/api/local-computer` are all closed to phones.
    They also carry addresses and SSH aliases. Proposal: a read-only
@@ -187,10 +192,12 @@ These are proposals. Nothing here changes desktop or server code.
    routines only.
 
 The phone could already use these, but this phase doesn't wire them:
-`GET /api/search` (drawer search), `GET /api/bots/:id/skills` and
-`PATCH /api/bots/:id/model` (bot profile), `POST /api/routines` (create
-automation), `PUT /api/push/device` (push alerts, which need APNs and FCM
-credentials), secret, sign-in and connector cards, and attachments.
+`GET /api/search` (searching message text, beyond the drawer's titles),
+`GET /api/bots/:id/skills` (bot profile), `POST /api/routines` (an automation
+form), `PUT /api/push/device` (push alerts, which need APNs and FCM
+credentials), and secret, sign-in and connector cards. Settings shows nothing
+for notifications, appearance, a default bot or Face ID until one of them is
+built.
 
 ## Checking it by hand
 

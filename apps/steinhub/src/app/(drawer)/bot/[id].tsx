@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Brain, Cpu, MessageSquare, Sparkles } from "lucide-react-native";
+import { Brain, Cpu, MessageSquare } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -42,14 +42,19 @@ export default function BotProfileScreen() {
             {bot.state.label} · {world.host.name}
           </Txt>
         </View>
-        <Button label="New chat" small onPress={() => router.navigate("/")} />
+        <Button label="New chat" small onPress={() => router.navigate({ pathname: "/", params: { bot: bot.id } })} />
       </View>
 
       <SectionLabel>Setup</SectionLabel>
       <Group>
         <Row title="Model" value={bot.model} leading={<Cpu {...iconProps} />} chevron onPress={() => router.push({ pathname: "/sheets/model", params: { bot: bot.id } })} />
-        <Row title="Memory" subtitle="What this bot remembers about you" leading={<Brain {...iconProps} />} chevron />
-        {world.source === "demo" ? <Row title="Skills" value="6" leading={<Sparkles {...iconProps} />} chevron /> : null}
+        <Row
+          title="Memory"
+          subtitle="What this bot remembers about you"
+          leading={<Brain {...iconProps} />}
+          chevron
+          onPress={() => router.push({ pathname: "/memory/[bot]", params: { bot: bot.id } })}
+        />
       </Group>
 
       <SectionLabel>Threads</SectionLabel>

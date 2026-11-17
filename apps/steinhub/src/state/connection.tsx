@@ -13,6 +13,8 @@ import {
   type NewVaultItem,
   type VaultKind,
   type VaultReply,
+  type MemoryDocReply,
+  type MemoryReply,
 } from "@/api/client";
 import { asDesktopError, type DesktopError } from "@/api/errors";
 import { startLiveEvents, type LiveEvents, type LinkState } from "@/api/live-events";
@@ -63,6 +65,12 @@ export interface Connection {
   /** Sends a value to the computer's Vault once. */
   addToVault(item: NewVaultItem): Promise<void>;
   removeFromVault(kind: VaultKind, id: string): Promise<void>;
+  /** Reads the computer's inbox again; one that serves none to this phone leaves the sample. */
+  refreshInbox(): Promise<void>;
+  markInboxRead(): Promise<void>;
+  /** What a bot remembers: its MEMORY.md and the files beside it. */
+  memory(botId: string): Promise<MemoryReply>;
+  memoryFile(botId: string, path: string): Promise<MemoryDocReply>;
 }
 
 const ConnectionContext = createContext<Connection | null>(null);
@@ -87,6 +95,15 @@ const SAMPLE_VAULT: VaultReply = {
   logins: [{ id: "l1", site: "zillow.com", hosts: ["zillow.com"], username: "ada@example.com", hasTotp: true, source: "settings", bots: "all", lastUsedAt: Date.now() - 86_400_000 }],
   secrets: [{ id: "s1", name: "Stripe secret key", source: "card", bots: "all" }],
   cards: [{ id: "c1", name: "Visa ending 4242", brand: "visa", last4: "4242", expMonth: 8, expYear: 2029, bots: "all", createdAt: 1, updatedAt: 1 }],
+};
+/** The demo world's memory: every sample bot remembers the same few things about Alex. */
+const SAMPLE_MEMORY: MemoryReply = {
+  text: "# What I remember\n\n- Alex likes a short morning brief, before 8:00.\n- The lease renews in December. Section 4.2 caps a renewal increase at 5%.\n- Who's who is in people.md.",
+  topics: [{ path: "memory/people.md", name: "people.md", bytes: 96, modifiedAt: Date.UTC(2026, 10, 14) }],
+  logs: [],
+};
+const SAMPLE_MEMORY_FILES: Record<string, string> = {
+  "memory/people.md": "# People\n\n- **Jordan**, the landlord. Prefers email.\n- **Sam**, the accountant. Files the quarterly taxes.",
 };
 const PAGE_SIZE = 60;
 
@@ -129,16 +146,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   const snapshot = useCallback(async () => {
     const api = client();
-    const [bots, instances, routines, host] = await Promise.all([
+    const [bots, instances, routines, host, inbox] = await Promise.all([
       api.bots(),
       api.instances().catch(() => null),
       api.routines().catch(() => null),
       api.endpoints().catch(() => null),
+      api.inbox().catch(() => null),
     ]);
     dispatch({ type: "bots", reply: bots });
     if (instances) dispatch({ type: "instances", reply: instances });
     if (routines) dispatch({ type: "routines", reply: routines });
     if (host) dispatch({ type: "host", snapshot: host });
+    if (inbox) dispatch({ type: "inbox", view: inbox });
     await Promise.all(
       [...loadedThreads.current].map((threadId) =>
         api.messages(threadId, { limit: PAGE_SIZE }).then(
@@ -149,6 +168,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     );
   }, [client]);
 
+  const refreshInbox = useCallback(async () => {
+    if (mode !== "live" || !session) return;
+    const view = await client().inbox().catch(() => null);
+    if (view) dispatch({ type: "inbox", view });
+  }, [mode, session, client]);
+
   useEffect(() => {
     if (mode !== "live" || !session) return;
     const events = startLiveEvents({
@@ -156,6 +181,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       snapshot,
       onFrame: (frame) => {
         dispatch({ type: "frame", frame });
+        if (frame.kind === "notify") void refreshInbox();
         if (frame.kind === "companion.endpoints") {
           const urls = [...new Set([...session.urls, ...frame.endpoints.map((endpoint) => endpoint.url)])];
           if (urls.length !== session.urls.length) void saveSession({ ...session, urls, serverName: frame.serverName });
@@ -178,7 +204,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       events.stop();
       live.current = null;
     };
-  }, [mode, session, client, snapshot]);
+  }, [mode, session, client, snapshot, refreshInbox]);
 
   const setDemo = useCallback(
     async (on: boolean) => {
@@ -268,8 +294,24 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const respond = useCallback<Connection["respond"]>(
     async (threadId, requestId, answer) => {
       await client().respond(threadId, { requestId, ...answer });
+      await refreshInbox();
     },
-    [client],
+    [client, refreshInbox],
+  );
+
+  const markInboxRead = useCallback(async () => {
+    dispatch({ type: "inbox", view: await client().inboxReadAll() });
+  }, [client]);
+
+  const memory = useCallback(
+    async (botId: string) => (mode === "demo" ? SAMPLE_MEMORY : await client().memory(botId)),
+    [mode, client],
+  );
+
+  const memoryFile = useCallback(
+    async (botId: string, path: string) =>
+      mode === "demo" ? { path, text: SAMPLE_MEMORY_FILES[path] ?? "", exists: path in SAMPLE_MEMORY_FILES } : await client().memoryFile(botId, path),
+    [mode, client],
   );
 
   const setRoutineEnabled = useCallback(
@@ -435,11 +477,49 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setModel,
       markRead,
       deleteBot,
+      refreshInbox,
+      markInboxRead,
+      memory,
+      memoryFile,
       vault,
       addToVault,
       removeFromVault,
     }),
-    [mode, link, problem, session, world, setDemo, pairWith, forget, retry, loadThread, send, stop, respond, setRoutineEnabled, runRoutine, apps, appStatus, connectApp, attachmentSource, upload, newThread, newFolder, setPinned, setModel, markRead, deleteBot, vault, addToVault, removeFromVault],
+    [
+      mode,
+      link,
+      problem,
+      session,
+      world,
+      setDemo,
+      pairWith,
+      forget,
+      retry,
+      loadThread,
+      send,
+      stop,
+      respond,
+      setRoutineEnabled,
+      runRoutine,
+      apps,
+      appStatus,
+      connectApp,
+      attachmentSource,
+      upload,
+      newThread,
+      newFolder,
+      setPinned,
+      setModel,
+      markRead,
+      deleteBot,
+      refreshInbox,
+      markInboxRead,
+      memory,
+      memoryFile,
+      vault,
+      addToVault,
+      removeFromVault,
+    ],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

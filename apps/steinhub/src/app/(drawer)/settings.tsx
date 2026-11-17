@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Bell, FlaskConical, LockKeyhole, MessageSquare, Monitor, Moon, Plus, QrCode, ScanFace, Smartphone, Type, Unlink } from "lucide-react-native";
+import { FlaskConical, LockKeyhole, Monitor, Plus, QrCode, Smartphone, Unlink } from "lucide-react-native";
 import { Alert, StyleSheet, Switch, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Group, Row, SectionLabel } from "@/components/list";
@@ -44,7 +44,7 @@ export default function SettingsScreen() {
       <LargeTitle>Settings</LargeTitle>
       <Group>
         {world.person ? (
-          <Row title={world.person.name} subtitle={world.person.email} leading={<Avatar label={world.person.initials} />} chevron />
+          <Row title={world.person.name} subtitle={world.person.email} leading={<Avatar label={world.person.initials} />} />
         ) : (
           <Row title={world.host.name} subtitle={session ? `This phone: ${session.device.name}` : undefined} leading={<Avatar label={initials(world.host.name)} />} />
         )}
@@ -64,7 +64,6 @@ export default function SettingsScreen() {
               </Txt>
             </View>
           }
-          chevron={!live}
         />
         {live ? <Row title="App" value={world.host.app} /> : null}
         {live ? <Row title="Paired" value={world.host.paired} /> : null}
@@ -77,37 +76,9 @@ export default function SettingsScreen() {
         {live ? <Row title="Unpair this phone" destructive leading={<Unlink size={size.icon} color={colors.danger} strokeWidth={size.iconStroke} />} onPress={unpair} /> : null}
       </Group>
 
-      <SectionLabel>Notifications</SectionLabel>
-      <Group>
-        <Row title="Notifications" value="Quiet 22:00–7:00" leading={<Bell {...iconProps} />} chevron />
-      </Group>
-
-      <SectionLabel>Appearance</SectionLabel>
-      <Group>
-        <Row title="Theme" value="Dark" leading={<Moon {...iconProps} />} chevron />
-        <Row title="Text size" value="Default" leading={<Type {...iconProps} />} chevron />
-      </Group>
-
-      <SectionLabel>Bots</SectionLabel>
-      <Group>
-        <Row title="Default bot" value={world.bots[0]?.name ?? "None"} leading={<MessageSquare {...iconProps} />} chevron />
-      </Group>
-
       <SectionLabel>Privacy & security</SectionLabel>
       <Group>
         <Row title="Vault" subtitle="Passwords, keys and cards your bots can use" leading={<LockKeyhole {...iconProps} />} chevron onPress={() => router.push("/vault")} />
-        <Row
-          title="Face ID lock"
-          leading={<ScanFace {...iconProps} />}
-          trailing={
-            <Switch
-              accessibilityLabel="Face ID lock"
-              value
-              trackColor={{ false: colors.surface3, true: colors.success }}
-              thumbColor={colors.text}
-            />
-          }
-        />
       </Group>
 
       {connection.demoAvailable ? (

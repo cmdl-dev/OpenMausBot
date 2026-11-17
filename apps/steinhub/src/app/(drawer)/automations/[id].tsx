@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { ChevronRight, Clock, Pause, Play, Zap } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -152,7 +152,14 @@ export default function AutomationDetailScreen() {
       ) : (
         <Group>
           {automation.runs.map((run) => (
-            <Pressable key={run.id} accessibilityRole="button" style={({ pressed }) => [styles.run, pressed && styles.pressed]}>
+            <Pressable
+              key={run.id}
+              accessibilityRole={run.threadId ? "button" : undefined}
+              accessibilityLabel={run.threadId ? `Open run, ${run.at}` : undefined}
+              disabled={!run.threadId}
+              onPress={() => openRun(run.threadId)}
+              style={({ pressed }) => [styles.run, pressed && styles.pressed]}
+            >
               <StatusDot tone={run.outcome} />
               <View style={styles.fill}>
                 <Txt variant="callout">{run.at}</Txt>
@@ -165,13 +172,17 @@ export default function AutomationDetailScreen() {
                   {run.duration}
                 </Txt>
               ) : null}
-              <ChevronRight size={16} color={colors.text3} strokeWidth={size.iconStroke} />
+              {run.threadId ? <ChevronRight size={16} color={colors.text3} strokeWidth={size.iconStroke} /> : null}
             </Pressable>
           ))}
         </Group>
       )}
     </Screen>
   );
+}
+
+function openRun(threadId: string | undefined) {
+  if (threadId) router.navigate({ pathname: "/chat/[id]", params: { id: threadId } });
 }
 
 function Cell({ label, value, tone }: { label: string; value: string; tone?: "success" | "warning" | "danger" }) {

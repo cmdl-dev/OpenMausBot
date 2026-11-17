@@ -1,7 +1,8 @@
 import type { InboxRow } from "@openmausbot/phone-protocol/inbox.ts";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Check, KeyRound, Lock } from "lucide-react-native";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { problemText } from "@/api/errors";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -11,6 +12,7 @@ import { Screen } from "@/components/screen";
 import { Badge } from "@/components/status";
 import { Txt } from "@/components/text";
 import { LargeTitle, PageTopBar } from "@/components/top-bar";
+import { useConnection } from "@/state/connection";
 import { shortWhen } from "@/state/views";
 import { useWorld, type World } from "@/state/world";
 import { colors, radius, size, space } from "@/theme";
@@ -33,7 +35,24 @@ function kindOf(row: InboxRow): { label: string; tone?: "warning"; icon?: typeof
 
 export default function InboxScreen() {
   const world = useWorld();
+  const { refreshInbox, markInboxRead } = useConnection();
   const [segment, setSegment] = useState<Segment>("all");
+  const [error, setError] = useState<string | null>(null);
+  const live = world.source === "live" && !world.inboxIsSample;
+  useFocusEffect(
+    useCallback(() => {
+      void refreshInbox();
+    }, [refreshInbox]),
+  );
+
+  async function markAll() {
+    setError(null);
+    try {
+      await markInboxRead();
+    } catch (failure) {
+      setError(problemText(failure, world.host.name));
+    }
+  }
   const needsYou = world.inbox.filter((row) => row.tab === "needs-you");
   const messages = world.inbox.filter((row) => row.tab !== "needs-you");
   const now = world.inboxNow;
@@ -44,8 +63,20 @@ export default function InboxScreen() {
   ];
 
   return (
-    <Screen header={<PageTopBar leading="menu" action={{ icon: Check, label: "Mark all as read", plain: true }} />}>
+    <Screen
+      header={
+        <PageTopBar
+          leading="menu"
+          action={live && world.inbox.some((row) => row.unread) ? { icon: Check, label: "Mark all as read", plain: true, onPress: () => void markAll() } : undefined}
+        />
+      }
+    >
       <LargeTitle>Inbox</LargeTitle>
+      {error ? (
+        <Txt variant="footnote" style={styles.error}>
+          {error}
+        </Txt>
+      ) : null}
       {world.inboxIsSample ? (
         <SampleNote>{`Sample data. ${world.host.name} doesn't share its inbox with phones yet; approvals still appear in each chat.`}</SampleNote>
       ) : null}
@@ -99,15 +130,62 @@ export default function InboxScreen() {
   );
 }
 
-function open(row: InboxRow, world: World) {
-  const origin = world.source === "demo" ? row.origin : undefined;
-  if (origin) router.navigate({ pathname: "/chat/[id]", params: { id: origin.threadId } });
+/** The conversation a row came from, unless the rows are the sample's, whose conversations aren't on the computer. */
+function originOf(row: InboxRow, world: World): string | null {
+  return world.inboxIsSample ? null : (row.origin?.threadId ?? null);
+}
+
+function open(threadId: string) {
+  router.navigate({ pathname: "/chat/[id]", params: { id: threadId } });
+}
+
+function ApprovalActions({ row, threadId, world }: { row: InboxRow; threadId: string | null; world: World }) {
+  const { respond } = useConnection();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const card = row.card;
+  const permission = Boolean(card?.tool || card?.requestType === "permission");
+  const requestId = world.source === "live" ? card?.requestId : undefined;
+
+  async function answer(behavior: "allow" | "deny") {
+    if (!threadId || !requestId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await respond(threadId, requestId, { behavior });
+    } catch (failure) {
+      setError(problemText(failure, world.host.name));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <View style={styles.cardActions}>
+        {permission && threadId && requestId ? (
+          <>
+            <Button label="Approve" small disabled={busy} onPress={() => void answer("allow")} />
+            <Button label="Deny" variant="secondary" small disabled={busy} onPress={() => void answer("deny")} />
+          </>
+        ) : null}
+        <View style={styles.fill} />
+        {threadId ? <Button label={permission ? "Open chat" : "Answer"} variant="ghost" small onPress={() => open(threadId)} /> : null}
+      </View>
+      {error ? (
+        <Txt variant="footnote" style={styles.cardError}>
+          {error}
+        </Txt>
+      ) : null}
+    </>
+  );
 }
 
 function NeedsYouCard({ row, world, now }: { row: InboxRow; world: World; now: number }) {
-  const bot = world.source === "demo" ? world.bot(row.from.botId) : null;
+  const bot = world.bot(row.from.botId);
   const kind = kindOf(row);
   const glyph = bot?.glyph ?? row.from.name.slice(0, 1);
+  const threadId = originOf(row, world);
 
   if (row.card) {
     return (
@@ -129,12 +207,7 @@ function NeedsYouCard({ row, world, now }: { row: InboxRow; world: World; now: n
             {row.card.subtitle}
           </Txt>
         ) : null}
-        <View style={styles.cardActions}>
-          <Button label="Approve" small />
-          <Button label="Deny" variant="secondary" small />
-          <View style={styles.fill} />
-          <Button label="View draft" variant="ghost" small onPress={() => open(row, world)} />
-        </View>
+        <ApprovalActions row={row} threadId={threadId} world={world} />
       </View>
     );
   }
@@ -157,16 +230,22 @@ function NeedsYouCard({ row, world, now }: { row: InboxRow; world: World; now: n
           {row.text}
         </Txt>
       </View>
-      <Button label={kind.action} small onPress={() => open(row, world)} />
+      {threadId ? <Button label={kind.action} small onPress={() => open(threadId)} /> : null}
     </View>
   );
 }
 
 function MessageRow({ row, world, now }: { row: InboxRow; world: World; now: number }) {
-  const bot = world.source === "demo" ? world.bot(row.from.botId) : null;
+  const bot = world.bot(row.from.botId);
   const [title, ...rest] = row.text.split("\n");
+  const threadId = originOf(row, world);
   return (
-    <Pressable accessibilityRole="button" onPress={() => open(row, world)} style={({ pressed }) => [styles.message, pressed && styles.pressed]}>
+    <Pressable
+      accessibilityRole={threadId ? "button" : undefined}
+      disabled={!threadId}
+      onPress={threadId ? () => open(threadId) : undefined}
+      style={({ pressed }) => [styles.message, pressed && styles.pressed]}
+    >
       <Avatar bot={bot} label={bot?.glyph ?? row.from.name.slice(0, 1)} tint={bot?.tint} />
       <View style={styles.fill}>
         <View style={styles.kindLine}>
@@ -221,4 +300,6 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.surface1 },
   unread: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.info },
   empty: { textAlign: "center", marginTop: space[10] },
+  error: { color: colors.danger, paddingHorizontal: space[4], paddingBottom: space[2] },
+  cardError: { color: colors.danger },
 });

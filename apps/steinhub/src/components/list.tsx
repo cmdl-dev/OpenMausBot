@@ -29,16 +29,15 @@ export function Group({ children }: { children: ReactNode }) {
   );
 }
 
-export interface RowProps {
+/** A chevron promises somewhere to go, so a row draws one only when it opens something. */
+export type RowProps = {
   title: string;
   subtitle?: string;
   leading?: ReactNode;
   trailing?: ReactNode;
   value?: string;
-  chevron?: boolean;
   destructive?: boolean;
-  onPress?: () => void;
-}
+} & ({ chevron?: false; onPress?: () => void } | { chevron: true; onPress: () => void });
 
 export function Row({ title, subtitle, leading, trailing, value, chevron, destructive, onPress }: RowProps) {
   const content = (

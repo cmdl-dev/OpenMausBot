@@ -1,16 +1,21 @@
-import { DarkTheme, Stack, ThemeProvider, type Theme } from "expo-router";
+import { reloadAppAsync } from "expo";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, type Theme } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet } from "react-native";
+import { useEffect } from "react";
+import { Appearance, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { AppLock } from "@/components/app-lock";
 import { sheetScreenOptions } from "@/components/sheet";
 import { ConnectionProvider } from "@/state/connection";
 import { useOpenChiefOnLaunch } from "@/state/launch";
-import { colors } from "@/theme";
+import { startup } from "@/state/preferences";
+import { colors, scheme } from "@/theme";
 
+const base = scheme === "light" ? DefaultTheme : DarkTheme;
 const navigationTheme: Theme = {
-  ...DarkTheme,
+  ...base,
   colors: {
-    ...DarkTheme.colors,
+    ...base.colors,
     background: colors.bg,
     card: colors.bgRaised,
     border: colors.border,
@@ -24,6 +29,18 @@ export const unstable_settings = {
   anchor: "(drawer)",
 };
 
+/** "System" redraws when the phone's appearance changes, since every style is built once at start. */
+function FollowTheme() {
+  useEffect(() => {
+    if (startup.theme !== "system") return;
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      if ((colorScheme === "light" ? "light" : "dark") !== scheme) void reloadAppAsync();
+    });
+    return () => subscription.remove();
+  }, []);
+  return null;
+}
+
 function OpenChiefOnLaunch() {
   useOpenChiefOnLaunch();
   return null;
@@ -34,7 +51,8 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <ConnectionProvider>
         <ThemeProvider value={navigationTheme}>
-          <StatusBar style="light" />
+          <StatusBar style={scheme === "light" ? "dark" : "light"} />
+          <FollowTheme />
           <OpenChiefOnLaunch />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="(drawer)" />
@@ -45,7 +63,11 @@ export default function RootLayout() {
             <Stack.Screen name="sheets/model" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/vault-add" options={sheetScreenOptions} />
             <Stack.Screen name="sheets/vault-item" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/theme" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/text-size" options={sheetScreenOptions} />
+            <Stack.Screen name="sheets/default-bot" options={sheetScreenOptions} />
           </Stack>
+          <AppLock />
         </ThemeProvider>
       </ConnectionProvider>
     </GestureHandlerRootView>

@@ -11,6 +11,7 @@ import { StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { ChatTopBar } from "@/components/top-bar";
 import { useConnection } from "@/state/connection";
+import { usePreferences } from "@/state/preferences";
 import { useWorld } from "@/state/world";
 import { colors, space } from "@/theme";
 
@@ -36,7 +37,8 @@ export default function HomeScreen() {
     if (requestedDraft) setDraft(requestedDraft);
   }, [requestedDraft]);
   const [error, setError] = useState<string | null>(null);
-  const bot = world.bot(chosenId ?? undefined) ?? world.bots[0] ?? null;
+  const { defaultBot } = usePreferences();
+  const bot = (chosenId ? world.bot(chosenId) : null) ?? (defaultBot ? world.bot(defaultBot) : null) ?? world.bots[0] ?? null;
   const firstName = world.person?.name.split(" ")[0];
   const unread = world.inboxIsSample ? world.bots.some((candidate) => candidate.state.tone === "warning") : world.inbox.some((row) => row.unread);
 

@@ -5,6 +5,7 @@ export const secureValues = new Map<string, string>();
 
 export const secureStore = {
   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 0,
+  getItem: (key: string) => secureValues.get(key) ?? null,
   getItemAsync: async (key: string) => secureValues.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => {
     secureValues.set(key, value);

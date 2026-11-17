@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "steinhub",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#000000",
     "platforms": [
       "ios",
@@ -38,6 +38,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "SteinHub uses Face ID to unlock the app when you turn on the lock."
+        }
+      ],
       [
         "expo-splash-screen",
         {

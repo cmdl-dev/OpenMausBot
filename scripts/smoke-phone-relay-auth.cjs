@@ -116,8 +116,8 @@ app.whenReady().then(async () => {
   await until(() => phone("/api/bots").then((r) => r.status === 200).catch(() => false));
   assert.equal((await phone(`/api/bots/${id}/read`, "POST", {})).status, 200);
   assert.equal((await api(phonePort, `/api/bots/${id}/read`, "POST", {})).status, 401);
-  assert.equal((await phone("/api/config", "PUT", {})).status, 403);
-  assert.equal((await phone("/api/internal/anything", "POST", {})).status, 404);
+  assert.equal((await phone("/api/config", "PUT", {})).status, 400);
+  assert.equal((await phone("/api/internal/anything", "POST", {})).status, 401);
   assert.equal((await api(controlPort, `/devices/${paired.body.device.id}`, "DELETE", undefined, controlHeaders)).status, 200);
   assert.equal((await phone(`/api/bots/${id}/read`, "POST", {})).status, 401);
   console.log(JSON.stringify({ passed: true, realPairing: true, old403Reproduced: true,

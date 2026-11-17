@@ -260,7 +260,7 @@ HTTP sign-in, a person's hold, restart and idle close) and
 `server/browser/viewers/viewers.e2e.test.ts` (the page filling the viewer
 at the screen's device scale, resizes, presets, acknowledged frames, a
 scroll ending on a sharp frame, and the phone's v1 live view against its
-golden from agent-browser), `server/browser/passkey-wall.e2e.test.ts` (a
+golden, recorded from the engine the bots used before), `server/browser/passkey-wall.e2e.test.ts` (a
 sign-in shaped like Google's that stops at a passkey or a security key: the
 bot's notice, the request ending at once as unavailable, Try another way, the
 options and a code, and no passkey registered) and

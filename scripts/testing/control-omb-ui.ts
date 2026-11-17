@@ -1,5 +1,5 @@
 // `control-omb ui`: drives the real renderer headlessly against the fake-engine
-// fixture through the agent-browser binary the harness pins. It touches
+// fixture through the developer-only agent-browser binary ui-driver.ts pins. It touches
 // control-omb.ts's bindings only inside functions, so the import cycle is
 // harmless whichever loads first.
 import { spawn, type ChildProcess } from "node:child_process";
@@ -15,12 +15,7 @@ import {
   runControlOmb,
   type VerificationServer,
 } from "../control-omb.ts";
-import {
-  closeBrowserSession,
-  ensureChrome,
-  installAgentBrowserBinary,
-  resolveAgentBrowserBinary,
-} from "../../server/browser-engine.ts";
+import { closeUiDriverSession, installUiDriver, installUiDriverChrome, resolveUiDriver } from "./ui-driver.ts";
 import { fixtureApi, mountPreview, type MountedPreview } from "./preview-fixture.ts";
 import { credentialStoreFlags } from "../../server/browser/egress/gate.ts";
 
@@ -173,10 +168,10 @@ export async function ensureUiBrowser(
   toolsDir = UI_TOOLS_DIR,
 ): Promise<{ binary: string; chrome: string | null }> {
   mkdirSync(toolsDir, { recursive: true, mode: 0o700 });
-  let binary = resolveAgentBrowserBinary({ dataDir: toolsDir, env: parentEnv });
+  let binary = resolveUiDriver(toolsDir, parentEnv);
   if (!binary) {
     const started = Date.now();
-    binary = await installAgentBrowserBinary({ dataDir: toolsDir, log });
+    binary = await installUiDriver(toolsDir, log);
     log(`agent-browser installed at ${binary} in ${Date.now() - started}ms`);
   }
   const explicit = parentEnv.AGENT_BROWSER_EXECUTABLE_PATH?.trim();
@@ -187,7 +182,7 @@ export async function ensureUiBrowser(
   let chrome = installedChrome(toolsDir);
   if (!chrome) {
     const started = Date.now();
-    await ensureChrome(binary, { env: sessionEnv({ home: toolsDir, session: "omb-ui-install", chrome: null }, parentEnv), log });
+    await installUiDriverChrome(binary, sessionEnv({ home: toolsDir, session: "omb-ui-install", chrome: null }, parentEnv));
     log(`Chrome ready in ${Date.now() - started}ms`);
     chrome = installedChrome(toolsDir);
     if (!chrome) log("no Chrome for Testing under the tools directory; the session will use the browser agent-browser finds itself");
@@ -470,7 +465,7 @@ export async function launchUi(
     const { binary, chrome } = await ensureUiBrowser(parentEnv, note);
     checkpoint();
     fixture = await launchVerificationServer({ ...parentEnv, ...fakeEnv }, startup.signal, undefined,
-      { binaryPath: binary, executablePath: chrome ?? "" }, undefined, undefined, values.engine === undefined ? [] : [extraEngines[String(values.engine)]!], fixtureOptions.boatFixtureApi);
+      chrome ? { chrome } : undefined, undefined, undefined, values.engine === undefined ? [] : [extraEngines[String(values.engine)]!], fixtureOptions.boatFixtureApi);
     checkpoint();
     const api = fixtureApi(fixture.info.url);
     await api("PATCH", "/api/config", { language: "en" });
@@ -513,9 +508,8 @@ export async function launchUi(
     process.off("SIGINT", requestStop);
     process.off("SIGTERM", requestStop);
     if (opened) {
-      // closeBrowserSession waits until the daemon is really gone; a plain
-      // `close` only acknowledges. Both are scoped to this fixture's HOME.
-      if (!await closeBrowserSession(opened.binary, opened.env)) {
+      // Both closes are scoped to this fixture's HOME.
+      if (!await closeUiDriverSession(opened.binary, opened.env)) {
         await agentBrowser(opened.binary, opened.env, ["close"], 15_000).catch(() => {});
       }
     }

@@ -5,14 +5,14 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 interface FixtureInfo { ui: string; url: string; dataDir: string; logPath: string }
 
 describe("cloud preview recovery in the real renderer", () => {

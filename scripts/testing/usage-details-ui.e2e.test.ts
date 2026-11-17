@@ -3,13 +3,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { ENABLE_ADVANCED_UI, agentBrowser, sessionEnv, UI_TOOLS_DIR, type UiHandle } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.log("skipping usage details UI: set OMB_UI_E2E=1 to install the pinned browser");
 
 (enabled ? it : it.skip)("renders separate cached input, uncached input and output after a real fixture turn", async () => {

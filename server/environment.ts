@@ -138,7 +138,7 @@ export function environmentDescriptor(input: { environmentId: string; desktopMan
       ...(input.sharedComputers === true ? { sharedComputers: true as const, lendingDetails: true as const, commandTimeouts: true as const, longCommands: true as const, fileEdits: true as const } : {}),
       ...(input.sharedComputers === true && input.cloudHome === true ? { deviceLink: true as const } : {}),
       ...(input.sharedComputers === true && input.cloudTeam !== true ? { lentMcp: true as const } : {}),
-      ...(input.sharedComputers === true && input.cloudHome === true && input.cloudTeam !== true ? { myChromeLink: true as const, computerAsks: true as const } : {}),
+      ...(input.sharedComputers === true && input.cloudHome === true && input.cloudTeam !== true ? { computerAsks: true as const } : {}),
       ...(input.cloudHome === true ? { cloudHome: true as const, move: 1 as const } : {}),
       ...(input.ownHome === true && input.cloudHome !== true ? { move: 1 as const } : {}),
       ...(input.cloudHome === true && input.cloudTeam === true ? { cloudTeam: true as const } : {}),

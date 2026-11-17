@@ -91,6 +91,7 @@ function fixture(kind: "direct" | "group", threadIds = ["first"]) {
     activeGroupSpeaker: (groupId: string) => speakers.get(groupId),
     directRequestOwners,
     autoVmClaims,
+    cancelLentCodexAsks: () => {},
     cancelYourComputerAsks: (threadId: string, generation?: string) => {
       if (generation === undefined || yourComputerAsks.get(threadId) === generation) yourComputerAsks.delete(threadId);
     },

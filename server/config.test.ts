@@ -42,7 +42,6 @@ import { cacheUntilConfigChanges,
   stripWorkspaceCredentialEnv,
   syncCredentialEnv,
   vpsSshAlias,
-  browserEngineAttachCdpUrl,
   withInstanceCli,
   WORKSPACE_CREDENTIAL_ENV,
   PROVIDER_CREDENTIAL_ENV,
@@ -522,19 +521,12 @@ describe("configuration boundaries", () => {
     expect(vpsSshAlias({ vps: { sshAlias: "-bad" } })).toBeNull();
   });
 
-  it("validates browserEngine.attachCdpUrl as a bare CDP port or an http(s)/ws(s) URL, and forwards it only when configured", () => {
-    expect(parseStoredConfig({})).toEqual({});
-    expect(browserEngineAttachCdpUrl({})).toBeNull();
-    for (const value of ["9333", "1", "65535", "http://127.0.0.1:9333", "https://cdp.internal:9333/", "ws://127.0.0.1:9333/devtools/browser/abc"]) {
-      expect(parseStoredConfig({ browserEngine: { attachCdpUrl: value } })).toEqual({ browserEngine: { attachCdpUrl: value } });
-      expect(parseConfigPatch({ browserEngine: { attachCdpUrl: value } })).toEqual({ browserEngine: { attachCdpUrl: value } });
-      expect(browserEngineAttachCdpUrl({ browserEngine: { attachCdpUrl: value } })).toBe(value);
-    }
-    for (const value of ["0", "70000", "not-a-url", "ftp://127.0.0.1:9333", "javascript:alert(1)"]) {
-      expect(() => parseConfigPatch({ browserEngine: { attachCdpUrl: value } })).toThrow("browserEngine.attachCdpUrl");
-    }
-    expect(parseConfigPatch({ browserEngine: { attachCdpUrl: "" } })).toEqual({ browserEngine: { attachCdpUrl: "" } });
-    expect(browserEngineAttachCdpUrl({ browserEngine: { attachCdpUrl: "" } })).toBeNull();
+  it("loads a config.json from before agent-browser was removed, dropping its engine choice, attach address and My Chrome", () => {
+    expect(parseStoredConfig({ browserEngine: { engine: "agent-browser", attachCdpUrl: "9222", idleTimeoutMinutes: 5 } })).toEqual({ browserEngine: { idleTimeoutMinutes: 5 } });
+    expect(parseStoredConfig({ browserEngine: { engine: "chrome" } })).toEqual({ browserEngine: {} });
+    expect(parseStoredConfig({ browserProfiles: [{ id: "mine", name: "Mine", browser: "chrome" }, { id: "work", name: "Work" }] }).browserProfiles)
+      .toEqual([{ id: "mine", name: "Mine" }, { id: "work", name: "Work" }]);
+    expect(() => parseConfigPatch({ browserProfiles: [{ id: "mine", name: "Mine", browser: "chrome" }] })).toThrow();
   });
 
   it("takes browserEngine.idleTimeoutMinutes as whole minutes up to the engine's own hour", () => {
@@ -543,18 +535,15 @@ describe("configuration boundaries", () => {
       expect(parseConfigPatch({ browserEngine: { idleTimeoutMinutes: value } })).toEqual({ browserEngine: { idleTimeoutMinutes: value } });
     }
     for (const value of [0, 61, 2.5, -1, "10"]) expect(() => parseConfigPatch({ browserEngine: { idleTimeoutMinutes: value } })).toThrow();
-    expect(parseConfigPatch({ browserEngine: { attachCdpUrl: "9333", idleTimeoutMinutes: 5 } })).toEqual({ browserEngine: { attachCdpUrl: "9333", idleTimeoutMinutes: 5 } });
+    expect(parseConfigPatch({ browserEngine: { attachCdpUrl: "9333", idleTimeoutMinutes: 5 } })).toEqual({ browserEngine: { idleTimeoutMinutes: 5 } });
   });
 
-  it("keeps a browser profile's My Chrome choice through saving, loading and migration, and nothing else", () => {
+  it("drops a profile's My Chrome choice on loading and migration, and refuses it in a new save", () => {
     const mine = { id: "profile-mine", name: "Mine", browser: "chrome" };
-    expect(parseConfigPatch({ browserProfiles: [mine, { id: "profile-work", name: "Work" }] })).toEqual({ browserProfiles: [mine, { id: "profile-work", name: "Work" }] });
-    expect(parseStoredConfig({ browserProfiles: [mine] }).browserProfiles).toEqual([mine]);
+    expect(parseStoredConfig({ browserProfiles: [mine] }).browserProfiles).toEqual([{ id: "profile-mine", name: "Mine" }]);
     expect(parseStoredConfig({ browserProfiles: [{ id: "Mine", name: "Mine", browser: "chrome" }] }).browserProfiles)
-      .toEqual([{ id: "mine", name: "Mine", browser: "chrome", partitionId: "Mine" }]);
-    for (const browser of ["edge", "firefox", "", true]) {
-      expect(() => parseConfigPatch({ browserProfiles: [{ ...mine, browser }] })).toThrow("browserProfiles.0.browser");
-    }
+      .toEqual([{ id: "mine", name: "Mine", partitionId: "Mine" }]);
+    expect(() => parseConfigPatch({ browserProfiles: [mine] })).toThrow("browser");
   });
 
   it("accepts a persisted global room turn timeout and supplies the legacy default", () => {

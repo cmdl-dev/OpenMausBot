@@ -428,7 +428,7 @@ export function loopbackNavigationHint(tool: string, args: unknown, text: string
   return " That address is the loopback of the machine running this browser, not your own computer: open the site by the LAN address it answers on (for example http://192.168.1.20:8188), which must be reachable from the server, and allow it under Settings → Browser → Open sites on this server.";
 }
 
-/** agent-browser's read hides `url`: a call whose only misfit is a string url gets the way to read an address instead of the bare schema misfit. */
+/** agent_browser_read takes no `url`: a call whose only misfit is a string url gets the way to read an address instead of the bare schema misfit. */
 function readsAddressOnly(tool: RegisteredTool, args: unknown): boolean {
   if (!tool.builtInBrowser || !readsAroundBrowser({ name: tool.name, arguments: args }) || !object(args) || typeof args.url !== "string") return false;
   const { url: _url, ...rest } = args;

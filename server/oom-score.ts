@@ -2,8 +2,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 /** Linux's OOM killer takes the process with the highest score first, and `oom_score_adj` (-1000 to 1000) moves a process
  * up or down that order. On a Cloud home everything a bot runs goes first: its engine and the tools and MCP servers that
- * engine starts, the MCP servers the server runs for it, the helper engines, and its browser (agent-browser's daemon and
- * Chrome, whose tabs Chrome then scores 200 and up itself). The server and the edge, which answer the health check, go last,
+ * engine starts, the MCP servers the server runs for it, the helper engines, and its browser (Chrome, whose tabs Chrome
+ * then scores 200 and up itself). The server and the edge, which answer the health check, go last,
  * and the root supervisor that restarts them never. */
 export const OOM_SCORE = { bot: 1000, server: -800, edge: -900, supervisor: -1000 } as const;
 

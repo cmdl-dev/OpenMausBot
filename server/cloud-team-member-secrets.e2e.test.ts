@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "../scripts/testing/cloud-send-fixture.ts";
-import { decryptBrowserState } from "./browser-sites.ts";
+import { unsealText } from "./sealed-text.ts";
 import { personKey } from "./person-key.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { LOGINS_KEY_FILE, MEMBER_SECRETS_FILE } from "./vault-store.ts";
@@ -159,7 +159,7 @@ it("she deletes hers, and leaving deletes the rest of hers from the disk", async
   expect(left.status, JSON.stringify(left.body)).toBeLessThan(300);
   const dataDir = join(team.home, ".openmausbot");
   const key = readFileSync(join(dataDir, LOGINS_KEY_FILE), "utf8").trim();
-  const kept = JSON.parse(decryptBrowserState(readFileSync(join(dataDir, MEMBER_SECRETS_FILE)), key)) as { secrets: Array<{ id: string; person: string }> };
+  const kept = JSON.parse(unsealText(readFileSync(join(dataDir, MEMBER_SECRETS_FILE)), key)) as { secrets: Array<{ id: string; person: string }> };
   expect(kept.secrets.filter((one) => one.person === personKey({ id: "", email: ADA.email })).map((one) => one.id), "hers, sealed on the disk").toEqual([]);
   const back = (await team.pair(ADA)).token!;
   expect((await vaultOf(back)).secrets, "joining again restores nothing").toEqual([]);

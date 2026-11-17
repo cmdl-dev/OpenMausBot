@@ -23,14 +23,12 @@ function harness(over: Partial<FillLoginTurnDeps> & { at?: Surface | null } = {}
     current: (b) => b,
     builtInBrowserOn: () => true,
     browserSelectable: () => true,
-    myChrome: () => false,
     claim: () => true,
     withSecretInput: (_session, _spec, fill) => fill(),
     logins: { sitesFor: () => [BANK], candidates: async () => [], markUsed: () => {} },
     onePasswordTrouble: () => undefined,
     loginInput: () => ({ engine: async () => null, insertText: async () => {}, press: async () => {}, click: async () => {} }),
     remember: () => {},
-    stepContext: () => ({ botId: "b1", botName: "Statements", threadId: "t1", generation: "g1", turnId: () => null, record: false }),
     ...over,
     moveToBrowser,
     target,
@@ -59,11 +57,6 @@ describe("fill_login outside the bot's own browser", () => {
     const { fill } = harness(over);
     const answer = await fill(bot, turn, undefined, undefined);
     expect(answer.text).toMatch(/^Saved logins are filled only in your own browser, the one your browser tools drive, where MausBot checks the page's site before it types a password\. On the screen of this computer it cannot prove which site a box belongs to, so it never types one there[,.]/);
-  });
-
-  it("names the person's own Chrome when the bot's profile is My Chrome", async () => {
-    const { fill } = harness({ myChrome: () => true });
-    expect((await fill(bot, turn, undefined, undefined)).text).toContain("the person's own Chrome (My Chrome)");
   });
 
   it("asks for a sign-in on the screen when this run cannot move, without moving it", async () => {

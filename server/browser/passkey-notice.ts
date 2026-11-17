@@ -1,5 +1,4 @@
 import { GOOGLE_PAGE, passkeyWallIn, type PasskeyWall } from "../../shared/passkey-wall.ts";
-import { attachesToChrome } from "../browser-runtime.ts";
 
 /** Where the bots' browsers run: only My Cloud has a person's lent PC to offer. */
 export type BrowserPlace = "cloud" | "desktop" | "server";
@@ -43,7 +42,7 @@ export function withPasskeyNotice(result: unknown, place: BrowserPlace): unknown
   return notice ? { ...result, content: [...content, { type: "text", text: notice }] } : result;
 }
 
-/** For the runtime router: every engine's answers, except in the person's own Chrome (My Chrome), where their passkey and Google sign-in work. */
+/** For the browser runtime: every tool call's answer. */
 export function passkeyAnnotation(place: BrowserPlace) {
-  return (spec: { env: NodeJS.ProcessEnv }, result: unknown): unknown => (attachesToChrome(spec.env) ? result : withPasskeyNotice(result, place));
+  return (result: unknown): unknown => withPasskeyNotice(result, place);
 }

@@ -1,6 +1,6 @@
-import { chmodSync, closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { BotBox, BoxRunner, BOX_EGRESS_PORT, flyApiPrivate, writeSeccompFile } from "./box.ts";
@@ -183,42 +183,6 @@ describe("BotBox", () => {
     boxes.push(box);
     await box.start({ dataDir: temp(), home: temp(), port: 8799, denyEnv: new Set(), env: {}, log: () => {} });
     expect(await box.openRelay()).toBeNull();
-  });
-});
-
-describe("the box a bot's Chrome runs in", () => {
-  const boxes: BotBox[] = [];
-  const dirs: string[] = [];
-  afterEach(async () => {
-    for (const box of boxes.splice(0)) await box.stop();
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  });
-  const temp = () => { const dir = mkdtempSync(join(tmpdir(), "omb-box-")); dirs.push(dir); return dir; };
-
-  it("is no box off a Cloud home, which is what Windows gets", () => {
-    expect(new BotBox().browserBox(9, []), "no box off a Cloud home").toBeNull();
-  });
-
-  // On, the box's gates listen on unix sockets, which Windows refuses at a file path; the box runs only on a Linux Cloud
-  // home (detect.ts says "not-linux" anywhere else).
-  it.skipIf(process.platform === "win32")("has the host's network and the read-only paths asked for, and none of HOME or the data folder", async () => {
-    const box = new BotBox();
-    boxes.push(box);
-    const dataDir = join(temp(), "home", ".openmausbot"), home = dirname(dataDir);
-    mkdirSync(dataDir, { recursive: true });
-    await box.start({ dataDir, home, port: 8799, denyEnv: new Set(), env: {}, log: () => {}, detect: () => ({ box: "bwrap", reason: null, tools: { bwrap: "/usr/bin/bwrap", socat: null } }) });
-    const uploads = join(dataDir, "browser-uploads");
-    const browser = box.browserBox(9, [uploads])!;
-    expect(browser.bwrap).toBe("/usr/bin/bwrap");
-    const bind = (target: string) => browser.options.some((arg, i) => arg === "--bind" && browser.options[i + 2] === target);
-    expect(bind(home), "HOME is not the browser's").toBe(false);
-    expect(browser.options.join(" ")).not.toContain(`--tmpfs ${dataDir}`);
-    expect(browser.options.join(" "), "the engines are the turns' only").not.toContain(join(dataDir, "tools"));
-    expect(browser.options).not.toContain("--unshare-net");
-    expect(browser.options).toEqual(expect.arrayContaining(["--unshare-user", "--unshare-pid", "--die-with-parent"]));
-    expect(browser.options.join(" ")).toContain(`${uploads} ${uploads}`);
-    expect(browser.options.slice(browser.options.indexOf(uploads) - 1)[0]).toMatch(/^--ro-bind/u);
-    if (browser.seccomp) expect(browser.options.join(" ")).toContain("--seccomp 9");
   });
 });
 

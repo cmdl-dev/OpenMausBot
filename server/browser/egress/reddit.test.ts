@@ -85,7 +85,7 @@ describe("the egress gate on MausBot Cloud", () => {
     const egress = new BrowserEgress();
     egress.configure({
       host, config: () => ({}), ownership,
-      listeners: new OwnListeners(host, { env: {}, streamPorts: () => [], devToolsPorts: () => [] }),
+      listeners: new OwnListeners(host, { env: {} }),
       resolve: async (name) => { looked.push(name); return []; },
     });
     return { egress, looked };

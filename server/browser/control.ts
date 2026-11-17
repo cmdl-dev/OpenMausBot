@@ -1,7 +1,7 @@
 // Who may act in a bot's browser. A person holding any tab holds the whole profile: every bot call, reads included,
 // is refused, because the person may be typing a password. Underneath, each tab keeps T3 Code's SessionControl, so a
 // takeover drains running work, interrupts queued bot work and revokes refs.
-import { BROWSER_CONTROL_REFUSAL } from "../browser-runtime.ts";
+import { BROWSER_CONTROL_REFUSAL } from "./calls.ts";
 import { BrowserControlInterrupted, type SessionControl } from "./session-control.ts";
 
 export { BROWSER_CONTROL_REFUSAL };

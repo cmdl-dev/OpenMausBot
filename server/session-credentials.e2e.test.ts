@@ -35,11 +35,9 @@ async function fixture(test: (f: any) => Promise<void>, { thisComputer = false }
       `if (after("--resume") || after("--session-id")) appendFileSync(${JSON.stringify(launchesPath)}, JSON.stringify({ resume: after("--resume"), servers: Object.keys(servers), token: servers.agents?.env?.OMB_COMMS_TOKEN ?? null, control: servers.computer?.env?.OMB_CONTROL_TOKEN ?? null }) + "\\n");`,
       `await import(${JSON.stringify(pathToFileURL(fileURLToPath(new URL("./testing/fake-claude-cli.ts", import.meta.url))).href)});`,
     ].join("\n"), { mode: 0o700 });
-    const browser = join(dataDir, "agent-browser.mjs");
-    writeFileSync(browser, [
-      "#!/usr/bin/env node",
-      'if (process.argv[2] === "session" && process.argv[3] === "list") process.stdout.write(JSON.stringify({ success: true, data: { sessions: [] } }));',
-    ].join("\n"), { mode: 0o700 });
+    // The browser mount only needs a Chrome to name; no call here starts it.
+    const chrome = join(dataDir, "chrome");
+    writeFileSync(chrome, "#!/bin/sh\nexit 1\n", { mode: 0o700 });
     // Add the ACP engine and the browser while the server is stopped.
     await waitForExit(session.child, { signal: "SIGTERM" });
     const configPath = join(dataDir, "config.json");
@@ -67,7 +65,7 @@ async function fixture(test: (f: any) => Promise<void>, { thisComputer = false }
       cwd: fileURLToPath(new URL("..", import.meta.url)),
       env: {
         ...verificationServerEnvironment({ FAKE_CLAUDE_MODE: "hang", FAKE_CLAUDE_RELEASE: release }, dataDir, Number(new URL(url).port)),
-        ...(withBrowser ? { OMB_AGENT_BROWSER_PATH: browser } : {}),
+        ...(withBrowser ? { OMB_CHROME_PATH: chrome } : {}),
         ...(thisComputer ? { OMB_TEST_DESKTOP_CUA_CONNECTION: join(userData, "cua-connection.json") } : {}),
       },
       stdio: ["ignore", log, log],

@@ -2,8 +2,7 @@
 import type { Surface } from "../../shared/wire.ts";
 import type { BotLogins } from "../bot-logins.ts";
 import { productName } from "../brand.ts";
-import { BROWSER_CONTROL_REFUSAL } from "../browser-runtime.ts";
-import type { StepContext } from "../browser-steps.ts";
+import { BROWSER_CONTROL_REFUSAL } from "../browser/calls.ts";
 import { CODE_FROM_INBOX, fillLogin, type FillLoginDeps, type FillLoginOutcome } from "../login-fill.ts";
 import { redactSecretsInText } from "../redact.ts";
 import type { BotRecord } from "../store.ts";
@@ -22,18 +21,15 @@ export interface FillLoginTurnDeps {
   browserSelectable(bot: BotRecord): boolean;
   /** Continues this request in the bot's own browser once the turn ends; false when this turn cannot move. */
   moveToBrowser(turn: Turn): boolean;
-  /** The bot's browser profile is the person's own Chrome. */
-  myChrome(bot: BotRecord): boolean;
   /** Null while the browser engine is not installed. */
-  target(bot: BotRecord, threadId: string): Promise<{ session: string; spec: Spec; env: NodeJS.ProcessEnv } | null>;
+  target(bot: BotRecord, threadId: string): Promise<{ session: string; spec: Spec } | null>;
   claim(turn: Turn, resource: string): boolean;
-  withSecretInput(session: string, spec: Spec, fill: () => Promise<FillLoginOutcome>, ctx: StepContext): Promise<FillLoginOutcome>;
+  withSecretInput(session: string, spec: Spec, fill: () => Promise<FillLoginOutcome>): Promise<FillLoginOutcome>;
   logins: Pick<BotLogins, "candidates" | "sitesFor" | "markUsed">;
   /** Why 1Password's logins may be missing just now. */
   onePasswordTrouble(): string | undefined;
-  loginInput(session: string, spec: Spec, env: NodeJS.ProcessEnv): Pick<FillLoginDeps, "engine" | "insertText" | "press" | "click">;
+  loginInput(session: string, spec: Spec): Pick<FillLoginDeps, "engine" | "insertText" | "press" | "click">;
   remember: FillLoginDeps["remember"];
-  stepContext(bot: BotRecord, turn: Turn): StepContext;
   /** Absent where no mailbox can be read for a sign-in. */
   mailCodes?: Pick<LoginMailCodes, "find" | "offerConnect">;
   /** False once the turn that asked has ended. */
@@ -62,8 +58,7 @@ export function createFillLoginTurn(deps: FillLoginTurnDeps) {
     if (!deps.moveToBrowser(turn)) {
       return { ok: false, text: `${onlyInBrowser()}${notHere}, and this run cannot move to your browser. ${signIn} For runs like this to sign in by themselves, the person can choose Browser under where this bot works.` };
     }
-    const chrome = deps.myChrome(current) ? ", which is the person's own Chrome (My Chrome), signed in as them" : "";
-    return { ok: false, text: `${onlyInBrowser()}${notHere}. ${productName()} is moving this conversation to your own browser${chrome}. End this turn now without using the screen tools: the request continues there with your browser tools. Open the site's sign-in page in that browser, then call fill_login.` };
+    return { ok: false, text: `${onlyInBrowser()}${notHere}. ${productName()} is moving this conversation to your own browser. End this turn now without using the screen tools: the request continues there with your browser tools. Open the site's sign-in page in that browser, then call fill_login.` };
   }
 
   async function connectMailbox(bot: BotRecord, turn: Turn, outcome: FillLoginOutcome): Promise<Answer> {
@@ -83,7 +78,7 @@ export function createFillLoginTurn(deps: FillLoginTurnDeps) {
     }
     const browser = await deps.target(current, threadId);
     if (!browser) return { ok: false, text: "The browser is not available on this computer right now. Call request_sign_in instead." };
-    const { session, spec, env } = browser;
+    const { session, spec } = browser;
     if (!deps.claim(capability, `browser:${session}`)) {
       return { ok: false, text: "Another conversation is using this browser. Wait until it finishes, then call fill_login again." };
     }
@@ -97,11 +92,11 @@ export function createFillLoginTurn(deps: FillLoginTurnDeps) {
         available: async () => deps.logins.sitesFor(bot.id),
         trouble: deps.onePasswordTrouble,
       }, {
-        ...deps.loginInput(session, spec, env),
+        ...deps.loginInput(session, spec),
         remember: deps.remember,
         turnActive: () => deps.turnActive?.(capability) !== false,
         ...(deps.mailCodes ? { emailCode: (ask) => deps.mailCodes!.find(current, capability, ask, () => deps.turnActive?.(capability) !== false) } : {}),
-      }), deps.stepContext(current, capability));
+      }));
       if (outcome.ok && outcome.loginId) deps.logins.markUsed(outcome.loginId);
       if (outcome.wantsMailbox && deps.mailCodes) return await connectMailbox(current, capability, outcome);
       return { ok: outcome.ok, text: outcome.text };

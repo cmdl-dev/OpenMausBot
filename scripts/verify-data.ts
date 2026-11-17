@@ -6,11 +6,11 @@ import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "nod
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { closeBrowserSession } from "../server/browser-engine.ts";
 import { waitForExit } from "../server/testing/cleanup.ts";
 import { DATA_ROUTES, DATA_TOOL_NAMES, type DataSheet } from "../shared/data-surface.ts";
 import { launchVerificationServer, runControlOmb, verificationServerEnvironment } from "./control-omb.ts";
 import { agentBrowser, ensureUiBrowser, sessionEnv, type UiHandle } from "./testing/control-omb-ui.ts";
+import { closeUiDriverSession } from "./testing/ui-driver.ts";
 import { mountPreview, parkUntilSignal, type MountedPreview } from "./testing/preview-fixture.ts";
 
 assert(process.argv.slice(2).every((arg) => arg === "--check"), "Usage: node --experimental-strip-types scripts/verify-data.ts [--check]");
@@ -767,7 +767,7 @@ try {
   }
   throw error;
 } finally {
-  if (handle) await closeBrowserSession(handle.binary, sessionEnv(handle));
+  if (handle) await closeUiDriverSession(handle.binary, sessionEnv(handle));
   await preview?.close();
   await waitForExit(server, { signal: "SIGTERM" });
   await fixture.close();

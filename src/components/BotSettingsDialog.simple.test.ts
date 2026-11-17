@@ -143,7 +143,6 @@ const { ThreadModelsLine } = await import("./ThreadModelsLine");
 const { ModelSection } = await import("./bot-settings/ModelSection");
 const { RoutineList } = await import("./routines/RoutineList");
 const { RoutineEditor } = await import("./RoutinesPage");
-const { SignedInSites } = await import("./SignedInSites");
 const { AvatarImageGenerator } = await import("./AvatarImageGenerator");
 const { AvatarFraming } = await import("./avatar-editing");
 const { MascotFaceColorPicker } = await import("./MascotFaceColorPicker");
@@ -202,7 +201,7 @@ const botTab = (bot: Bot) => capture(() => DetailsTab({ bot, derived: derived(),
 const settingsPage = (bot: Bot, editingInstructions = false) =>
   capture(() => SettingsPage({ bot, derived: derived(), onOpen, editingInstructions, onEditInstructions }));
 const library = (bot: Bot) => capture(() => LibraryTab({ bot, onOpen }));
-const computer = (bot: Bot) => capture(() => ComputerTab({ bot, derived: derived(), onOpen }));
+const computer = (bot: Bot) => capture(() => ComputerTab({ bot, onOpen }));
 const find = (rendered: { nodes: Node[] }, attr: string, value: unknown = true) => {
   const found = rendered.nodes.find((node) => node.props[attr] === value);
   if (!found) throw new Error(`no node with ${attr}=${String(value)}`);
@@ -1041,9 +1040,9 @@ describe("the Where it works page", () => {
     expect(choices(where(makeBot({ computer: "browser" }))).map(([value, , disabled]) => [value, disabled])).toEqual([["auto", false], ["browser", true]]);
   });
 
-  it("names the browser My Chrome when the bot's profile is the person's own Chrome", () => {
-    fixture.storeState = { ...fixture.storeState, config: { browserEngine: { myChrome: true }, browserProfiles: [{ id: "bank", name: "Bank", browser: "chrome" }] } };
-    expect(find(where(makeBot({ browserProfile: "bank" })), "data-panel-choice", "browser").props.title).toBe("My Chrome");
+  it("names the browser Browser whatever profile the bot uses", () => {
+    fixture.storeState = { ...fixture.storeState, config: { browserProfiles: [{ id: "bank", name: "Bank" }] } };
+    expect(find(where(makeBot({ browserProfile: "bank" })), "data-panel-choice", "browser").props.title).toBe("Browser");
     expect(find(where(makeBot()), "data-panel-choice", "browser").props.title).toBe("Browser");
   });
 
@@ -1305,12 +1304,12 @@ describe("the drill-in pages", () => {
     expect(fixture.api).toHaveBeenLastCalledWith("/api/bots/scout", { method: "PATCH", body: JSON.stringify({ cwd: "/tmp/work" }) });
   });
 
-  it("shows only the signed-in sites on the browser page, with no browser or record-steps switch", () => {
+  it("shows how to sign in on the browser page, with no browser or record-steps switch", () => {
     fixture.ownerOrAdmin = true;
     const page = body("browser");
     expect(ofType(page, BrowserLogins)!.props).toMatchObject({ bot: expect.objectContaining({ id: "scout" }), browserEnabled: true });
     const rendered = capture(() => BrowserLogins({ bot: makeBot(), browserEnabled: true, onOpenBrowser: vi.fn() }));
-    expect(ofType(rendered, SignedInSites)!.props).toMatchObject({ bare: true, target: { bot: "scout" }, sharedBy: ["Scout"], disabled: false });
+    expect(rendered.html).toContain("Sign in once in Scout&#x27;s browser and it stays signed in.");
     expect(switches(rendered.html)).toBe(0);
     expect(rendered.html).not.toContain("Record");
     expect(rendered.html).not.toContain(">Logins<");

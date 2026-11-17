@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // where the event runs it), and the subsets in VITEST_SUBSETS.
 export const SELECTABLE_JOBS = [
   "build", "vitest", "behavior-evals", "packaged-server", "windows-cua", "electron-smokes", "cloudflared-linux-arm64",
-  "foss", "control-plane", "ui-smoke", "browser-identity", "package-linux", "browser-driver", "relay",
+  "foss", "control-plane", "ui-smoke", "package-linux", "browser-driver", "relay",
 ];
 
 // The server imports Electron and renderer modules, and the macOS smokes run
@@ -17,7 +17,7 @@ export const SELECTABLE_JOBS = [
 // can affect the same checks.
 const SERVER_CHECKS = [
   "build", "linux-tests", "host-tests", "behavior-evals", "packaged-server", "foss", "electron-smokes",
-  "ui-smoke", "browser-identity", "browser-driver", "package-linux",
+  "ui-smoke", "browser-driver", "package-linux",
 ];
 const EVERY_CHECK = [...SERVER_CHECKS, "windows-cua", "cloudflared-linux-arm64", "control-plane", "relay"];
 
@@ -26,7 +26,7 @@ export const AREA_CHECKS = {
   docs: ["docs-tests"],
   locales: ["build", "locale-tests"],
   web: ["build", "linux-tests", "ui-smoke"],
-  "script-tests": ["linux-tests", "host-tests", "ui-smoke", "browser-identity"],
+  "script-tests": ["linux-tests", "host-tests", "ui-smoke"],
   server: SERVER_CHECKS,
   desktop: SERVER_CHECKS,
   // The Windows CUA job starts these the way the installed app does, then lends the PC's screen through them.
@@ -117,6 +117,7 @@ export const VITEST_SUBSETS = {
       "server/cloud-team.e2e.test.ts",
       "server/host/brief-words.test.ts",
       "server/host/lending-lifts.test.ts",
+      "server/lent-codex.e2e.test.ts",
       "server/lent-folders.e2e.test.ts",
       "server/move-chosen-bots.e2e.test.ts",
       "server/one-home-keep.e2e.test.ts",
@@ -245,7 +246,7 @@ export const FULL_SCOPE = { areas: ["everything"], checks: [...EVERY_CHECK].sort
 export const MAIN_SCOPE = {
   areas: ["main"],
   checks: [
-    "behavior-evals", "browser-identity", "build", "control-plane", "electron-smokes", "foss", "host-tests", "linux-tests", "packaged-server",
+    "behavior-evals", "build", "control-plane", "electron-smokes", "foss", "host-tests", "linux-tests", "packaged-server",
     "ui-smoke",
   ],
 };

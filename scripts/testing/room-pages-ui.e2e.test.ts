@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 
 import { ROOM_VIEW_ONLY } from "../../shared/app.ts";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { agentBrowser, sessionEnv, UI_TOOLS_DIR, type UiHandle } from "./control-omb-ui.ts";
@@ -20,7 +20,7 @@ import { fixtureApi } from "./preview-fixture.ts";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const FAKE_APP = join(ROOT, "server", "testing", "fake-stdio-app-server.ts");
 const forced = process.env.OMB_UI_E2E === "1";
-const enabled = forced || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = forced || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.log("skipping room pages ui e2e: no agent-browser binary resolves; set OMB_UI_E2E=1 to install the pinned release");
 const LAUNCH_TIMEOUT_MS = forced ? 600_000 : 180_000;
 

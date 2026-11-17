@@ -4,7 +4,7 @@
 // Mac's own connect reaches, under a public address. My Cloud itself is offline: it resolves no name and fetches nothing.
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { connect as tcpConnect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { FAKE_BROWSER_HOOK, fakeBrowserEnv } from "./testing/fake-browser.ts";
 import { createCloudPowerGate } from "../electron/cloud-power.mjs";
 import { createComputerSharing } from "../electron/computer-sharing.mjs";
 import { gateChromeFlags } from "./browser/egress/gate.ts";
@@ -109,15 +110,17 @@ async function turnOf(botId: string, before: Set<string>): Promise<Turn> {
   return found!;
 }
 
-/** The egress gate of a bot's own browser on My Cloud, as the server hands it to the browser engine. */
-async function gateOf(botId: string): Promise<number> {
-  // Asked while its Chrome counts as running, the engine is handed that Chrome's settings, the gate among them.
-  writeFileSync(join(home, "browser-running"), "");
-  await api("GET", `/api/browser-sites?bot=${botId}`, { token: owner }).finally(() => rmSync(join(home, "browser-running"), { force: true }));
+/** The egress gate of a bot's own browser on My Cloud: a call from its turn starts that browser, which the fake Chrome
+ * records with its gate. */
+async function gateOf(botId: string, turn: Turn): Promise<number> {
+  const token = turn.mcpConfig.mcpServers.browser!.env.OMB_MCP_TOKEN_BROWSER!;
+  const opened = await fetch(`${base}/api/internal/browser/mcp`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ method: "tools/call", params: { name: "agent_browser_tabs", arguments: { action: "list" } } }) });
+  expect(opened.status).toBe(200);
   let gatePort = 0;
   await expect.poll(() => {
-    const lines = (() => { try { return readFileSync(join(home, "gates.txt"), "utf8").trim().split("\n"); } catch { return []; } })();
-    const found = lines.map((line) => /^bot-\S+ socks5:\/\/127\.0\.0\.1:(\d+)$/.exec(line)).filter(Boolean).at(-1);
+    const lines = (() => { try { return readFileSync(join(home, "egress.txt"), "utf8").trim().split("\n"); } catch { return []; } })();
+    const found = lines.map((line) => new RegExp(`^bot:${botId} (\\d+)$`).exec(line)).filter(Boolean).at(-1);
     gatePort = Number(found?.[1] ?? 0);
     return gatePort > 0;
   }, { timeout: 10_000 }).toBe(true);
@@ -141,7 +144,7 @@ async function botTurn(name: string) {
     spawned.stdin!.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
   });
   await request("initialize", { protocolVersion: "2024-11-05" });
-  return { gate: await gateOf(bot.id), call: (tool: string, args: unknown = {}) => request("tools/call", { name: tool, arguments: args }) };
+  return { gate: await gateOf(bot.id, turn), call: (tool: string, args: unknown = {}) => request("tools/call", { name: tool, arguments: args }) };
 }
 
 /** What a bot's Chrome does through its gate: a SOCKS5 CONNECT by name, then (once open) one HTTP request. */
@@ -191,14 +194,14 @@ async function boot() {
     'dns.lookup = async (host) => { throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), { code: "ENOTFOUND" }); }; syncBuiltinESMExports();',
     'const real = globalThis.fetch; globalThis.fetch = async (url, init) => String(url).startsWith("http://127.0.0.1:") ? real(url, init) : new Response("offline fixture", { status: 503 });',
   ].join("\n"))}`;
-  child = spawn(process.execPath, ["--import", offlinePrelude, join(SERVER_DIR, "index.ts")], {
+  child = spawn(process.execPath, ["--import", offlinePrelude, "--import", FAKE_BROWSER_HOOK, join(SERVER_DIR, "index.ts")], {
     cwd: join(SERVER_DIR, ".."),
     env: {
       PATH: process.env.PATH, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
       HOME: home, USERPROFILE: home, OMB_DATA_DIR: dataDir, OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
       OMB_CLOUD_ROLE: "home", OMB_CLOUD_MACHINE_ID: "3f9c2a4e-8b1d-4c6e-9a7f-2d5e8c1b0a93", OMB_CLOUD_ADMIN_URL: "https://cloud.example.test",
       OMB_CLOUD_BOOTSTRAP_SECRET: secret, OMB_PUBLIC_URL: `https://${HOST}`,
-      OMB_AGENT_BROWSER_PATH: join(home, "agent-browser"),
+      ...fakeBrowserEnv(home),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -225,16 +228,6 @@ process.env.FAKE_CLAUDE_VERSION = "2.1.284";
 if (process.argv[2] !== "--version") { process.env.FAKE_CLAUDE_DUMP = ${JSON.stringify(turnDumps())} + "/" + process.pid + ".json"; process.env.FAKE_CLAUDE_TEXT_DUMP = ${JSON.stringify(join(home, "one-shot.json"))}; process.env.FAKE_CLAUDE_MODE = "hang"; }
 await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-claude-cli.ts")).href)});
 `, { mode: 0o755 });
-  // The bot's browser engine as the server finds it: it names the Chrome its turns would drive, through the gate.
-  // It writes down the egress gate each command's Chrome would go through: the bot's own, for the life of the server.
-  writeFileSync(join(home, "agent-browser"), `#!${process.execPath}
-const args = process.argv.slice(2).filter((arg) => arg !== "--json" && arg !== "--no-webmcp");
-if (args[0] === "--version") { console.log("agent-browser 0.37.0"); process.exit(0); }
-if (process.env.AGENT_BROWSER_PROXY) require("node:fs").appendFileSync(${JSON.stringify(join(home, "gates.txt"))}, process.env.AGENT_BROWSER_SESSION + " " + process.env.AGENT_BROWSER_PROXY + "\\n");
-const running = require("node:fs").existsSync(${JSON.stringify(join(home, "browser-running"))});
-process.stdout.write(JSON.stringify({ success: true, data: args[0] === "session" ? { sessions: running ? [process.env.AGENT_BROWSER_SESSION] : [] } : {} }));
-`, { mode: 0o755 });
-  chmodSync(join(home, "agent-browser"), 0o755);
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({ instances: {
     ...Object.fromEntries(["codex", "cursor", "githubCopilot", "openaiCompat", "qwen", "hermes", "pi", "grok"].map((id) => [id, { driver: "not-a-real-driver" }])),
     claude: { driver: "claudeAgent", displayName: "Claude", config: { cli } },
@@ -262,10 +255,10 @@ afterAll(async () => {
 
 let mac: ReturnType<typeof lend>;
 let gate = 0;
-/** A bot's turn needs the fixture engine and browser engine, scripts started by their #! line, which Windows does not run. */
+/** A bot's turn needs the fixture engine, a script started by its #! line, which Windows does not run. */
 const posixOnly = it.skipIf(process.platform === "win32");
 
-it("My Cloud offers the device link, and a fresh Mac signed in to it lends itself by itself: the internet connection and Chrome, no terminal, no click", async () => {
+it("My Cloud offers the device link, and a fresh Mac signed in to it lends itself by itself: the internet connection, no terminal, no click", async () => {
   expect((await api("GET", "/.well-known/openmausbot/environment")).body.capabilities).toMatchObject({ sharedComputers: true, deviceLink: true });
   const file = join(home, "desktop-profile", "computer-sharing.json");
   expect(existsSync(file), "nothing was ever lent from this Mac").toBe(false);
@@ -274,7 +267,7 @@ it("My Cloud offers the device link, and a fresh Mac signed in to it lends itsel
   await expect.poll(() => mac.connector.cloudState(mac.env).link, { timeout: 8000 }).toBe("on");
   expect(mac.connector.cloudState(mac.env)).toMatchObject({ enabled: true, folders: [], screen: false, terminal: false, internet: true, chrome: true });
   const known = (await api("GET", "/api/shared-computers", { token: owner })).body.known;
-  expect(known).toEqual([expect.objectContaining({ online: true, lent: true, scopes: { folders: 0, terminal: false, screen: false, internet: true, chrome: true } })]);
+  expect(known).toEqual([expect.objectContaining({ online: true, lent: true, scopes: { folders: 0, terminal: false, screen: false, internet: true, chrome: false } })]);
 }, hostTimeout(30_000));
 
 posixOnly("a bot's browser on My Cloud reaches Instagram from the Mac's own connection: the website sees the Mac, not My Cloud", async () => {

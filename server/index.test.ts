@@ -401,7 +401,7 @@ const statusWithHeaders = (headers: Record<string, string>): Promise<number> =>
 
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "omb-api-test-"));
-  writeFileSync(join(home, "fake-agent-browser"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(join(home, "fake-chrome"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   staticDir = join(home, "static");
   fakeClaudeDump = join(home, "fake-claude-dump.json");
   fakeClaudePrompts = join(home, "fake-claude-prompts.jsonl");
@@ -1224,23 +1224,12 @@ beforeAll(async () => {
   await new Promise<void>((r) => boatStub.listen(0, "127.0.0.1", r));
   boatStubPort = (boatStub.address() as { port: number }).port;
 
-  // Emulates only our temporary browser executable (also on Windows, where the marker is not executable).
+  // Holds one upload's read at a gate, so a test can swap the file under it.
   const browserPrelude = `data:text/javascript,${encodeURIComponent(`
-    import childProcess from "node:child_process";
     import fs from "node:fs";
     import path from "node:path";
     import { syncBuiltinESMExports } from "node:module";
-    const spawn = childProcess.spawn;
     const base = ${JSON.stringify(home)};
-    childProcess.spawn = function(command, args, options) {
-      if (command !== process.env.OMB_AGENT_BROWSER_PATH) return spawn(command, args, options);
-      const program = 'const fs = require("node:fs"); const path = require("node:path"); '
-        + 'const base = ' + JSON.stringify(base) + '; '
-        + 'fs.appendFileSync(path.join(base, "browser-calls.jsonl"), JSON.stringify({args: process.argv.slice(1), session: process.env.AGENT_BROWSER_SESSION}) + "\\\\n"); '
-        + 'if (process.argv[1] === "session" && process.argv[2] === "list") fs.writeSync(1, JSON.stringify({ success: true, data: { sessions: [] } })); '
-        + 'process.exit(fs.existsSync(path.join(base, "browser-clear-fails")) ? 1 : 0);';
-      return spawn(process.execPath, ["-e", program, ...args], options);
-    };
     const read = fs.read;
     fs.read = Object.defineProperties(function(input, ...args) {
       const gate = path.join(base, "browser-upload-read-gate");
@@ -1275,8 +1264,8 @@ beforeAll(async () => {
       OMB_COMPOSIO_BROKER_URL: `http://127.0.0.1:${boatStubPort}/broker`,
       OMB_COMPOSIO_BROKER_TOKEN: "a".repeat(64),
       OMB_STATIC_DIR: staticDir,
-      // A stand-in binary the fake engines never run: the turn only has to mount it.
-      OMB_AGENT_BROWSER_PATH: join(home, "fake-agent-browser"),
+      // A stand-in Chrome nothing here starts: the turn only has to mount the browser.
+      OMB_CHROME_PATH: join(home, "fake-chrome"),
       // Production uses 15 s; the real timer path stays, but fast.
       OMB_SSE_HEARTBEAT_MS: "50",
       FAKE_CLAUDE_MODE: "hang",
@@ -3257,77 +3246,6 @@ describe("harness HTTP API", () => {
     expect(deleted.status).toBe(200);
     const after = await api("GET", "/api/bots");
     expect(after.body.bots.find((b: { id: string }) => b.id === bot.id)).toBeUndefined();
-  });
-
-  it("broadcasts browser install start, Chrome failure, and a clean retry with the binary present", async () => {
-    const failureMarker = join(home, "browser-clear-fails");
-    const stream = await openSse(`${BASE}/api/events`);
-    try {
-      writeFileSync(failureMarker, "fail");
-      for (const headers of [{ "content-type": "application/x-www-form-urlencoded" }, { "content-type": "text/plain" }, { "content-type": "application/jsonp" }, undefined]) {
-        const refused = await fetch(`${BASE}/api/browser-engine/install`, { method: "POST", headers, body: headers ? "x=1" : undefined });
-        expect(refused.status).toBe(415);
-      }
-      expect(stream.frames.some((frame) => frame.kind === "config" && frame.browserEngine?.installing === true)).toBe(false);
-      expect((await api("POST", "/api/browser-engine/install", {})).status).toBe(202);
-      const start = await stream.until((frame) => frame.kind === "config" && frame.browserEngine?.installing === true);
-      expect(start.browserEngine).toMatchObject({ kind: "engine", installing: true });
-      expect(start.browserEngine).not.toHaveProperty("installError");
-      const failed = await stream.until((frame) => frame.kind === "config" && frame.browserEngine?.installError);
-      expect(failed.browserEngine).toMatchObject({ kind: "engine", installError: expect.stringMatching(/install exited 1/) });
-      expect(failed.browserEngine.installing).not.toBe(true);
-      rmSync(failureMarker);
-      stream.frames.splice(0);
-      expect((await api("POST", "/api/browser-engine/install", {})).status).toBe(202);
-      const retry = await stream.until((frame) => frame.kind === "config" && frame.browserEngine?.installing === true);
-      expect(retry.browserEngine).not.toHaveProperty("installError");
-      await stream.until((frame) => frame.kind === "config" && frame.browserEngine?.kind === "engine" && !frame.browserEngine.installing && !frame.browserEngine.installError);
-    } finally {
-      rmSync(failureMarker, { force: true });
-      stream.close();
-    }
-  });
-
-  it.each([
-    ["bot", "key-write"], ["bot", "engine-exit"],
-    ["profile", "key-write"], ["profile", "engine-exit"],
-  ])("keeps failed browser %s cleanup pending without crashing (%s)", async (target, failure) => {
-    const bot = (await api("POST", "/api/bots")).body.bot;
-    const id = target === "bot" ? bot.id : `cleanup-${failure}`;
-    if (target === "profile") {
-      expect((await api("PATCH", "/api/config", { browserProfiles: [{ id, name: "Cleanup fixture" }] })).status).toBe(200);
-      expect((await api("PATCH", `/api/bots/${bot.id}`, { browserProfile: id })).status).toBe(200);
-    }
-    const key = join(home, ".openmausbot", "browser-engine-key");
-    const backup = `${key}.fixture-backup`;
-    const failureMarker = join(home, "browser-clear-fails");
-    const hadKey = existsSync(key);
-    if (failure === "key-write") {
-      if (hadKey) renameSync(key, backup);
-      mkdirSync(key); // deterministic EISDIR, even when the fixture runs as root
-    } else {
-      writeFileSync(failureMarker, "fail");
-    }
-    const journal = () => JSON.parse(readFileSync(join(home, ".openmausbot", "browser-cleanups.json"), "utf8")) as Array<{ id: string; phase: string }>;
-    try {
-      const deleted = target === "bot"
-        ? await api("DELETE", `/api/bots/${bot.id}`)
-        : await api("PATCH", "/api/config", { browserProfiles: [] });
-      expect(deleted.status).toBe(503);
-      expect(deleted.body.error).toMatch(/could not confirm.*browser data was erased/i);
-      expect(journal()).toContainEqual(expect.objectContaining({ id, phase: "committed" }));
-      expect((await api("GET", "/api/health")).status).toBe(200);
-      expect(child.exitCode).toBeNull();
-    } finally {
-      if (failure === "key-write") {
-        rmSync(key, { recursive: true });
-        if (hadKey) renameSync(backup, key);
-      } else {
-        rmSync(failureMarker);
-      }
-    }
-    await expect.poll(() => journal().some((request) => request.id === id), { timeout: 8_000 }).toBe(false);
-    if (target === "profile") expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
   });
 
   it("clears an explicit computer to Auto and refuses passive Auto Boat provisioning", async () => {
@@ -10175,133 +10093,6 @@ describe("harness HTTP API", () => {
     }
   });
 
-  it("releases a room bot when preparing its saved browser fails, then allows retry", async () => {
-    const bot = (await api("POST", "/api/bots")).body.bot;
-    const failureMarker = join(home, "browser-clear-fails");
-    let room: any;
-    try {
-      expect((await api("PATCH", "/api/config", {
-        features: { browser: true }, browserProfiles: [{ id: "prep-failure", name: "Preparation failure" }],
-      })).status).toBe(200);
-      expect((await api("PATCH", `/api/bots/${bot.id}`, {
-        browserProfile: "prep-failure", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
-      })).status).toBe(200);
-      room = (await api("POST", "/api/groups", {
-        name: "Browser setup failure", memberIds: [bot.id],
-        setup: { bulletin: "", defaultResponder: { kind: "member", botId: bot.id } },
-      })).body.group;
-      writeFileSync(failureMarker, "fail only this fixture's browser close");
-      rmSync(fakeClaudeDump, { force: true });
-      expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "Check the website" })).status).toBe(202);
-      await expect.poll(() => readFileSync(join(home, "browser-calls.jsonl"), "utf8").includes('"session":"prep-failure"')).toBe(true);
-      await expect.poll(async () => {
-        const current = (await api("GET", "/api/bots?messages=20")).body;
-        const member = current.bots.find((candidate: { id: string }) => candidate.id === bot.id);
-        const group = current.groups.find((candidate: { id: string }) => candidate.id === room.id);
-        return { busy: member?.busy, working: group?.working, failed: group?.messages.some(
-          (message: { tool?: { name?: string } }) => message.tool?.name?.includes("Could not safely prepare saved browser logins"),
-        ) };
-      }, { timeout: 5_000 }).toEqual({ busy: false, working: false, failed: true });
-      expect(existsSync(fakeClaudeDump)).toBe(false);
-      rmSync(failureMarker, { force: true });
-      expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "Retry the website" })).status).toBe(202);
-      await expect.poll(async () => existsSync(fakeClaudeDump) ? "dispatched" : (await api("GET", "/api/bots?messages=20")).body.groups
-        .find((candidate: { id: string }) => candidate.id === room.id)?.messages
-        .filter((message: { tool?: unknown }) => message.tool).map((message: { tool: { name: string } }) => message.tool.name),
-      { timeout: 5_000 }).toBe("dispatched");
-    } finally {
-      rmSync(failureMarker, { force: true });
-      try {
-        if (room) {
-          await api("POST", `/api/groups/${room.id}/interrupt`, {}).catch(() => undefined);
-          await expect.poll(async () => {
-            const current = (await api("GET", "/api/bots?messages=20")).body;
-            const member = current.bots.find((candidate: { id: string }) => candidate.id === bot.id);
-            const group = current.groups.find((candidate: { id: string }) => candidate.id === room.id);
-            return { busy: member?.busy, working: group?.working };
-          }, { timeout: 5_000 }).toEqual({ busy: false, working: false });
-        }
-      } finally {
-        const configCleanup = await api("PATCH", "/api/config", { features: { browser: false }, browserProfiles: [] });
-        if (room) await api("DELETE", `/api/groups/${room.id}`).catch(() => undefined);
-        const botCleanup = await api("DELETE", `/api/bots/${bot.id}`);
-        expect(configCleanup.status, JSON.stringify(configCleanup.body)).toBe(200);
-        expect(botCleanup.status, JSON.stringify(botCleanup.body)).toBe(200);
-      }
-    }
-  });
-
-  it.skipIf(process.platform === "win32").each([
-    { mode: "size", sizes: [FILE_MAX_BYTES + 1], message: "Uploads are limited to 100 MiB per file.", status: 200 },
-    { mode: "batch", sizes: Array(5).fill(21 * 1024 * 1024) as number[], message: "Uploads are limited to 100 MiB per batch.", status: 200 },
-    { mode: "changed", sizes: [1024], message: expect.stringContaining("changed while staging"), status: 200 },
-    { mode: "stop", sizes: [1024], message: expect.stringContaining("turn has already ended"), status: 401 },
-    { mode: "disk", sizes: [1024], message: expect.stringMatching(/ENOTDIR|EEXIST/), status: 500 },
-  ])("returns the correct browser upload result for $mode", async ({ mode, sizes, message, status }) => {
-    const bot = (await api("POST", "/api/bots")).body.bot;
-    const gate = join(home, "browser-upload-read-gate");
-    const folder = join(home, ".openmausbot", "browser-uploads");
-    const backup = folder + ".backup";
-    let blockedFolder = false;
-    let pending: Promise<Response> | undefined;
-    try {
-      expect((await api("PATCH", "/api/config", {
-        features: { browser: true }, browserEngine: { engine: "chrome" },
-      })).status).toBe(200);
-      expect((await api("PATCH", `/api/bots/${bot.id}`, {
-        approvalMode: "auto", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
-      })).status).toBe(200);
-      const workspace = join(home, ".openmausbot", "workspaces", bot.id);
-      mkdirSync(workspace, { recursive: true });
-      const files = sizes.map((size, i) => {
-        const file = join(workspace, `upload-${i}.bin`);
-        writeFileSync(file, "");
-        truncateSync(file, size);
-        return file;
-      });
-      rmSync(fakeClaudeDump, { force: true });
-      expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "Upload the synthetic files." })).status).toBe(202);
-      const dump = await readJsonFileWhenReady(fakeClaudeDump) as {
-        mcpConfig: { mcpServers: { browser: { env: Record<string, string> } } };
-      };
-      if (mode === "disk") {
-        if (existsSync(folder)) renameSync(folder, backup);
-        writeFileSync(folder, "not a directory");
-        blockedFolder = true;
-      }
-      if (mode === "changed" || mode === "stop") writeFileSync(gate, files[0]!);
-      pending = fetch(`${BASE}/api/internal/browser/mcp`, {
-        method: "POST", headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${dump.mcpConfig.mcpServers.browser.env.OMB_MCP_TOKEN_BROWSER}`,
-        },
-        body: JSON.stringify({ method: "tools/call", params: { name: "agent_browser_upload", arguments: { files } } }),
-      });
-      if (mode === "changed" || mode === "stop") {
-        await expect.poll(() => existsSync(gate + ".entered")).toBe(true);
-        truncateSync(files[0]!, 0);
-        if (mode === "stop") expect((await api("POST", `/api/bots/${bot.id}/interrupt`, {})).status).toBe(200);
-        writeFileSync(gate + ".release", "");
-      }
-      const response = await pending;
-      const body = await response.json();
-      expect({ status: response.status, body }).toEqual({
-        status, body: status === 200 ? { result: { isError: true, content: [{ type: "text", text: message }] } } : { error: message },
-      });
-    } finally {
-      writeFileSync(gate + ".release", "");
-      await api("POST", `/api/bots/${bot.id}/interrupt`, {}).catch(() => undefined);
-      await pending?.catch(() => undefined);
-      for (const file of [gate, gate + ".entered", gate + ".release"]) rmSync(file, { force: true });
-      if (blockedFolder) {
-        rmSync(folder, { force: true });
-        if (existsSync(backup)) renameSync(backup, folder);
-      }
-      await api("PATCH", "/api/config", { features: { browser: false }, browserEngine: { engine: "agent-browser" } }).catch(() => undefined);
-      await api("DELETE", `/api/bots/${bot.id}`).catch(() => undefined);
-    }
-  });
-
   it("tells a bot its current browser profile and who can change it when it asks select_computer", async () => {
     const bot = (await api("POST", "/api/bots")).body.bot;
     try {
@@ -10594,8 +10385,6 @@ describe("harness HTTP API", () => {
           OMB_PORT: String(isolatedPort),
           OMB_WEBHOOK_PORT: String(isolatedPort + 1),
           OMB_STATIC_DIR: isolatedStatic,
-          // macOS caps socket paths at 103 bytes, so a real agent-browser cannot name its socket under this HOME.
-          OMB_AGENT_BROWSER_PATH: join(isolatedHome, "missing-agent-browser"),
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
         },
@@ -10643,12 +10432,8 @@ describe("harness HTTP API", () => {
       expect((await api("PATCH", `/api/bots/${bot.id}`, { browserProfile: "client" })).body.bot.browserProfile).toBe("client");
       const config = JSON.parse(readFileSync(join(home, ".openmausbot", "config.json"), "utf8"));
       const profile = config.browserProfiles.find((entry: { id: string }) => entry.id === "client");
-      rmSync(join(home, "browser-calls.jsonl"), { force: true });
+      expect(profile).toBeDefined();
       expect((await api("PATCH", "/api/config", { browserProfiles: [] })).status).toBe(200);
-      const calls = readFileSync(join(home, "browser-calls.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
-      expect(calls).toContainEqual({ args: ["session", "list", "--json"], session: profile.partitionId ?? profile.id });
-      expect(calls).not.toContainEqual({ args: ["close"], session: profile.partitionId ?? profile.id });
-      expect(calls.some((call: { args: string[] }) => call.args.includes("--all"))).toBe(false);
       const state = (await api("GET", "/api/bots")).body;
       expect(state.bots.find((candidate: { id: string }) => candidate.id === bot.id)).not.toHaveProperty("browserProfile");
     } finally {

@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PAYMENT_APPROVAL_MS } from "../../shared/payment-request.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
-import type { StepContext } from "../browser-steps.ts";
 import type { BotRecord } from "../store.ts";
 import { VaultStore } from "../vault-store.ts";
 import { createFillCardTurn, type FillCardTurnDeps } from "./fill-card-turn.ts";
@@ -44,7 +43,7 @@ function checkout(url: string, text: string) {
   return page;
 }
 
-function setup(options: { engine?: "new" | "old" } = {}) {
+function setup(options: { unavailable?: string } = {}) {
   let clock = 1_000_000;
   const vault = new VaultStore({ dataDir: dir, now: () => clock });
   const card = vault.saveCard({ name: "Personal", number: VISA, expMonth: 4, expYear: 2031, cvc: "314", bots: ["pepper"] });
@@ -65,13 +64,13 @@ function setup(options: { engine?: "new" | "old" } = {}) {
   const page = checkout("https://shop.example.com/checkout", "Order total $42.10 Pay now");
   const deps: FillCardTurnDeps = {
     place: () => "browser", current: (bot) => bot, builtInBrowserOn: () => true,
-    target: async () => ({ session: "s1", spec: { command: "chrome", env: {} }, env: {} }),
-    cardInput: () => (options.engine === "old" ? null : page.input),
+    target: async () => ({ session: "s1", spec: { command: "omb-cdp", env: {} } }),
+    browserUnavailable: () => options.unavailable ?? null,
+    cardInput: () => page.input,
     claim: () => true,
     withSecretInput: vi.fn(async (_session, _spec, fill) => fill()),
     cards: vault, payments, from: () => undefined,
     remember: (value) => { remembered.push(value); },
-    stepContext: () => ({}) as StepContext,
     now: () => clock,
   };
   const { fillCardForTurn } = createFillCardTurn(deps);
@@ -141,9 +140,11 @@ describe("fill_card", () => {
     expect((await stale.pay()).text).toContain("End this turn now");
     expect(stale.page.typed).toEqual([]);
 
-    const old = setup({ engine: "old" });
-    expect((await old.pay()).text).toContain("needs the new browser");
-    expect(old.lines).toEqual([]);
+    const blocked = setup({ unavailable: "Chrome could not be started: This host blocks the sandbox the browser runs in (AppArmor on Ubuntu 23.10+)." });
+    const refused = (await blocked.pay()).text;
+    expect(refused).toContain("The browser cannot run on this computer: Chrome could not be started: This host blocks the sandbox");
+    expect(refused).not.toContain("New browser");
+    expect(blocked.lines).toEqual([]);
   });
 
   it("needs the desktop app or an admin to approve, and an http page never gets a card", async () => {

@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 import { scrubHeldSecrets } from "../../shared/redact.ts";
 import { BrowserLanes } from "../browser-lane.ts";
-import { BROWSER_CALL_DEFAULTS, type BrowserTiming } from "../browser-runtime.ts";
+import { BROWSER_CALL_DEFAULTS, type BrowserTiming } from "./calls.ts";
 import { SecretHolds, type SecretHold } from "../browser-secret-hold.ts";
 import { scrubBrowserResult } from "../browser-tool-shape.ts";
 import type { CardFillDeps } from "../card-fill.ts";

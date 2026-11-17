@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { loginPlace } from "../shared/logins.ts";
 import { addHeldSecretScrubber, redactSecretsInText } from "../shared/redact.ts";
-import { decryptBrowserState, encryptBrowserState } from "./browser-sites.ts";
+import { unsealText, sealText } from "./sealed-text.ts";
 import { HeldSecrets, LOGINS_FILE, LOGINS_KEY_FILE, MEMBER_SECRETS_FILE, TEAM_READER, VaultStore, secretForms } from "./vault-store.ts";
 import { parseTotpKey } from "./totp.ts";
 
@@ -73,7 +73,7 @@ describe("the saved logins store", () => {
 
   it("gives a login saved for one host its site, so it fills on www and other subdomains, and keeps the file readable by the previous release", () => {
     writeFileSync(join(dir, LOGINS_KEY_FILE), `${KEY}\n`, { mode: 0o600 });
-    writeFileSync(join(dir, LOGINS_FILE), encryptBrowserState(JSON.stringify({ version: 1, logins: [
+    writeFileSync(join(dir, LOGINS_FILE), sealText(JSON.stringify({ version: 1, logins: [
       { id: "old-1", host: "example.com", username: "alice", password: PASSWORD, source: "card", bots: ["pepper"], createdAt: 5, updatedAt: 5 },
       { id: "old-2", host: "alice.github.io", username: "alice", password: "fake-pages-pass", source: "settings", bots: "all", createdAt: 6, updatedAt: 6 },
       { id: "old-3", host: "login.example.org", username: "ops", password: "fake-org-pass", source: "settings", bots: "all", createdAt: 7, updatedAt: 7 },
@@ -90,7 +90,7 @@ describe("the saved logins store", () => {
     expect(store.usableFor("www.example.org", "pepper").map((login) => login.id)).toEqual(["old-3"]);
 
     store.markUsed("old-1");
-    const written = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), KEY));
+    const written = JSON.parse(unsealText(readFileSync(join(dir, LOGINS_FILE)), KEY));
     expect(written.logins[0]).toMatchObject({ id: "old-1", host: "example.com", site: "example.com", hosts: ["example.com"], exactHost: false, lastUsedAt: 9 });
     expect(previousRelease.parse(written).logins.map((login) => login.host)).toEqual(["example.com", "alice.github.io", "login.example.org"]);
     expect(new VaultStore({ dataDir: dir }).onePasswordToken()).toBe("ops_fake-token");
@@ -181,7 +181,7 @@ describe("the Vault's saved secrets", () => {
     expect(reopened.listSecrets(TEAM_READER)).toEqual([saved]);
     expect(JSON.stringify(reopened.listSecrets(TEAM_READER))).not.toContain(STRIPE);
     const key = readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim();
-    const written = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), key));
+    const written = JSON.parse(unsealText(readFileSync(join(dir, LOGINS_FILE)), key));
     expect(written.version).toBe(1);
     expect(previousRelease.parse(written).logins.map((login) => login.username)).toEqual(["alice"]);
   });
@@ -237,7 +237,7 @@ describe("a Team Cloud member's own secrets", () => {
     expect(saved).toEqual({ id: saved.id, name: "Stripe secret key", source: "card", bots: ["pepper"], refOnly: true, createdAt: 9, updatedAt: 9 });
     expect(readdirSync(dir).sort()).toEqual([LOGINS_KEY_FILE, LOGINS_FILE, MEMBER_SECRETS_FILE].sort());
     const key = readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim();
-    expect(JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), key)).secrets.map((one: { name: string }) => one.name)).toEqual(["Team key"]);
+    expect(JSON.parse(unsealText(readFileSync(join(dir, LOGINS_FILE)), key)).secrets.map((one: { name: string }) => one.name)).toEqual(["Team key"]);
     for (const word of ["sk_test_fake", ADA, "Stripe"]) expect(readFileSync(join(dir, MEMBER_SECRETS_FILE)).includes(Buffer.from(word)), word).toBe(false);
     if (process.platform !== "win32") expect(statSync(join(dir, MEMBER_SECRETS_FILE)).mode & 0o777).toBe(0o600);
     const reopened = new VaultStore({ dataDir: dir });
@@ -332,7 +332,7 @@ describe("what saved secrets go with", () => {
     const store = new VaultStore({ dataDir: dir });
     store.create({ ...at("example.com"), username: "alice", password: PASSWORD, source: "settings", bots: "all" });
     store.grantMcpKeys("stripe", ["33333333-3333-4333-8333-333333333333"]);
-    const plain = JSON.parse(decryptBrowserState(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
+    const plain = JSON.parse(unsealText(readFileSync(join(dir, LOGINS_FILE)), readFileSync(join(dir, LOGINS_KEY_FILE), "utf8").trim()));
     expect(previousRelease.safeParse(plain).success).toBe(true);
   });
 });

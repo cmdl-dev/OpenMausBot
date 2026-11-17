@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BrowserRuntime } from "../browser-runtime.ts";
-import { CHROME_ENGINE, RuntimeRouter, type ChromeEngine } from "./engines.ts";
+import { BrowserRuntime, CHROME_ENGINE, type ChromeEngine } from "./engines.ts";
 import { googleRefusalIn, googleRefusalNotice, passkeyAnnotation, passkeyNotice, withPasskeyNotice } from "./passkey-notice.ts";
 
 const page = (text: string) => ({ content: [{ type: "text", text }] });
@@ -32,21 +31,16 @@ describe("the passkey notice a bot gets", () => {
   });
 });
 
-describe("the runtime router annotates tool answers from either engine", () => {
+describe("the browser runtime annotates tool answers", () => {
   const annotate = passkeyAnnotation("cloud");
-  const old = { agentRpc: vi.fn(async () => page(PASSKEY_PAGE)) } as unknown as BrowserRuntime;
   const chrome = { service: { agentRpc: vi.fn(async () => page(PASSKEY_PAGE)) } } as unknown as ChromeEngine;
-  const router = new RuntimeRouter(old, chrome, { annotate });
+  const runtime = new BrowserRuntime(chrome, { annotate });
   const call = { name: "agent_browser_snapshot", arguments: {} };
+  const spec = { command: CHROME_ENGINE, args: ["bot:b"], env: {} };
 
-  it("on agent-browser and on the Chrome engine, for calls but not the tool list", async () => {
-    expect(texts(await router.agentRpc("s1", { command: "agent-browser", args: [], env: {} }, "tools/call", call)).at(-1)).toBe(passkeyNotice("google", "cloud"));
-    expect(texts(await router.agentRpc("s2", { command: CHROME_ENGINE, args: ["bot:b"], env: {} }, "tools/call", call)).at(-1)).toBe(passkeyNotice("google", "cloud"));
-    expect(texts(await router.agentRpc("s1", { command: "agent-browser", args: [], env: {} }, "tools/list", {}))).toEqual([PASSKEY_PAGE]);
-  });
-
-  it("not in the person's own Chrome, where their passkey works", async () => {
-    expect(texts(await router.agentRpc("s3", { command: "agent-browser", args: [], env: { AGENT_BROWSER_AUTO_CONNECT: "1" } }, "tools/call", call))).toEqual([PASSKEY_PAGE]);
+  it("for calls but not the tool list", async () => {
+    expect(texts(await runtime.agentRpc("s2", spec, "tools/call", call)).at(-1)).toBe(passkeyNotice("google", "cloud"));
+    expect(texts(await runtime.agentRpc("s2", spec, "tools/list", {}))).toEqual([PASSKEY_PAGE]);
   });
 });
 
@@ -81,11 +75,10 @@ describe("Google's refusal page hands the sign-in to the person", () => {
     expect(withPasskeyNotice(signIn, "cloud")).toBe(signIn);
   });
 
-  it("not in the person's own Chrome", async () => {
-    const old = { agentRpc: vi.fn(async () => page(REFUSED)) } as unknown as BrowserRuntime;
-    const router = new RuntimeRouter(old, {} as unknown as ChromeEngine, { annotate: passkeyAnnotation("cloud") });
+  it("through the browser runtime", async () => {
+    const chrome = { service: { agentRpc: vi.fn(async () => page(REFUSED)) } } as unknown as ChromeEngine;
+    const runtime = new BrowserRuntime(chrome, { annotate: passkeyAnnotation("cloud") });
     const call = { name: "agent_browser_snapshot", arguments: {} };
-    expect(texts(await router.agentRpc("r1", { command: "agent-browser", args: [], env: {} }, "tools/call", call)).at(-1)).toBe(googleRefusalNotice("cloud"));
-    expect(texts(await router.agentRpc("r2", { command: "agent-browser", args: [], env: { AGENT_BROWSER_AUTO_CONNECT: "1" } }, "tools/call", call))).toEqual([REFUSED]);
+    expect(texts(await runtime.agentRpc("r1", { command: CHROME_ENGINE, args: ["bot:r"], env: {} }, "tools/call", call)).at(-1)).toBe(googleRefusalNotice("cloud"));
   });
 });

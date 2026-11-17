@@ -32,7 +32,7 @@ const subscribe = (listener: () => void) => {
 
 /** Chromium and Safari float a canvas-captured video; Firefox has no API for it. */
 export function supportsBrowserPictureInPicture(): boolean {
-  if (typeof document === "undefined") return false;
+  if (typeof document === "undefined" || typeof HTMLCanvasElement === "undefined") return false;
   if (typeof HTMLCanvasElement.prototype.captureStream !== "function") return false;
   const video = HTMLVideoElement.prototype as HTMLVideoElement & WebKitVideo;
   return (

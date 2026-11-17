@@ -290,7 +290,7 @@ function call(script: string, ...args: unknown[]): string {
   return `${script}(${args.map((arg) => JSON.stringify(arg ?? null)).join(", ")})`;
 }
 
-/** agent-browser hands back the expression's result, which these scripts make a JSON string. */
+/** The page hands back the expression's result, which these scripts make a JSON string. */
 function evaluated(data: Record<string, unknown> | null): Record<string, unknown> | null {
   let value: unknown = data?.result;
   for (let depth = 0; depth < 2 && typeof value === "string"; depth++) {

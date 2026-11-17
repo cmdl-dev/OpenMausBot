@@ -168,7 +168,7 @@ export const WORDS = Object.freeze({
     "lending.action.screen": "Usou apps e a tela",
     "lending.action.website": "Abriu um site",
     "lending.action.chrome": "Usou seu Chrome",
-    "lending.action.codex": "Codex job",
+    "lending.action.codex": "Trabalho do Codex",
     "lending.action.invalid": "Pedido malformado",
     "lending.action.other": "Outro pedido",
   }),

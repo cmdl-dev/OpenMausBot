@@ -14,10 +14,10 @@ const SIGNED_IN_REPLY = "You are signed in, so I opened the dashboard.";
 /** A server whose bot asks for a sign-in on its first turn and reports the dashboard on its second. */
 async function signInFixture() {
   const tools = mkdtempSync(join(tmpdir(), "omb-sign-in-e2e-"));
-  const binaryPath = join(tools, "agent-browser");
-  // Answers the saved-login check the mount makes; every other command succeeds silently.
-  writeFileSync(binaryPath, `#!/bin/sh\nif [ "$1" = session ] && [ "$2" = list ]; then printf '{"success":true,"data":{"sessions":[]}}'; fi\nexit 0\n`, { mode: 0o755 });
-  const fixture = await launchVerificationServer({}, undefined, undefined, { binaryPath, executablePath: join(tools, "chrome") }, undefined, { scripted: true });
+  // The browser mount only needs a Chrome to name; no call here starts it.
+  const chrome = join(tools, "chrome");
+  writeFileSync(chrome, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  const fixture = await launchVerificationServer({}, undefined, undefined, { chrome }, undefined, { scripted: true });
   const url = fixture.info.url;
   const planPath = join(fixture.info.dataDir, "room-plan.json");
   const evidence = () => existsSync(`${planPath}.evidence.jsonl`)
@@ -54,7 +54,7 @@ async function signInFixture() {
   }
 }
 
-// The browser stand-in is a shell script; the mount only needs it to exist.
+// The Chrome stand-in is a shell script; the mount only needs it to exist.
 it.skipIf(process.platform === "win32")("asks the person to sign in from a real turn, and runs the bot's next turn when they press Done", async () => {
   const { bot, api, evidence, messages, send, wait, stream, close } = await signInFixture();
   try {

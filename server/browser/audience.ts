@@ -11,8 +11,7 @@ import { type Audience, audienceMember, audienceRoom } from "../audience.ts";
 const SUFFIX = /^--(?:room|member)-[0-9a-f]{16}$/;
 
 /** What an audience adds to the name of a bot's browser, or of a shared profile: nothing for the team's, else a fixed
- * 23 or 25 characters. agent-browser 0.37 keeps each session's socket at ~/.agent-browser/<session>.sock and refuses a
- * path over 103 bytes, which a bot's id plus a group chat's whole id would pass on a Cloud home. */
+ * 23 or 25 characters, so a bot's id plus a group chat's whole id never makes a name too long for a file name. */
 export function audienceBrowserSuffix(audience: Audience): string {
   if (audience === "team") return "";
   const room = audienceRoom(audience);

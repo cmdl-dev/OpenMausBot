@@ -399,6 +399,10 @@ export function createBrowserHost(deps: BrowserHostDeps) {
     }
     return { engine: (args) => inRunningBrowser(spec.command, env, args), ...relayInput(spec, session) };
   }
+  /** fill_card's reads and typing; null on the older engine, which cannot keep a typed card out of screenshots. */
+  function cardInput(session: string, spec: Spec) {
+    return chromeTarget(session, spec) ? chromeEngine.cardDeps(session) : null;
+  }
   function browserSystemPrompt(profile: string | undefined): string {
     return onChrome(profile) ? CHROME_BROWSER_SYSTEM_PROMPT : BUILT_IN_BROWSER_SYSTEM_PROMPT;
   }
@@ -563,7 +567,7 @@ export function createBrowserHost(deps: BrowserHostDeps) {
   return {
     browserRuntime, browserLive, usedBrowserSessions, browserSweep, temporaryBrowserSessions, browserIdleMs: idleMs,
     currentBrowserSession, forgetTemporaryBrowser, myChromeAvailable, lentChromeSummary, usesMyChrome, browserSessionSpec, browserIntegration,
-    browserReady, currentBrowserSpec, loginInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
+    browserReady, currentBrowserSpec, loginInput, cardInput, browserSystemPrompt, signedInSitesRefusal, closeBrowser, browserEngineSwitched,
     eraseDeletedBrowser, engineSummary, engineBrowsers, browserAudience, browserSessionsOf, signedInSitesTarget, uploadPaths,
     eraseAudienceBrowsers,
   };

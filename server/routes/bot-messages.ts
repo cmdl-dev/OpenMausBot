@@ -99,6 +99,10 @@ export interface BotMessageRouteDeps {
   resolveAndSendTrust(res: ServerResponse, threadId: string, requestId: string, behavior: Behavior): boolean;
   resolveAndSendTeamSetup(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<boolean>;
   resolveAndSendMcp(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<boolean>;
+  /** A Pay card: approving it lets the bot fill a saved card once. */
+  resolveAndSendPayment(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): boolean;
+  /** A card the person typed into a card-entry ask, which approves that payment. */
+  providePaymentCard(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; body: Record<string, unknown> }, ownerReview: boolean): void;
   resolveAndSendRoutine(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendProfile(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendModel(res: ServerResponse, args: CardAnswer): boolean;
@@ -170,7 +174,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender, cloudGuestSendRefusal, cloudThreadRefusal,
     cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
     botAtThreadCapacity, parksBehindCoordination, activeGroupTurnForBot, runningTurnInstance, engineSteersImages, resolveReplyTarget,
-    turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup, resolveAndSendMcp,
+    turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup, resolveAndSendMcp, resolveAndSendPayment, providePaymentCard,
     resolveAndSendRoutine, resolveAndSendProfile, resolveAndSendModel, resolveSkillRequest, sendSkillResolution, answerRequest,
     deliverLateQuestionAnswer, stopThreadForPerson, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
     cancelGroupTurnOperations, closeOpenApprovals, harnessCardOutcome, pressRecords, serverPress, relayedReaction, answeredIn, fromPhone, notePhoneSend, goals,
@@ -578,6 +582,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         const answer = { botId: bot.id, threadId: bot.threadId, requestId: String(body.requestId), behavior };
         if (await resolveAndSendTeamSetup(res, answer, ownerReview(auth, req))) return;
         if (await resolveAndSendMcp(res, answer, ownerReview(auth, req))) return;
+        if (resolveAndSendPayment(res, answer, ownerReview(auth, req))) return;
         if (resolveAndSendRoutine(res, {
           botId: bot.id,
           botName: bot.name,
@@ -627,6 +632,17 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         }
         return json(res, 200, { ok: true, outcome });
       });
+    }
+    m = path.match(/^\/api\/threads\/([\w-]+)\/payment-card$/);
+    if (m && method === "POST") {
+      const body = await readBody(req, 8_192);
+      const requestId = String(body.requestId);
+      const refusal = cardAnswerRefusal(auth, m[1], requestId, "allow");
+      if (refusal) return json(res, 403, { error: refusal });
+      const paymentCard = store.messagesFor(m[1]).find((message) => message.card?.requestId === requestId && message.card.paymentRequest);
+      const paymentBotId = paymentCard?.card?.paymentRequest?.botId;
+      if (!paymentBotId) return json(res, 404, { error: "This card is no longer here." });
+      return await answeringCardAs(auth, m[1], requestId, async () => providePaymentCard(res, { botId: paymentBotId, threadId: m![1]!, requestId, body }, ownerReview(auth, req)));
     }
     m = path.match(/^\/api\/threads\/([\w-]+)\/respond$/);
     if (m && method === "POST") {
@@ -689,6 +705,12 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
           const mcpBotId = mcpCard.from?.botId ?? store.botByThread(threadId)?.id;
           if (!mcpBotId) return json(res, 400, { error: "This MCP server card has no valid owner" });
           if (await resolveAndSendMcp(res, { botId: mcpBotId, threadId, requestId, behavior }, ownerReview(auth, req))) return;
+        }
+        const paymentCard = store.messagesFor(threadId).find((message) => message.card?.requestId === requestId && message.card.paymentRequest);
+        if (paymentCard) {
+          const paymentBotId = paymentCard.from?.botId ?? store.botByThread(threadId)?.id;
+          if (!paymentBotId) return json(res, 400, { error: "This payment card has no valid owner" });
+          if (resolveAndSendPayment(res, { botId: paymentBotId, threadId, requestId, behavior }, ownerReview(auth, req))) return;
         }
         const profileCard = store.messagesFor(threadId).find(
           (message) => message.card?.requestId === requestId && message.card.profileRequest,

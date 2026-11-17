@@ -312,7 +312,7 @@ export function createSettingsRegistry(deps: RegistryDeps): SettingEntry[] {
   const ownerOnly = (id: string, label: string, help: string, where: Where, synonyms: string[], read: () => string): SettingEntry => ({ id, label, help, where, synonyms, tier: "owner-only", read });
   const owner: SettingEntry[] = [
     ownerOnly("cloud.account", "MausBot Cloud account", "The account this app is signed in with, and its plan.", "Settings → Your account", ["account", "sign in", "sign out", "plan", "billing", "subscription"], () => "managed in Settings"),
-    ownerOnly("vault.logins", "Vault and logins", "Saved website logins and secrets bots may use.", "Settings → Vault", ["vault", "password", "passwords", "login", "logins", "1password"], () => "managed in Settings"),
+    ownerOnly("vault.logins", "Vault and logins", "Saved website logins, secrets and payment cards bots may use.", "Settings → Vault", ["vault", "password", "passwords", "login", "logins", "1password", "credit card", "saved cards"], () => "managed in Settings"),
     ownerOnly("data.backups", "Backups", "Making a backup (it takes a password), restoring or deleting one, and the daily company backup (it takes a typed confirmation).", "Settings → Data",
       ["backup", "backups", "restore", "export", "import", "schedule"], () => "managed in Settings"),
     ownerOnly("phone.pairing", "Paired devices", "Pairing a phone or computer with a code, removing one, and what each paired device may do.", "Settings → Phone & devices",

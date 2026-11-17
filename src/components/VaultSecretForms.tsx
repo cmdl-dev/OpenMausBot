@@ -2,9 +2,10 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Loader2, LockKeyhole } from "lucide-react";
 
 import type { LoginBots } from "../../shared/logins";
+import { CARD_HOLDER_MAX, CARD_NAME_MAX, CARD_POSTAL_MAX, validCardNumber, type VaultCard } from "../../shared/payment-cards";
 import { VAULT_SECRET_NAME_MAX, type VaultSecret } from "../../shared/vault";
 import { t } from "@/lib/i18n";
-import { addSecret, changeSecret, importEnv, parseEnv } from "@/lib/vault";
+import { addCard, addSecret, changeCard, changeSecret, importEnv, parseEnv } from "@/lib/vault";
 import { LoginBotPicker } from "./LoginForm";
 
 // Security: what was typed is dropped once saved, and a saved value is never shown: it can only be replaced.
@@ -117,6 +118,82 @@ export function EnvImportForm({ bots, onCancel, onSaved }: { bots: Bots; onCance
       </label>
       <LoginBotPicker value={who} onChange={setWho} bots={bots} disabled={pending} />
       {done !== null && <p role="status" className="text-[12px] text-ink-secondary">{t("settings.vault.env.done", { count: String(done) })}</p>}
+    </Shell>
+  );
+}
+
+/** Adds a card, or changes one: the number and security code are only ever replaced, and empty keeps the saved ones. */
+export function CardForm({ card, bots, onCancel, onSaved }: { card?: VaultCard; bots: Bots; onCancel: () => void; onSaved: () => Promise<void> }) {
+  const [name, setName] = useState(card?.name ?? "");
+  const [number, setNumber] = useState("");
+  const [expiry, setExpiry] = useState(card ? `${String(card.expMonth).padStart(2, "0")}/${String(card.expYear % 100).padStart(2, "0")}` : "");
+  const [cvc, setCvc] = useState("");
+  const [holder, setHolder] = useState(card?.holder ?? "");
+  const [postalCode, setPostalCode] = useState(card?.postalCode ?? "");
+  const [who, setWho] = useState<LoginBots>(card?.bots ?? "all");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (pending) return;
+    const exp = /^\s*(\d{1,2})\s*\/\s*(\d{2}|\d{4})\s*$/u.exec(expiry);
+    if (!exp) { setError(t("settings.vault.card.expiryError")); return; }
+    if ((number.trim() || !card) && !validCardNumber(number)) { setError(t("settings.vault.card.numberError")); return; }
+    setPending(true);
+    setError(null);
+    try {
+      const fields = { name: name.trim(), expMonth: Number(exp[1]), expYear: Number(exp[2]), holder: holder.trim(), postalCode: postalCode.trim(), bots: who,
+        ...(number.trim() ? { number } : {}), ...(cvc.trim() ? { cvc: cvc.trim() } : {}) };
+      if (card) await changeCard(card.id, fields);
+      else await addCard(fields);
+      setNumber("");
+      setCvc("");
+      await onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message ? cause.message : t("settings.vault.card.saveError"));
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <Shell form="card-form" onSubmit={(event) => void submit(event)} onCancel={onCancel} pending={pending} error={error}
+      submitLabel={t(card ? "settings.logins.saveChange" : "settings.vault.card.save")}>
+      <label className={LABEL}>
+        {t("settings.vault.card.name")}
+        <input name="cardName" type="text" autoComplete="off" maxLength={CARD_NAME_MAX} value={name} autoFocus
+          placeholder={t("settings.vault.card.namePlaceholder")} onChange={(event) => setName(event.target.value)} disabled={pending} className={FIELD} />
+      </label>
+      <label className={LABEL}>
+        {t(card ? "settings.vault.card.numberKeep" : "settings.vault.card.number")}
+        <input name="cardNumber" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} required={!card} maxLength={23} value={number}
+          placeholder={card ? `•••• ${card.last4}` : "•••• •••• •••• ••••"} onChange={(event) => setNumber(event.target.value)} disabled={pending} className={FIELD} dir="ltr" />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <label className={`${LABEL} min-w-[7rem] flex-1`}>
+          {t("settings.vault.card.expiry")}
+          <input name="cardExpiry" type="text" inputMode="numeric" autoComplete="off" required maxLength={7} value={expiry} placeholder="MM/YY"
+            onChange={(event) => setExpiry(event.target.value)} disabled={pending} className={FIELD} dir="ltr" />
+        </label>
+        <label className={`${LABEL} min-w-[7rem] flex-1`}>
+          {t(card?.hasCvc ? "settings.vault.card.cvcKeep" : "settings.vault.card.cvc")}
+          <input name="cardCvc" type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={cvc} placeholder="•••"
+            onChange={(event) => setCvc(event.target.value)} disabled={pending} className={FIELD} dir="ltr" />
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <label className={`${LABEL} min-w-[10rem] flex-[2]`}>
+          {t("settings.vault.card.holder")}
+          <input name="cardHolder" type="text" autoComplete="off" maxLength={CARD_HOLDER_MAX} value={holder}
+            onChange={(event) => setHolder(event.target.value)} disabled={pending} className={FIELD} />
+        </label>
+        <label className={`${LABEL} min-w-[7rem] flex-1`}>
+          {t("settings.vault.card.postal")}
+          <input name="cardPostal" type="text" autoComplete="off" maxLength={CARD_POSTAL_MAX} value={postalCode}
+            onChange={(event) => setPostalCode(event.target.value)} disabled={pending} className={FIELD} dir="ltr" />
+        </label>
+      </div>
+      <p className="text-[12px] leading-snug text-ink-tertiary">{t("settings.vault.card.approvalNote")}</p>
+      <LoginBotPicker value={who} onChange={setWho} bots={bots} disabled={pending} />
     </Shell>
   );
 }

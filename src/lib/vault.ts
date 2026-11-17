@@ -1,4 +1,5 @@
 import type { LoginBots, LoginSummary, OnePasswordStatus } from "../../shared/logins";
+import type { VaultCard } from "../../shared/payment-cards";
 import type { LinkedSecret, VaultChoice, VaultSecret } from "../../shared/vault";
 import type { ComputerHelpRef } from "../../shared/wire";
 import { api } from "@/state/store";
@@ -8,7 +9,37 @@ import { api } from "@/state/store";
 export interface VaultList {
   logins: LoginSummary[];
   secrets: Array<VaultSecret | LinkedSecret>;
+  /** Absent from a server older than saved cards. */
+  cards?: VaultCard[];
   onePassword: OnePasswordStatus;
+}
+
+export interface CardFields {
+  name: string;
+  number?: string;
+  expMonth: number;
+  expYear: number;
+  cvc?: string;
+  holder: string;
+  postalCode: string;
+  bots: LoginBots;
+}
+
+export async function addCard(fields: CardFields): Promise<VaultCard> {
+  return (await api<{ card: VaultCard }>("/api/vault/cards", { method: "POST", body: JSON.stringify(fields) })).card;
+}
+
+/** An empty number or security code keeps the saved one; an empty name on card or ZIP clears it. */
+export async function changeCard(id: string, fields: CardFields): Promise<VaultCard> {
+  const { number, cvc, ...rest } = fields;
+  return (await api<{ card: VaultCard }>(`/api/vault/cards/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...rest, ...(number?.trim() ? { number } : {}), ...(cvc?.trim() ? { cvc } : {}) }),
+  })).card;
+}
+
+export async function deleteCard(id: string): Promise<void> {
+  await api(`/api/vault/cards/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function listVault(): Promise<VaultList> {

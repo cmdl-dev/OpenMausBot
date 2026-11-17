@@ -20,7 +20,7 @@ import type { ProfileRequestCardData } from "./profile-request.ts";
 import type { ServerTextLine, ServerTextParams } from "./server-text.ts";
 import type { WireTool } from "./wire-tool.ts";
 import type { ModelRequestCardData } from "./model-request.ts";
-import type { ConnectorCardData } from "./connector-card.ts"; import type { McpChangeRequest } from "./mcp-request.ts"; import type { AppSettingCardField, WindowPrefFrame } from "./app-settings.ts";
+import type { ConnectorCardData } from "./connector-card.ts"; import type { McpChangeRequest } from "./mcp-request.ts"; import type { PaymentRequest } from "./payment-request.ts"; import type { AppSettingCardField, WindowPrefFrame } from "./app-settings.ts";
 import type { SkillRequestCardData } from "./skill-request.ts"; import type { OutsideWriteCardField } from "./outside-write.ts";
 import type { QuestionRequestCardData } from "./ask-question.ts";
 import type { AutomationLine, RoutineRunCardData } from "./routine-run.ts";
@@ -692,6 +692,7 @@ export interface OptionCardData extends WaitCardField, ComputerAskField, AccessR
   teamSetupRequest?: TeamSetupRequest;
   /** A bot's MCP server change waiting on the person (Ask, Edits or Auto). */
   mcpRequest?: McpChangeRequest;
+  /** A bot's ask to pay with a saved card, waiting on the person. */ paymentRequest?: PaymentRequest;
   /** A durable learned-skill proposal. */
   skillRequest?: SkillRequestCardData;
   /** A provider's structured question set. */

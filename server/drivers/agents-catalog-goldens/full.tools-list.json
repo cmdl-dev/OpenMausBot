@@ -1302,6 +1302,29 @@
       }
     },
     {
+      "name": "notify_person",
+      "description": "Alert the person on their phone and computer about something that needs their attention now: an important email, a deadline, a problem, or the result they asked to be told about. The note goes in this chat and the alert opens it here. Never for routine status, progress, or \"nothing new\": a routine run that finds nothing important does not call it.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The headline their lock screen shows. No passwords, codes or other secrets."
+          },
+          "text": {
+            "type": "string",
+            "description": "Markdown: what they should look at and why, complete on its own."
+          }
+        },
+        "required": [
+          "title",
+          "text"
+        ]
+      }
+    },
+    {
       "name": "report_bug",
       "description": "Send the person's bug report to the MausBot team (OpenMausBot's developers) with the app's diagnostics. Only for a message that tags @devs, once. No passwords, keys, tokens or file contents.",
       "inputSchema": {

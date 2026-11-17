@@ -1,7 +1,9 @@
 // Closed-app phone alerts. A paired phone registers its APNs or FCM device token here; when an approval, a question, a
-// sign-in request or a finished reply would reach a phone that holds no live event stream, this asks the push relay in
-// the hosted control plane to wake it, with the installation credential this server already has. The push is
-// content-free: kind, a title from names alone, opaque ids. Off unless `features.phonePush` (or OMB_PHONE_PUSH=1).
+// sign-in request, a finished reply, a bot's alert or a wait the person asked for would reach a phone that holds no
+// live event stream, this asks the push relay in the hosted control plane to wake it, with the installation credential
+// this server already has. The push is content-free: kind, a title from names alone, opaque ids; an alert adds the
+// bot's own headline. Off unless `features.phonePush` (or OMB_PHONE_PUSH=1), except for an app whose APNs key the owner
+// gave this server (apns-direct.ts): its pushes go to Apple directly.
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -10,8 +12,11 @@ import { COMPANION_INSTALLATION_CREDENTIAL_FIELD } from "../electron/companion-a
 import { normalizeControlPlaneURL } from "../electron/control-plane-client.mjs";
 import {
   APNS_TOKEN,
+  DEFAULT_PUSH_KINDS,
   FCM_TOKEN,
   PAIRING_TAG,
+  PUSH_BUNDLE_ID,
+  PUSH_QUIET_TIME,
   PHONE_PUSH_RELAY_PATHS,
   PHONE_PUSH_WIRE_VERSION,
   PUSH_ID,
@@ -29,6 +34,7 @@ import {
   type PublicPushDevice,
   type PushKind,
 } from "../shared/phone-push.ts";
+import { validTimeZone, type ApnsOutcome } from "./apns-direct.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { conversationLanguage, serverLine, type ServerLineKey } from "./server-lines.ts";
 
@@ -60,7 +66,11 @@ const TITLES: Record<PushKind, ServerLineKey> = {
   question: "server.notify.question",
   "sign-in": "server.notify.signInWebsite",
   done: "server.notify.done",
+  alert: "server.notify.alert",
+  wait: "server.notify.wait",
 };
+/** The bot's own headline an alert's push carries. */
+export const PUSH_ALERT_BODY_MAX = 120;
 
 /** On only when switched on: OMB_PHONE_PUSH=1 or 0 wins over `features.phonePush` in config.json. */
 export function phonePushEnabled(cfg: { features?: { phonePush?: boolean } }, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -70,10 +80,16 @@ export function phonePushEnabled(cfg: { features?: { phonePush?: boolean } }, en
 }
 
 const kindsSchema = z.array(z.enum(PUSH_KINDS)).max(PUSH_KINDS.length);
+const bundleSchema = z.string().max(155).regex(PUSH_BUNDLE_ID);
+const quietSchema = z.object({
+  start: z.string().regex(PUSH_QUIET_TIME),
+  end: z.string().regex(PUSH_QUIET_TIME),
+  timeZone: z.string().min(1).max(64).refine(validTimeZone, "an IANA time zone"),
+}).strict();
 
 export const registrationSchema = z.discriminatedUnion("platform", [
-  z.object({ platform: z.literal("apns"), token: z.string().trim().toLowerCase().regex(APNS_TOKEN), environment: z.enum(["production", "sandbox"]).default("production"), pairing: z.string().regex(PAIRING_TAG).optional(), kinds: kindsSchema.optional() }).strict(),
-  z.object({ platform: z.literal("fcm"), token: z.string().trim().regex(FCM_TOKEN), environment: z.literal("production").optional(), pairing: z.string().regex(PAIRING_TAG).optional(), kinds: kindsSchema.optional() }).strict(),
+  z.object({ platform: z.literal("apns"), token: z.string().trim().toLowerCase().regex(APNS_TOKEN), environment: z.enum(["production", "sandbox"]).default("production"), pairing: z.string().regex(PAIRING_TAG).optional(), kinds: kindsSchema.optional(), bundle: bundleSchema.optional(), quiet: quietSchema.optional() }).strict(),
+  z.object({ platform: z.literal("fcm"), token: z.string().trim().regex(FCM_TOKEN), environment: z.literal("production").optional(), pairing: z.string().regex(PAIRING_TAG).optional(), kinds: kindsSchema.optional(), quiet: quietSchema.optional() }).strict(),
 ]);
 
 const storedDevice = z.object({
@@ -83,6 +99,8 @@ const storedDevice = z.object({
   environment: z.enum(["production", "sandbox"]),
   pairing: z.string().regex(PAIRING_TAG).optional(),
   kinds: kindsSchema,
+  bundle: bundleSchema.optional(),
+  quiet: quietSchema.optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 }).refine((device) => validPushToken(device.platform, device.token));
@@ -96,10 +114,18 @@ export interface PhonePushAccess {
 
 export type PushOutcome = "sent" | "dropped" | "stale" | "live" | "gone" | "failed" | "retry" | "paused";
 
+/** The owner's own APNs key, for pushes to an app the relay cannot reach (apns-direct.ts). */
+export interface DirectPush {
+  bundle(): string | null;
+  send(device: { token: string; environment: "production" | "sandbox"; pairing?: string; quiet?: z.infer<typeof quietSchema> }, push: PhonePushNotification, collapseId?: string): Promise<ApnsOutcome>;
+}
+
 export interface PhonePushOptions {
   dataDir: string;
   access: () => PhonePushAccess | null;
+  /** The relay path's switch. A device of the direct bundle is on whenever the key is there. */
   enabled: () => boolean;
+  direct?: DirectPush;
   /** Whether this phone holds a live event stream right now. */
   live: (key: string) => boolean;
   /** The room a notification came out of, for its name. */
@@ -110,13 +136,16 @@ export interface PhonePushOptions {
   timers?: { set(run: () => void, ms: number): unknown; clear(handle: unknown): void };
 }
 
-/** The fields a push reads from a `notify` frame's notification: never its `body`. */
+/** The fields a push reads from a `notify` frame's notification: never its `body`, except an alert's, which is the
+ * bot's own headline. */
 export interface PushableNotification {
   kind: string;
   botId: string;
   botName: string;
   threadId: string;
   groupId?: string;
+  messageId?: string;
+  body?: string;
 }
 
 interface Job {
@@ -142,9 +171,14 @@ function clip(value: string, max: number): string {
 
 function pushableOf(value: unknown): PushableNotification | null {
   if (!value || typeof value !== "object") return null;
-  const { kind, botId, botName, threadId, groupId } = value as Record<string, unknown>;
+  const { kind, botId, botName, threadId, groupId, messageId, body } = value as Record<string, unknown>;
   if (typeof kind !== "string" || typeof botId !== "string" || typeof botName !== "string" || typeof threadId !== "string") return null;
-  return { kind, botId, botName, threadId, ...(typeof groupId === "string" ? { groupId } : {}) };
+  return {
+    kind, botId, botName, threadId,
+    ...(typeof groupId === "string" ? { groupId } : {}),
+    ...(typeof messageId === "string" ? { messageId } : {}),
+    ...(kind === "alert" && typeof body === "string" ? { body } : {}),
+  };
 }
 
 /** The push for one notification, or null when it is not a kind a closed app is woken for or an id is not one the
@@ -155,6 +189,7 @@ export function phonePushNotification(notification: PushableNotification, room?:
   const roomName = room && PUSH_ID.test(room.id) ? clip(room.name, PUSH_NAME_MAX) : "";
   const language = conversationLanguage(notification.threadId);
   const who = roomName ? serverLine(language, "server.notify.inRoom", { bot: botName, room: roomName }) : botName;
+  const body = notification.kind === "alert" && notification.body ? clip(notification.body, PUSH_ALERT_BODY_MAX) : "";
   return {
     kind: notification.kind,
     title: clip(serverLine(language, TITLES[notification.kind], { who }), PUSH_TITLE_MAX),
@@ -162,7 +197,15 @@ export function phonePushNotification(notification: PushableNotification, room?:
     botName,
     threadId: notification.threadId,
     ...(room && roomName ? { roomId: room.id, roomName } : {}),
+    ...(notification.messageId && PUSH_ID.test(notification.messageId) ? { messageId: notification.messageId } : {}),
+    ...(body ? { body } : {}),
   };
+}
+
+/** The relay's notification: exactly the fields it takes, since it refuses any other. */
+function relayNotification(push: PhonePushNotification): PhonePushNotification {
+  const { messageId: _messageId, body: _body, ...relayed } = push;
+  return relayed;
 }
 
 export class PhonePush {
@@ -211,10 +254,22 @@ export class PhonePush {
     return this.options.access() ? "on" : "no-account";
   }
 
+  /** Whether this device's pushes go to Apple from here, with the owner's key for its app. */
+  private direct(device: { platform: "apns" | "fcm"; bundle?: string }): boolean {
+    return device.platform === "apns" && Boolean(device.bundle) && this.options.direct?.bundle() === device.bundle;
+  }
+
+  private stateOf(device: { platform: "apns" | "fcm"; bundle?: string } | undefined): PhonePushState {
+    return device && this.direct(device) ? "on" : this.status();
+  }
+
   private publicDevice(key: string): PublicPushDevice | null {
     const device = this.devices.find((candidate) => candidate.key === key);
     if (!device) return null;
-    return { platform: device.platform, environment: device.environment, ...(device.pairing ? { pairing: device.pairing } : {}), kinds: [...device.kinds], updatedAt: device.updatedAt };
+    return {
+      platform: device.platform, environment: device.environment, ...(device.pairing ? { pairing: device.pairing } : {}), kinds: [...device.kinds],
+      ...(device.bundle ? { bundle: device.bundle } : {}), ...(device.quiet ? { quiet: { ...device.quiet } } : {}), updatedAt: device.updatedAt,
+    };
   }
 
   /** The device token a phone registered, for the Live Activity and ongoing-notification pushes that share its relay. */
@@ -233,14 +288,15 @@ export class PhonePush {
   }
 
   answer(key: string): PhonePushAnswer {
-    return { push: this.status(), device: this.publicDevice(key) };
+    return { push: this.stateOf(this.devices.find((device) => device.key === key)), device: this.publicDevice(key) };
   }
 
   /** The phone behind `key` registers or updates its token. Switched off, nothing is kept. A token belongs to one app on
    * one phone, so the same token under another key (a phone that paired again) moves to this key. */
   async register(key: string, input: PhonePushRegistration): Promise<PhonePushAnswer & { relay: "registered" | "pending" | "off" }> {
     if (!PUSH_DEVICE_KEY.test(key)) throw new Error("not a phone");
-    if (!this.options.enabled()) return { ...this.answer(key), relay: "off" };
+    const direct = input.platform === "apns" && this.direct(input);
+    if (!direct && !this.options.enabled()) return { ...this.answer(key), relay: "off" };
     const now = this.now();
     const previous = this.devices.find((device) => device.key === key);
     const others = this.devices.filter((device) => device.key !== key && device.token !== input.token);
@@ -253,13 +309,16 @@ export class PhonePush {
       token: input.token,
       environment: input.platform === "apns" ? input.environment ?? "production" : "production",
       ...(input.pairing ? { pairing: input.pairing } : {}),
-      kinds: [...new Set(input.kinds ?? PUSH_KINDS)],
+      kinds: [...new Set(input.kinds ?? DEFAULT_PUSH_KINDS)],
+      ...(input.platform === "apns" && input.bundle ? { bundle: input.bundle } : {}),
+      ...(input.quiet ? { quiet: input.quiet } : {}),
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     };
     this.devices = [...others, next];
     this.persist();
     if (previous && previous.token !== next.token) this.dropFromRelay(previous);
+    if (direct) return { ...this.answer(key), relay: "registered" };
     if (this.status() !== "on") return { ...this.answer(key), relay: "off" };
     const answer = await this.relay(PHONE_PUSH_RELAY_PATHS.register, this.registerBody(next));
     return { ...this.answer(key), relay: answer && answer.status < 300 ? "registered" : "pending" };
@@ -282,7 +341,7 @@ export class PhonePush {
   }
 
   private async dropFromRelay(device: StoredDevice): Promise<void> {
-    if (this.devices.some((other) => other.token === device.token)) return;
+    if (this.direct(device) || this.devices.some((other) => other.token === device.token)) return;
     await this.relay(PHONE_PUSH_RELAY_PATHS.unregister, { v: PHONE_PUSH_WIRE_VERSION, platform: device.platform, token: device.token });
   }
 
@@ -299,7 +358,7 @@ export class PhonePush {
    */
   offer(frame: { notification: unknown; seq: number }, reaches: (key: string) => boolean): void {
     try {
-      if (!this.devices.length || !this.options.enabled()) return;
+      if (!this.devices.length) return;
       const notification = pushableOf(frame.notification);
       if (!notification || !isPushKind(notification.kind)) return;
       const push = phonePushNotification(notification, this.options.room(notification));
@@ -307,7 +366,7 @@ export class PhonePush {
       const collapseId = phonePushCollapseId(push.threadId, frame.seq);
       const now = this.now();
       for (const device of this.devices) {
-        if (!device.kinds.includes(notification.kind) || this.options.live(device.key) || !reaches(device.key)) continue;
+        if (!device.kinds.includes(notification.kind) || !this.reachable(device) || this.options.live(device.key) || !reaches(device.key)) continue;
         const slot = `${device.key}|${push.kind}|${push.threadId}`;
         const waiting = this.outbox.get(slot);
         if (!waiting && now - (this.lastBySlot.get(slot) ?? -Infinity) < PUSH_COALESCE_MS) continue;
@@ -329,6 +388,11 @@ export class PhonePush {
     return this.outbox.size;
   }
 
+  /** A device a push may leave for now: by the owner's key, or by the relay while it is switched on. */
+  private reachable(device: StoredDevice): boolean {
+    return this.direct(device) || this.options.enabled();
+  }
+
   private kick(): void {
     if (this.draining) return;
     this.draining = this.drain().finally(() => {
@@ -337,11 +401,21 @@ export class PhonePush {
     });
   }
 
+  private directJob(job: Job): boolean {
+    const device = this.devices.find((candidate) => candidate.key === job.key);
+    return Boolean(device && this.direct(device));
+  }
+
+  /** When a waiting job may go: the relay's pause holds only the jobs that go through the relay. */
+  private dueAt(job: Job): number {
+    return this.directJob(job) ? job.notBefore : Math.max(job.notBefore, this.pausedUntil);
+  }
+
   private schedule(): void {
     if (this.timer !== null) this.timers.clear(this.timer);
     this.timer = null;
     if (!this.outbox.size) return;
-    const due = Math.max(this.pausedUntil, Math.min(...[...this.outbox.values()].map((job) => job.notBefore)));
+    const due = Math.min(...[...this.outbox.values()].map((job) => this.dueAt(job)));
     if (due <= this.now()) {
       this.kick();
       return;
@@ -355,8 +429,7 @@ export class PhonePush {
   private async drain(): Promise<void> {
     for (;;) {
       const now = this.now();
-      if (now < this.pausedUntil) return;
-      const job = [...this.outbox.values()].find((candidate) => candidate.notBefore <= now);
+      const job = [...this.outbox.values()].find((candidate) => this.dueAt(candidate) <= now);
       if (!job) return;
       this.outbox.delete(job.slot);
       const outcome = await this.attempt(job, now).catch((error: unknown) => {
@@ -367,31 +440,27 @@ export class PhonePush {
         const wait = PUSH_RETRY_MS[job.attempts];
         if (wait !== undefined && !this.outbox.has(job.slot)) this.outbox.set(job.slot, { ...job, attempts: job.attempts + 1, notBefore: this.now() + wait });
       }
-      if (outcome === "paused") this.outbox.clear();
+      if (outcome === "paused") for (const [slot, waiting] of this.outbox) if (!this.directJob(waiting)) this.outbox.delete(slot);
     }
   }
 
   private async attempt(job: Job, now: number): Promise<PushOutcome> {
     const device = this.devices.find((candidate) => candidate.key === job.key);
-    if (!device || !this.options.enabled()) return "gone";
+    if (!device || !this.reachable(device)) return "gone";
     if (now - job.queuedAt > PUSH_MAX_AGE_MS) return "stale";
     // The phone connected while this waited: its stream delivers the frame itself.
     if (this.options.live(job.key)) return "live";
     const recent = (this.sent.get(job.key) ?? []).filter((at) => now - at < PUSH_DEVICE_WINDOW_MS);
     if (recent.length >= PUSH_DEVICE_WINDOW_MAX) return "dropped";
-    const body = { v: PHONE_PUSH_WIRE_VERSION, token: device.token, ...(device.pairing ? { pairing: device.pairing } : {}), ...(job.collapseId ? { collapseId: job.collapseId } : {}), notification: job.push };
+    if (this.direct(device)) return this.attemptDirect(job, device, recent, now);
+    const body = { v: PHONE_PUSH_WIRE_VERSION, token: device.token, ...(device.pairing ? { pairing: device.pairing } : {}), ...(job.collapseId ? { collapseId: job.collapseId } : {}), notification: relayNotification(job.push) };
     let answer = await this.relay(PHONE_PUSH_RELAY_PATHS.send, body);
     if (answer?.status === 404 && answer.code === PUSH_RELAY_ERRORS.unknownDevice) {
       const registered = await this.relay(PHONE_PUSH_RELAY_PATHS.register, this.registerBody(device));
       if (registered && registered.status < 300) answer = await this.relay(PHONE_PUSH_RELAY_PATHS.send, body);
     }
     if (!answer) return "retry";
-    if (answer.status < 300) {
-      this.sent.set(job.key, [...recent, now]);
-      this.lastBySlot.set(job.slot, now);
-      if (this.lastBySlot.size > 2_000) this.lastBySlot.clear();
-      return "sent";
-    }
+    if (answer.status < 300) return this.delivered(job, recent, now);
     if (answer.status === 410 || answer.code === PUSH_RELAY_ERRORS.unregistered) {
       this.devices = this.devices.filter((candidate) => candidate.token !== device.token);
       this.persist();
@@ -401,6 +470,29 @@ export class PhonePush {
     if (answer.status === 429) return this.pause(answer.retryAfterMs ?? 60_000);
     if (answer.status >= 500) return "retry";
     return "failed";
+  }
+
+  private delivered(job: Job, recent: number[], now: number): PushOutcome {
+    this.sent.set(job.key, [...recent, now]);
+    this.lastBySlot.set(job.slot, now);
+    if (this.lastBySlot.size > 2_000) this.lastBySlot.clear();
+    return "sent";
+  }
+
+  private async attemptDirect(job: Job, device: StoredDevice, recent: number[], now: number): Promise<PushOutcome> {
+    const outcome = await this.options.direct!.send(
+      { token: device.token, environment: device.environment, ...(device.pairing ? { pairing: device.pairing } : {}), ...(device.quiet ? { quiet: device.quiet } : {}) },
+      job.push,
+      job.collapseId,
+    );
+    if (outcome.kind === "sent") return this.delivered(job, recent, now);
+    if (outcome.kind === "dead") {
+      this.devices = this.devices.filter((candidate) => candidate.token !== device.token);
+      this.persist();
+      return "gone";
+    }
+    this.log(`[phone-push] Apple did not take a push (${outcome.status}${outcome.reason ? ` ${outcome.reason}` : ""})`);
+    return outcome.kind === "retry" ? "retry" : "failed";
   }
 
   private pause(ms: number): PushOutcome {

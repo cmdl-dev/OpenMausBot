@@ -440,7 +440,7 @@ export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCard
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "burst" | "digest" | "compaction" | "call" | "widget" | "app";
-  text?: string;
+  text?: string; /** A note flagged with notify_person: `text` is the note, `title` the headline their phone showed. */ alert?: { title: string };
   digest?: TurnDigest;
   /** kind "compaction" with no `compaction` record: the engine condensed its own session. A marker for people, never context. */
   engineCompaction?: true;

@@ -413,7 +413,7 @@ import {
   TEAM_MEMORY_PROMPT,
   TRIGGER_PROMPT,
   ROUTINE_EXECUTION_PROMPT, READ_ONLY_ROUTINE_EXECUTION_PROMPT,
-  WEBHOOK_PROMPT, BOT_API_PROMPT, AUTOMATION_REPLY_PROMPT,
+  WEBHOOK_PROMPT, BOT_API_PROMPT, AUTOMATION_REPLY_PROMPT, AUTOMATION_ALERT_PROMPT,
   resolveComputerPromptKind,
   savedLoginsPrompt, savedCardsPrompt, savedSecretsPrompt, heavyPrompt,
   teamAvailabilityPart,
@@ -633,7 +633,7 @@ import { findAntigravityLeftovers, removeAntigravityLeftovers } from "./drivers/
 import { createLiveRoutes } from "./routes/live.ts";
 import { createNotificationRoutes, notificationListedFor } from "./routes/notifications.ts";
 import { createTodayRoutes } from "./routes/today.ts"; import { createInboxRoutes } from "./routes/inbox.ts"; import { createSidebarSectionRoutes } from "./routes/sidebar-sections.ts";
-import { createToolTimingRoute, createUsageRoutes } from "./routes/usage.ts"; import { createPrivateRecords } from "./host/private-records.ts"; import { createPublishedApps } from "./host/published-apps.ts"; import { savedNetlifyToken } from "./host/netlify-sites.ts"; import { createIncludedHosting } from "./host/included-hosting.ts"; import { createAppPublisher } from "./host/app-publisher.ts"; import { createPublishedAppsRoutes } from "./routes/published-apps.ts";
+import { createToolTimingRoute, createUsageRoutes } from "./routes/usage.ts"; import { createNotifyPerson } from "./routes/notify-person.ts"; import { ApnsDirect } from "./apns-direct.ts"; import { createPrivateRecords } from "./host/private-records.ts"; import { createPublishedApps } from "./host/published-apps.ts"; import { savedNetlifyToken } from "./host/netlify-sites.ts"; import { createIncludedHosting } from "./host/included-hosting.ts"; import { createAppPublisher } from "./host/app-publisher.ts"; import { createPublishedAppsRoutes } from "./routes/published-apps.ts";
 import { createBotMessageRoutes } from "./routes/bot-messages.ts";
 import { clearInternalTurn, isInternalTurn, markInternalTurn } from "./internal-turns.ts"; import { createFirstReplyRescue } from "./first-reply-rescue.ts";
 import { createReactionRoutes } from "./routes/reactions.ts";
@@ -4632,7 +4632,7 @@ interface SseClient {
   /** Stops the heartbeat and leaves `sseClients` before ending the response; every way a stream ends goes through it. */
   close: () => void;
 }
-const { streams: sseClients, ...teamPresence } = createTeamPresenceHost<SseClient>({ people: teamOwners.people, broadcast, audienceOf: (threadId) => teamHost.audienceOf(threadId), sharedWithOne: (threadId) => conversationShares.readers(threadId) !== null, store: () => store, visibleTo }); type StreamView = Pick<SseClient, "admin" | "person" | "viewer" | "seen" | "ask">; const phonePush = new PhonePush({ dataDir: DATA_DIR, access: () => phonePushAccess.current(), enabled: () => phonePushEnabled(cfg), live: (key) => [...sseClients].some((client) => client.pushKey === key), room: (notification) => { const group = (notification.groupId ? store.group(notification.groupId) : undefined) ?? store.groupByThread(notification.threadId); return group && !group.dm ? { id: group.id, name: group.name } : undefined; } }); const phoneActivity = new PhoneActivity({ dataDir: DATA_DIR, push: phonePush, hasOpenAsk: (botId) => openCardRows().some((row) => row.fromBotId === botId || store.botByThread(row.threadId)?.id === botId), bot: (botId) => { const bot = store.bot(botId); const working = bot ? store.tasks(botId).find((task) => threadBusy(botId, task.threadId)) : undefined; return bot ? { name: bot.name, busy: Boolean(working), threadId: working?.threadId ?? bot.threadId } : undefined; }, botOfThread: (threadId) => store.botByThread(threadId)?.id });
+const { streams: sseClients, ...teamPresence } = createTeamPresenceHost<SseClient>({ people: teamOwners.people, broadcast, audienceOf: (threadId) => teamHost.audienceOf(threadId), sharedWithOne: (threadId) => conversationShares.readers(threadId) !== null, store: () => store, visibleTo }); type StreamView = Pick<SseClient, "admin" | "person" | "viewer" | "seen" | "ask">; const phonePush = new PhonePush({ dataDir: DATA_DIR, access: () => phonePushAccess.current(), enabled: () => phonePushEnabled(cfg), direct: new ApnsDirect({ dataDir: DATA_DIR }), live: (key) => [...sseClients].some((client) => client.pushKey === key), room: (notification) => { const group = (notification.groupId ? store.group(notification.groupId) : undefined) ?? store.groupByThread(notification.threadId); return group && !group.dm ? { id: group.id, name: group.name } : undefined; } }); const phoneActivity = new PhoneActivity({ dataDir: DATA_DIR, push: phonePush, hasOpenAsk: (botId) => openCardRows().some((row) => row.fromBotId === botId || store.botByThread(row.threadId)?.id === botId), bot: (botId) => { const bot = store.bot(botId); const working = bot ? store.tasks(botId).find((task) => threadBusy(botId, task.threadId)) : undefined; return bot ? { name: bot.name, busy: Boolean(working), threadId: working?.threadId ?? bot.threadId } : undefined; }, botOfThread: (threadId) => store.botByThread(threadId)?.id });
 
 let audienceChangedAt = 0;
 function audienceChanged(): void {
@@ -8407,7 +8407,7 @@ async function beginTurn(
         { id: "skill-instructions", label: "Skill instructions", text: skillInstructions },
         { id: "playbooks", label: "Playbooks", text: packagePlaybooks },
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : opts?.automationSource === "api" ? BOT_API_PROMPT : "" },
-        { id: "automation-reply", label: "Automation reply", text: opts?.automationSource && automationReports.reportsElsewhere(threadId) ? AUTOMATION_REPLY_PROMPT : "" },
+        { id: "automation-reply", label: "Automation reply", text: opts?.automationSource ? (automationReports.reportsElsewhere(threadId) ? AUTOMATION_REPLY_PROMPT : "") + (integrations.agents ? AUTOMATION_ALERT_PROMPT : "") : "" },
         { id: "mentions", label: "Mentions", text: (tagged.length ? `The user named these existing teammates: ${tagged.map(b => `${peerName(b.name)} (${b.id})`).join(", ")}. Use coordinate_bots when their contribution is needed; do not substitute native helper agents for these bots.` : "") + placesElsewhere.mentioned(providerText, store.bots) },
       ].filter((part) => (apiFenced ? BOT_API_PARTS.has(part.id) : !confined || READ_AND_DRAFT_PARTS.has(part.id))), integrations.agents, { replyStyle: liveBot?.replyStyle ?? bot.replyStyle, rules: cfg.everyBotRules });
       turnPromptBytes.set(threadId, { stable: Buffer.byteLength(prompt.stable), volatile: Buffer.byteLength(prompt.volatile) });
@@ -8936,6 +8936,7 @@ calendarCalls = new CalendarCallManager({
   botExists: (botId) => Boolean(store.bot(botId)),
   onDue: deliverCalendarCall,
 });
+const notifyPerson = createNotifyPerson({ store, notify, turnOf: (threadId) => liveTurnByThread.get(threadId), conversation: (botId, threadId) => { const source = connectorThread(botId, threadId); return source ? (source.group ? { group: { id: source.group.id, name: source.group.name } } : {}) : null; } });
 const botWaits = new WaitManager(createWaitHost({ store, directChat: directChatOf, threadBusy, wrote: markTaskContextExternallyUpdated, notify, enqueue: (input) => routines!.enqueueWebhook(input), cloudHome: Boolean(CLOUD_HOME) })); store.onChange((change) => { if (change.type === "bot" && store.bot(change.botId)?.busy) botWaits.noteBotBusy(change.botId); });
 const recoveryOwners = routines.routineRequestReceiptOwners();
 if (recoveryOwners.length > 0) {
@@ -13166,7 +13167,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         ownsThread: (botId, threadId) => Boolean(connectorThread(botId, threadId)),
         shown: (id) => !proactive.fence.confines(id) && !botApiThread(id) && (CLOUD_TEAM ? teamHost.readableFrom(internalCapability.threadId)(id) : cloudLendingView(internalCapability) ? cloudOwnerOnlyThread(id) : true),
         threadBusy, queuedThreadPosition, queuedReason: queuedStatus, readBody: readInternalBody,
-      }), createToolTimingRoute(usageTrace, internalCapability.threadId)], { req, res, url, path, method, auth, json, readBody })) return;
+      }), createToolTimingRoute(usageTrace, internalCapability.threadId), notifyPerson.route(internalCapability, internalSender)], { req, res, url, path, method, auth, json, readBody })) return;
       if (method === "POST" && path === "/api/internal/attach-file") {
         const from = internalSender;
         const threadId = internalCapability.threadId;

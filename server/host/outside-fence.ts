@@ -14,6 +14,8 @@ const EXACT: ReadonlySet<string> = new Set([
   // In its own conversation, where a place's inbox labels a guest's words and keeps them from the owner's; a team refuses it.
   "POST /api/internal/people/message",
   "POST /api/internal/attach-file",
+  // Reaches only the person, rate-limited, as a note in this conversation.
+  "POST /api/internal/notify-person",
   "POST /api/internal/voice-note",
   "GET /api/internal/agents",
   "GET /api/internal/rooms",

@@ -65,10 +65,10 @@ export function createWaitHost(deps: WaitHostDeps): Pick<WaitManagerOptions, "so
       const posted = store.messagesFor(wait.threadId).some((m) => m.wait?.id === wait.id && m.wait.status === notice.status);
       if (posted) return true;
       const words = waitNoticeText(wait, notice);
-      store.appendMessage(wait.threadId, { role: "bot", kind: "text", text: notice.text, textCode: words?.key, textParams: words?.params && redactParams(words.params), wait: { id: wait.id, status: notice.status } });
+      const line = store.appendMessage(wait.threadId, { role: "bot", kind: "text", text: notice.text, textCode: words?.key, textParams: words?.params && redactParams(words.params), wait: { id: wait.id, status: notice.status } });
       store.patchTask(wait.botId, wait.threadId, { unread: true });
       deps.wrote(bot, wait.threadId);
-      if (notice.status === "fired") deps.notify(buildNotification("wait", bot, wait.threadId, notice.text, { avatarUrl: bot.avatarUrl }));
+      if (notice.status === "fired") deps.notify(buildNotification("wait", bot, wait.threadId, notice.text, { avatarUrl: bot.avatarUrl, messageId: line.id }));
       return true;
     },
     followUp(wait) {

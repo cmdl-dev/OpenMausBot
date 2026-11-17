@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 import { act, fireEvent, renderRouter, screen } from "expo-router/testing-library";
+import { hear, heardText, NOTHING_HEARD } from "@/components/composer";
 import { elapsedLabel, levelFromVolume } from "@/components/dictation-bar";
 import { speech } from "@/testing/mocks/expo-speech-recognition";
 
@@ -36,6 +37,45 @@ test("dictation swaps the field for a bar that shows the words as they're heard,
   });
   expect(screen.queryByLabelText("Done dictating")).toBeNull();
   expect(screen.getByLabelText("Message").props.value).toBe("Draft book the venue for Friday");
+});
+
+test("a pause starts a new utterance and every earlier one stays, on screen and in the field", async () => {
+  await dictateOnHome();
+  await act(async () => {
+    speech.emit("result", { isFinal: false, results: [{ transcript: "Book the venue" }] });
+    speech.emit("result", { isFinal: true, results: [{ transcript: "Book the venue for Friday." }] });
+    speech.emit("result", { isFinal: false, results: [{ transcript: " Then email" }] });
+  });
+  expect(screen.getByText("Book the venue for Friday. Then email")).toBeTruthy();
+
+  await act(async () => {
+    speech.emit("result", { isFinal: true, results: [{ transcript: " Then email the caterer." }] });
+    speech.emit("result", { isFinal: false, results: [{ transcript: " And invite Sam" }] });
+  });
+  expect(screen.getByText("Book the venue for Friday. Then email the caterer. And invite Sam")).toBeTruthy();
+
+  await fireEvent.press(screen.getByLabelText("Done dictating"));
+  await act(async () => {
+    speech.emit("result", { isFinal: true, results: [{ transcript: " And invite Sam." }] });
+    speech.emit("result", { isFinal: true, results: [] });
+    speech.emit("end");
+  });
+  expect(screen.getByLabelText("Message").props.value).toBe("Draft Book the venue for Friday. Then email the caterer. And invite Sam.");
+});
+
+test("hear keeps finished utterances and replaces only the one still being spoken", () => {
+  let heard = NOTHING_HEARD;
+  heard = hear(heard, { isFinal: false, results: [{ transcript: "one" }] });
+  heard = hear(heard, { isFinal: false, results: [{ transcript: "one two" }] });
+  expect(heardText(heard)).toBe("one two");
+  heard = hear(heard, { isFinal: true, results: [{ transcript: "one two." }] });
+  heard = hear(heard, { isFinal: true, results: [{ transcript: "one two." }] });
+  expect(heardText(heard)).toBe("one two.");
+  heard = hear(heard, { isFinal: false, results: [{ transcript: " three" }] });
+  heard = hear(heard, { isFinal: false, results: [] });
+  expect(heardText(heard)).toBe("one two. three");
+  heard = hear(heard, { isFinal: true, results: [] });
+  expect(heard).toEqual({ settled: "one two. three", pending: "" });
 });
 
 test("Cancel stops listening and leaves the field as it was", async () => {

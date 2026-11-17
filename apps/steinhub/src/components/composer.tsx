@@ -65,6 +65,29 @@ function joined(before: string, spoken: string): string {
   return head && spoken ? `${head} ${spoken}` : head || spoken;
 }
 
+export interface Heard {
+  settled: string;
+  pending: string;
+}
+
+export const NOTHING_HEARD: Heard = { settled: "", pending: "" };
+
+export function heardText(heard: Heard): string {
+  return joined(heard.settled, heard.pending);
+}
+
+/**
+ * In continuous mode the recognizer (iOS 18+ SFSpeechRecognizer, Android) ends an utterance at each pause and
+ * reports the next one on its own, so a final result is kept and later results add after it.
+ */
+export function hear(heard: Heard, event: { isFinal?: boolean; results: { transcript: string }[] }): Heard {
+  const transcript = event.results[0]?.transcript.trim() ?? "";
+  if (!event.isFinal) return transcript ? { ...heard, pending: transcript } : heard;
+  if (!transcript) return { settled: heardText(heard), pending: "" };
+  if (!heard.pending && heard.settled.endsWith(transcript)) return heard;
+  return { settled: joined(heard.settled, transcript), pending: "" };
+}
+
 export function Composer({ botName, onSend, text: controlled, onChangeText, onStop }: ComposerProps) {
   const connection = useConnection();
   const live = connection.mode === "live";
@@ -77,7 +100,7 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   const [dictation, setDictation] = useState<{ spoken: string; finishing: boolean } | null>(null);
   const listening = useRef(false);
   const textBefore = useRef("");
-  const spoken = useRef("");
+  const spoken = useRef<Heard>(NOTHING_HEARD);
   const keepSpoken = useRef(true);
   const clearedAt = useRef(0);
   const input = useRef<TextInputInstance>(null);
@@ -97,8 +120,8 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
 
   useSpeechRecognitionEvent("result", (event) => {
     if (!listening.current) return;
-    spoken.current = event.results[0]?.transcript ?? "";
-    setDictation((current) => current && { ...current, spoken: spoken.current });
+    spoken.current = hear(spoken.current, event);
+    setDictation((current) => current && { ...current, spoken: heardText(spoken.current) });
   });
   useSpeechRecognitionEvent("end", () => finishDictation());
   useSpeechRecognitionEvent("error", (event) => {
@@ -116,7 +139,8 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
   function finishDictation() {
     if (!listening.current) return;
     listening.current = false;
-    if (keepSpoken.current && spoken.current) setText(joined(textBefore.current, spoken.current));
+    const words = heardText(spoken.current);
+    if (keepSpoken.current && words) setText(joined(textBefore.current, words));
     setDictation(null);
   }
 
@@ -129,7 +153,7 @@ export function Composer({ botName, onSend, text: controlled, onChangeText, onSt
       return;
     }
     textBefore.current = text;
-    spoken.current = "";
+    spoken.current = NOTHING_HEARD;
     keepSpoken.current = true;
     listening.current = true;
     setDictation({ spoken: "", finishing: false });

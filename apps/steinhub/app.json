@@ -51,8 +51,7 @@
         "expo-camera",
         {
           "cameraPermission": "SteinHub uses the camera to scan the pairing code your computer shows.",
-          "microphonePermission": false,
-          "recordAudioAndroid": false
+          "microphonePermission": "SteinHub listens while you dictate a message."
         }
       ],
       [
@@ -68,7 +67,7 @@
         {
           "photosPermission": "SteinHub uses your photos when you attach one to a message.",
           "cameraPermission": "SteinHub uses the camera to scan pairing codes and take photos you attach.",
-          "microphonePermission": false
+          "microphonePermission": "SteinHub listens while you dictate a message."
         }
       ],
       [

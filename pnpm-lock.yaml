@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   react-native-enriched-markdown@1.2.0:
-    hash: 72f094b1d3bd2eb5cc735c7ac38ceb98cb3c6b3054d2b2250601d723acbd008b
+    hash: 69cada150b74bf259974d0872da3d216796eec1f14c6b9042b39902f83dd719d
     path: patches/react-native-enriched-markdown@1.2.0.patch
 
 importers:
@@ -390,7 +390,7 @@ importers:
         version: 0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
       react-native-enriched-markdown:
         specifier: 1.2.0
-        version: 1.2.0(patch_hash=72f094b1d3bd2eb5cc735c7ac38ceb98cb3c6b3054d2b2250601d723acbd008b)(katex@0.16.47)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+        version: 1.2.0(patch_hash=69cada150b74bf259974d0872da3d216796eec1f14c6b9042b39902f83dd719d)(katex@0.16.47)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       react-native-gesture-handler:
         specifier: ~3.3.0
         version: 3.3.0(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -17611,7 +17611,7 @@ snapshots:
       react-native-reanimated: 4.7.1(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       use-latest-callback: 0.2.6(react@19.3.0)
 
-  react-native-enriched-markdown@1.2.0(patch_hash=72f094b1d3bd2eb5cc735c7ac38ceb98cb3c6b3054d2b2250601d723acbd008b)(katex@0.16.47)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0):
+  react-native-enriched-markdown@1.2.0(patch_hash=69cada150b74bf259974d0872da3d216796eec1f14c6b9042b39902f83dd719d)(katex@0.16.47)(react-native@0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0):
     dependencies:
       react: 19.3.0
       react-native: 0.88.1(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)

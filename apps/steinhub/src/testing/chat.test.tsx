@@ -1,6 +1,6 @@
 import type { BotsResponse, WireMessagePage } from "@openmausbot/phone-protocol/responses.ts";
 import type { WireMessage } from "@openmausbot/phone-protocol/wire.ts";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import type { Session } from "@/api/session";
 import { fakeFetch, jsonResponse, pushStream, streamResponse, type Call } from "@/testing/fake-desktop";
@@ -203,6 +203,40 @@ test("scrolled up, an arrow takes the thread back to the latest message", async 
 
   await scrollTo(1360);
   expect(screen.queryByLabelText("Scroll to the latest message")).toBeNull();
+});
+
+test("a send that failed in one chat leaves its error behind when the screen moves to another chat", async () => {
+  const events = pushStream();
+  const withSecondThread: BotsResponse = {
+    ...BOTS,
+    bots: [{ ...BOTS.bots[0], tasks: [...(BOTS.bots[0].tasks ?? []), { threadId: "t2", title: "Riftbound", createdAt: AT }] }],
+  };
+  const desktop = fakeFetch({
+    "GET /api/events": streamResponse(events),
+    "GET /api/bots": jsonResponse(200, withSecondThread),
+    "GET /api/instances": jsonResponse(200, { instances: [] }),
+    "GET /api/routines": jsonResponse(200, { routines: [], runs: [] }),
+    "GET /api/companion/endpoints": jsonResponse(200, { serverName: "Ada's Mac", endpoints: [] }),
+    "GET /api/threads/t1/messages": jsonResponse(200, PAGE),
+    "GET /api/threads/t2/messages": jsonResponse(200, {
+      messages: [{ id: "n1", role: "bot", kind: "text", text: "It's time to get with Jason.", at: AT }],
+      activeLeafId: "n1",
+    } satisfies WireMessagePage),
+  });
+  network.fetch = desktop.fetch;
+  await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/chat/t1" });
+  await waitFor(() => expect(desktop.calls.some((call) => call.path === "/api/events")).toBe(true));
+  await act(async () => events.frame({ kind: "hello", cursor: "s:1", resumed: false }));
+  expect(await screen.findByText("Here's a draft at $2,450.")).toBeTruthy();
+
+  await fireEvent.changeText(screen.getByLabelText("Message"), "Make it 24 months");
+  await fireEvent.press(screen.getByLabelText("Send"));
+  expect(await screen.findByText(/Couldn't reach Ada's Mac/)).toBeTruthy();
+
+  await act(async () => router.setParams({ id: "t2" }));
+  expect(await screen.findByText("It's time to get with Jason.")).toBeTruthy();
+  expect(screen.queryByText(/Couldn't reach Ada's Mac/)).toBeNull();
+  expect(screen.queryByText("Not sent.")).toBeNull();
 });
 
 test("a tap on an image in the chat opens it full screen from the computer, and Close goes back", async () => {

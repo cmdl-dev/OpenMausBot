@@ -22,6 +22,10 @@ type Answer = (card: ApprovalView, option: string) => Promise<void>;
 
 export default function ChatScreen() {
   const { id, message: target } = useLocalSearchParams<{ id: string; message?: string }>();
+  return <Thread key={id} id={id} target={target} />;
+}
+
+function Thread({ id, target }: { id: string; target?: string }) {
   const world = useWorld();
   const connection = useConnection();
   const { thread, bot, messages, loaded, hasMore } = world.detail(id);

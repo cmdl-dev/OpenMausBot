@@ -191,6 +191,7 @@
   "server.notify.delegationSettled": "{who} đã tiếp tục với kết quả",
   "server.notify.mention": "{who} đã nhắc đến bạn",
   "server.notify.wait": "{who} đã chờ xong",
+  "server.notify.alert": "{who} đã đánh dấu một việc quan trọng",
   "server.notify.done": "{who} đã xong",
   "server.notify.inRoom": "{bot} trong {room}",
   "server.notify.assistantAnswered": "{title} · trợ lý của bạn đã trả lời",

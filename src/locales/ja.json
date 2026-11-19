@@ -252,6 +252,7 @@
   "server.notify.delegationSettled": "{who} が結果を受けて再開しました",
   "server.notify.mention": "{who} があなたについて言及しました",
   "server.notify.wait": "{who} の待機が終わりました",
+  "server.notify.alert": "{who} が重要なことを知らせています",
   "server.notify.done": "{who} が完了しました",
   "server.notify.inRoom": "{room} の {bot}",
   "server.notify.assistantAnswered": "{title} · アシスタントが回答しました",

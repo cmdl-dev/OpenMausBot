@@ -202,6 +202,7 @@
   "server.notify.delegationSettled": "{who} продолжил с результатами",
   "server.notify.mention": "{who} упомянул вас",
   "server.notify.wait": "Ожидание бота {who} закончилось",
+  "server.notify.alert": "Бот {who} отметил что-то важное",
   "server.notify.done": "{who} закончил",
   "server.notify.inRoom": "{bot} в группе {room}",
   "server.notify.assistantAnswered": "{title} · ваш ассистент ответил",

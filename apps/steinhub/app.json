@@ -1,0 +1,101 @@
+{
+  "expo": {
+    "name": "SteinHub",
+    "slug": "steinhub",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "steinhub",
+    "userInterfaceStyle": "automatic",
+    "extra": {
+      "apnsEnvironment": "sandbox"
+    },
+    "backgroundColor": "#000000",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.cmdl.steinhub",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "SteinHub connects to OpenMausBot on your computer over your Wi-Fi.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "ts.net": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
+      }
+    },
+    "android": {
+      "package": "com.cmdl.steinhub",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "mode": "development"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "SteinHub uses Face ID to unlock the app when you turn on the lock."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 96
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SteinHub uses the camera to scan the pairing code your computer shows.",
+          "microphonePermission": "SteinHub listens while you dictate a message."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SteinHub uses your photos when you attach one to a message.",
+          "cameraPermission": "SteinHub uses the camera to scan pairing codes and take photos you attach.",
+          "microphonePermission": "SteinHub listens while you dictate a message."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "SteinHub listens while you dictate a message.",
+          "speechRecognitionPermission": "SteinHub turns what you say into text on this iPhone."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

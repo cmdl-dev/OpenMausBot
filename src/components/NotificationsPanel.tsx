@@ -28,6 +28,7 @@ const KIND_LOOK: Record<NotifyKind, { Icon: LucideIcon; className: string; statu
   brief: { Icon: Newspaper, className: "text-accent", status: "notifications.status.brief" },
   wait: { Icon: CheckCircle2, className: "text-success", status: "notifications.status.done" },
   notice: { Icon: Info, className: "text-accent", status: "notifications.status.notice" },
+  alert: { Icon: Bell, className: "text-warning", status: "notifications.status.alert" },
 };
 
 interface TitledThread { threadId: string; title: string }

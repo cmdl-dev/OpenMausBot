@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SteinHub Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#000;--bg-raised:#0A0A0A;--surface-1:#151515;--surface-2:#1F1F1F;--surface-3:#2A2A2A;
+  --border:#242424;--border-strong:#333;
+  --text:#fff;--text-2:#A1A1A1;--text-3:#6B6B6B;
+  --warning:#F5B544;--warning-bg:rgba(245,181,68,.12);
+  --font:Inter,-apple-system,"SF Pro Text",Roboto,system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0E0E0E;color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{padding:40px 16px 80px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1240px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-end;justify-content:space-between;margin-bottom:36px}
+.brand{display:flex;align-items:center;gap:14px}
+.brand svg{width:40px;height:40px;color:var(--text)}
+.brand h1{font-size:28px;font-weight:600;letter-spacing:-.02em}
+.brand p{color:var(--text-2);font-size:14px;margin-top:2px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pill{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:500;background:var(--surface-1);border:1px solid var(--border);color:var(--text-2)}
+.pill.sample{color:var(--warning);background:var(--warning-bg);border-color:rgba(245,181,68,.25)}
+.pill:hover{color:var(--text)}
+.intro{color:var(--text-2);font-size:15px;line-height:23px;max-width:760px;margin-bottom:32px}
+.intro strong{color:var(--text);font-weight:500}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,580px),1fr));gap:24px}
+.card{background:var(--surface-1);border:1px solid var(--border);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s}
+.card:hover{border-color:var(--border-strong)}
+.thumb{position:relative;aspect-ratio:1800/1080;background:#0E0E0E;overflow:hidden;border-bottom:1px solid var(--border)}
+.thumb iframe{position:absolute;top:0;left:0;width:1800px;height:1080px;border:0;transform-origin:0 0;pointer-events:none}
+.card-body{padding:16px 18px 18px;display:flex;gap:14px;align-items:flex-start}
+.num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.card h2{font-size:16px;font-weight:600;line-height:22px}
+.card h2 span{color:var(--text-3);font-weight:500;font-size:13px;margin-left:6px}
+.card p{color:var(--text-2);font-size:13px;line-height:19px;margin-top:3px}
+.card code{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12px;color:var(--text-3)}
+h3{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:56px 0 16px}
+.map{background:var(--surface-1);border:1px solid var(--border);border-radius:20px;padding:24px;overflow-x:auto}
+.map svg{display:block;min-width:900px;width:100%;height:auto}
+.map text{font-family:var(--font)}
+footer{margin-top:40px;color:var(--text-3);font-size:13px;line-height:20px}
+footer a{color:var(--text-2);text-decoration:underline;text-underline-offset:3px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="steinhub-mark" viewBox="0 0 32 32"><path d="M16 2.8 27.4 9.4v13.2L16 29.2 4.6 22.6V9.4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M16 16V8.6M16 16l-6.4 3.7M16 16l6.4 3.7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="16" r="3" fill="currentColor"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg><use href="#steinhub-mark"/></svg>
+      <div>
+        <h1>SteinHub</h1>
+        <p>Design mockups v1 · mobile companion for OpenMausBot</p>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="pill sample">All content is sample data</span>
+      <a class="pill" href="README.md">Page guide &amp; open questions</a>
+      <a class="pill" href="tokens.md">Design tokens</a>
+    </div>
+  </header>
+
+  <p class="intro"><strong>10 pages, 39 phone states</strong>, iPhone frame at 390 × 844, dark only. Click a card to open the full page. Navigation is a left drawer, not a tab bar: every chat screen has the menu on the left, the bot picker in the middle and new chat on the right.</p>
+
+  <div class="grid">
+    <a class="card" href="onboarding.html"><div class="thumb"><iframe src="onboarding.html" title="Onboarding" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">1</span><div><h2>Onboarding<span>4 states</span></h2><p>Welcome, scan QR from the desktop app, confirm with a 6-digit code, or sign in.</p><code>onboarding.html</code></div></div></a>
+
+    <a class="card" href="home.html"><div class="thumb"><iframe src="home.html" title="Home" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">2</span><div><h2>Home · new chat<span>4 states</span></h2><p>Empty-state greeting, bot picker sheet, typing with attachments, attach menu.</p><code>home.html</code></div></div></a>
+
+    <a class="card" href="chat.html"><div class="thumb"><iframe src="chat.html" title="Chat" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">3</span><div><h2>Chat thread<span>4 states</span></h2><p>Streaming reply, tool activity folded and expanded, inline approval, message actions.</p><code>chat.html</code></div></div></a>
+
+    <a class="card" href="drawer.html"><div class="thumb"><iframe src="drawer.html" title="Drawer" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">4</span><div><h2>Drawer<span>4 states</span></h2><p>Navigation, bots, recent threads, history search, thread actions, filter by bot.</p><code>drawer.html</code></div></div></a>
+
+    <a class="card" href="bot-profile.html"><div class="thumb"><iframe src="bot-profile.html" title="Bot profile" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">5</span><div><h2>Bot profile<span>4 states</span></h2><p>MausBot's profile, memory, skills and the model picker.</p><code>bot-profile.html</code></div></div></a>
+
+    <a class="card" href="inbox.html"><div class="thumb"><iframe src="inbox.html" title="Inbox" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">6</span><div><h2>Inbox<span>4 states</span></h2><p>Requests that need you, secret request, sign-in request, bot message.</p><code>inbox.html</code></div></div></a>
+
+    <a class="card" href="automations.html"><div class="thumb"><iframe src="automations.html" title="Automations" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">7</span><div><h2>Automations<span>3 states</span></h2><p>List with filters, create sheet, empty state with templates.</p><code>automations.html</code></div></div></a>
+
+    <a class="card" href="automation-detail.html"><div class="thumb"><iframe src="automation-detail.html" title="Automation detail" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">8</span><div><h2>Automation detail<span>4 states</span></h2><p>Schedule and run history, one run's steps, paused after failures, app-event trigger.</p><code>automation-detail.html</code></div></div></a>
+
+    <a class="card" href="computers.html"><div class="thumb"><iframe src="computers.html" title="Computers" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">9</span><div><h2>Computers<span>4 states</span></h2><p>Status and resources, desktop host detail, asleep laptop with Wake on LAN.</p><code>computers.html</code></div></div></a>
+
+    <a class="card" href="settings.html"><div class="thumb"><iframe src="settings.html" title="Settings" loading="lazy" tabindex="-1"></iframe></div>
+      <div class="card-body"><span class="num">10</span><div><h2>Settings<span>4 states</span></h2><p>Account, pairing, notifications, appearance and app icon.</p><code>settings.html</code></div></div></a>
+  </div>
+
+  <h3>Navigation map</h3>
+  <div class="map">
+    <svg viewBox="0 0 1000 380" role="img" aria-label="Navigation map: onboarding leads to Home; Home opens Chat, the bot picker, Inbox and the drawer; the drawer leads to Inbox, Automations, Computers, Bot profile, threads and Settings">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#6B6B6B"/></marker></defs>
+      <g fill="none" stroke="#3a3a3a" stroke-width="1.5" marker-end="url(#ar)">
+        <path d="M150 190H218"/>
+        <path d="M370 170 Q 420 110 468 92"/>
+        <path d="M370 190H468"/>
+        <path d="M370 210 Q 420 270 468 288"/>
+        <path d="M620 92 Q 680 92 718 60"/>
+        <path d="M620 92 Q 680 100 718 130"/>
+        <path d="M620 92 Q 680 150 718 200"/>
+        <path d="M620 92 Q 680 200 718 270"/>
+        <path d="M620 92 Q 680 260 718 340"/>
+        <path d="M620 190H655 Q 690 190 718 130" stroke-dasharray="4 4"/>
+        <path d="M870 130H900 Q 930 130 930 200 Q 930 225 878 228" stroke-dasharray="4 4"/>
+      </g>
+      <g font-size="14" font-weight="600" fill="#fff">
+        <rect x="20" y="166" width="130" height="48" rx="24" fill="#151515" stroke="#242424"/><text x="85" y="195" text-anchor="middle">Onboarding</text>
+        <rect x="220" y="160" width="150" height="60" rx="16" fill="#1F1F1F" stroke="#333"/><text x="295" y="188" text-anchor="middle">Home</text><text x="295" y="206" text-anchor="middle" font-size="11" font-weight="500" fill="#A1A1A1">empty chat</text>
+        <rect x="470" y="68" width="150" height="48" rx="24" fill="#151515" stroke="#242424"/><text x="545" y="97" text-anchor="middle">Drawer</text>
+        <rect x="470" y="166" width="150" height="48" rx="24" fill="#151515" stroke="#242424"/><text x="545" y="195" text-anchor="middle">Chat thread</text>
+        <rect x="470" y="264" width="150" height="48" rx="24" fill="#151515" stroke="#242424"/><text x="545" y="286" text-anchor="middle">Bot picker</text><text x="545" y="302" text-anchor="middle" font-size="11" font-weight="500" fill="#A1A1A1">sheet</text>
+        <rect x="720" y="40" width="150" height="40" rx="20" fill="#151515" stroke="#242424"/><text x="795" y="65" text-anchor="middle">Inbox</text>
+        <rect x="720" y="110" width="150" height="40" rx="20" fill="#151515" stroke="#242424"/><text x="795" y="135" text-anchor="middle">Bot profile</text>
+        <rect x="720" y="180" width="150" height="40" rx="20" fill="#151515" stroke="#242424"/><text x="795" y="205" text-anchor="middle">Automations</text>
+        <rect x="720" y="250" width="150" height="40" rx="20" fill="#151515" stroke="#242424"/><text x="795" y="275" text-anchor="middle">Computers</text>
+        <rect x="720" y="320" width="150" height="40" rx="20" fill="#151515" stroke="#242424"/><text x="795" y="345" text-anchor="middle">Settings</text>
+      </g>
+      <g font-size="11" fill="#6B6B6B" font-weight="500">
+        <text x="160" y="180">paired</text>
+        <text x="390" y="112">menu</text>
+        <text x="392" y="182">send</text>
+        <text x="380" y="270">bot name</text>
+        <text x="630" y="176">thread header</text>
+        <text x="900" y="250" text-anchor="end">→ detail</text>
+        <text x="20" y="360">Bell on Home also opens Inbox. Push notifications deep-link to Inbox items or the thread.</text>
+      </g>
+    </svg>
+  </div>
+
+  <footer>
+    Mockups only. No app code yet. Logo and wordmark are original to SteinHub. Read the <a href="README.md">page guide</a> for the open questions to settle before implementation.
+  </footer>
+</div>
+
+<script>
+  // Scale each page preview to its card width.
+  function fit(){document.querySelectorAll('.thumb').forEach(t=>{const f=t.querySelector('iframe');f.style.transform='scale('+(t.clientWidth/1800)+')';});}
+  addEventListener('resize',fit);addEventListener('DOMContentLoaded',fit);fit();
+</script>
+</body>
+</html>

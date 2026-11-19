@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { PUSH_KINDS, phonePushCollapseId } from "../shared/phone-push.ts";
+import { DEFAULT_PUSH_KINDS, phonePushCollapseId } from "../shared/phone-push.ts";
 import {
   MAX_PUSH_DEVICES,
   PHONE_PUSH_DESKTOP_MESSAGE,
@@ -133,7 +133,7 @@ describe("registering a phone", () => {
   it("keeps the token on this computer only (0600), registers it at the relay and never echoes it", async () => {
     const { push, relay } = harness();
     const answer = await push.register(PHONE, { platform: "apns", token: APNS, environment: "sandbox", pairing: "pair-tag-0001" });
-    expect(answer).toEqual({ push: "on", relay: "registered", device: { platform: "apns", environment: "sandbox", pairing: "pair-tag-0001", kinds: [...PUSH_KINDS], updatedAt: clock } });
+    expect(answer).toEqual({ push: "on", relay: "registered", device: { platform: "apns", environment: "sandbox", pairing: "pair-tag-0001", kinds: [...DEFAULT_PUSH_KINDS], updatedAt: clock } });
     expect(JSON.stringify(answer)).not.toContain(APNS);
     expect(relay.calls).toEqual([{ path: "/v1/installations/self/push/register", body: { v: 1, platform: "apns", token: APNS, environment: "sandbox" }, authorization: `Bearer ${CREDENTIAL}` }]);
     const file = join(dataDir, PHONE_PUSH_FILE);

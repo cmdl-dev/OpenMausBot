@@ -16,6 +16,7 @@ import {
   PHONE_PUSH_WIRE_VERSION,
   PUSH_ID,
   PUSH_KINDS,
+  DEFAULT_PUSH_KINDS,
   PUSH_NAME_MAX,
   PUSH_RELAY_ERRORS,
   PUSH_TITLE_MAX,
@@ -60,6 +61,8 @@ const TITLES: Record<PushKind, ServerLineKey> = {
   question: "server.notify.question",
   "sign-in": "server.notify.signInWebsite",
   done: "server.notify.done",
+  alert: "server.notify.alert",
+  wait: "server.notify.wait",
 };
 
 /** On only when switched on: OMB_PHONE_PUSH=1 or 0 wins over `features.phonePush` in config.json. */
@@ -253,7 +256,7 @@ export class PhonePush {
       token: input.token,
       environment: input.platform === "apns" ? input.environment ?? "production" : "production",
       ...(input.pairing ? { pairing: input.pairing } : {}),
-      kinds: [...new Set(input.kinds ?? PUSH_KINDS)],
+      kinds: [...new Set(input.kinds ?? DEFAULT_PUSH_KINDS)],
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     };

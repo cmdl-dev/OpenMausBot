@@ -275,7 +275,11 @@ async function focusEditable(context: ActionContext, handle: NodeHandle & { ref?
 export async function fill(context: ActionContext, target: Exclude<Target, Point>, text: string): Promise<void> {
   await context.bringToFront();
   refuseErrorPage(context);
-  const handle = await element(context, target);
+  await fillElement(context, await element(context, target), text);
+}
+
+/** Replaces the element's text with `text`, typed into it as real input. */
+export async function fillElement(context: ActionContext, handle: NodeHandle & { ref?: string }, text: string): Promise<void> {
   const kind = await focusEditable(context, handle);
   // Date and time fields take no typed text: set them like a picker would (the events are untrusted).
   if (kind === "value") {

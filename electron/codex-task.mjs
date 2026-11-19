@@ -159,7 +159,10 @@ export async function runCodexTask({ prompt, timeoutSeconds = CODEX_TASK_SECONDS
     signal?.removeEventListener("abort", aborted);
     child.removeAllListeners("exit");
     child.on("exit", () => {});
+    const exited = child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise((resolve) => child.once("exit", resolve));
     stopTree(child);
-    await fs.rm(cwd, { recursive: true, force: true }).catch(() => {});
+    // Windows refuses to delete a folder a running process works in.
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000).unref())]);
+    await fs.rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => {});
   }
 }

@@ -1,5 +1,5 @@
 // The v1 live view (server-sent events, one POST per action) behind the v2 stream client's interface, so one panel
-// speaks both: v1 is what agent-browser serves, and what an older server or companion still offers.
+// speaks both: v1 is what an older server or companion still offers, and what a refused stream falls back to.
 import type { ControlTransport } from "./browser-control";
 import { t } from "./i18n";
 import { withBrowserScope } from "./team-browser";

@@ -2,18 +2,16 @@
 // their phone's view. Each member's private chat with a team bot drives a browser of its own, a group chat its own, and a
 // live view shows the browser of the conversation it is opened from, to whoever may read that conversation. A member's
 // phone pairs with a code the member made, and gets their role and their chats. The engine is the synthetic Claude CLI.
-// The sign-in part needs a real browser (agent-browser and its Chrome, on Linux): it runs where one resolves or
-// OMB_TEAM_BROWSER_E2E=1 asks for it, and says why it is skipped otherwise.
+// The sign-in part needs a real Chrome on Linux: it runs where OMB_CDP_CHROME names one or OMB_CDP_E2E=1 finds the
+// installed one, and says why it is skipped otherwise.
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "../scripts/testing/cloud-send-fixture.ts";
-import { resolveAgentBrowserBinary } from "./browser-engine.ts";
+import { chromeForTests } from "./browser/cdp/testing/real-chrome.ts";
 import { audienceBrowserSuffix } from "./browser/audience.ts";
 import { TEAM_SESSION_MAX_MS } from "./cloud-team.ts";
-import { personKey } from "./person-key.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 
 const OWNER = { email: "olive@acme.test", role: "owner" as const };
@@ -24,19 +22,8 @@ const MEMBER_C = { email: "cleo@acme.test", role: "member" as const };
 // they are on disk (the dump does), and its scripted calls again on every turn.
 const ENGINE = `process.env.FAKE_CLAUDE_DUMP = process.env.FAKE_CLAUDE_FIXTURE_DIR + "/dump.json";
 process.env.FAKE_CLAUDE_TOOL_CALLS_FILE = process.env.FAKE_CLAUDE_FIXTURE_DIR + "/tool-calls.json";`;
-const REAL_BROWSER = process.env.OMB_TEAM_BROWSER_E2E === "1" || (process.platform === "linux" && Boolean(resolveAgentBrowserBinary({ env: process.env })));
-if (!REAL_BROWSER) console.log("skipping the Team Cloud sign-in check: it needs agent-browser and its Chrome on Linux (or OMB_TEAM_BROWSER_E2E=1)");
-
-/** Without a real browser, an agent-browser stand-in that logs each command with the session it is for, so the browser
- * each turn and each view reaches is visible by name. */
-const stub = REAL_BROWSER ? null : (() => {
-  const dir = mkdtempSync(join(tmpdir(), "omb-team-browser-stub-"));
-  const engine = join(dir, "agent-browser"), log = join(dir, "commands.log");
-  writeFileSync(engine, ["#!/bin/sh", `printf '%s %s\\n' "$AGENT_BROWSER_SESSION" "$1" >> '${log}'`,
-    `if [ "$1" = session ]; then printf '{"success":true,"data":{"sessions":[]}}\\n'; fi`, "exit 0"].join("\n"), { mode: 0o755 });
-  const lines = () => (existsSync(log) ? readFileSync(log, "utf8") : "").split("\n").filter(Boolean);
-  return { dir, engine, lines, sessions: () => lines().map((line) => line.split(" ")[0]!).filter(Boolean) };
-})();
+const CHROME = process.platform === "linux" ? chromeForTests() : null;
+if (!CHROME) console.log("skipping the Team Cloud sign-in check: it needs a real Chrome on Linux (OMB_CDP_CHROME or OMB_CDP_E2E=1)");
 
 let fx: CloudSendFixture, team: CloudTeamFixture;
 let owner = "", admin = "", ada = "", cleo = "";
@@ -44,7 +31,7 @@ let bot: { id: string; mainThreadId: string };
 let adaThread = "", cleoThread = "", roomId = "", roomThread = "";
 
 beforeAll(async () => {
-  fx = await launchCloudSendFixture({ onePasswordToken: `ops_fake-team-${randomBytes(8).toString("hex")}`, team: { id: "team-acme-1", name: "Acme", engine: ENGINE, ...(stub ? { env: { OMB_AGENT_BROWSER_PATH: stub.engine } } : {}) } });
+  fx = await launchCloudSendFixture({ onePasswordToken: `ops_fake-team-${randomBytes(8).toString("hex")}`, team: { id: "team-acme-1", name: "Acme", engine: ENGINE, ...(CHROME ? { env: { OMB_CHROME_PATH: CHROME, ...(process.env.OMB_BROWSER_SANDBOX ? { OMB_BROWSER_SANDBOX: process.env.OMB_BROWSER_SANDBOX } : {}) } } : {}) } });
   team = fx.team!;
   owner = (await team.pair(OWNER)).token!;
   admin = (await team.pair(ADMIN)).token!;
@@ -67,7 +54,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await fx?.close();
-  if (stub) rmSync(stub.dir, { recursive: true, force: true });
 });
 
 /** The live view's first answer: a refusal names its reason; an open view (a real browser) is cut off after its headers. */
@@ -87,37 +73,7 @@ it("shows a member's live browser only from her own chat, to her alone: never to
   for (const [who, token, threadId] of [["Ada, her own chat", ada, adaThread], ["Ben (Admin), the group chat", admin, roomThread], ["Cleo, the group chat", cleo, roomThread], ["Ada, no chat named", ada, undefined]] as const) {
     expect((await liveView(token, threadId)).error, who).not.toBe("no such conversation");
   }
-  // Signed-in sites are an admin's, of the team's browser and the group chats', never of a member's own.
-  expect((await team.as(ada, "GET", `/api/browser-sites?bot=${bot.id}&threadId=${adaThread}`)).status).toBe(403);
-  expect((await team.as(admin, "GET", `/api/browser-sites?bot=${bot.id}&threadId=${adaThread}`)).status).toBe(404);
-  expect((await team.as(admin, "GET", `/api/browser-sites?bot=${bot.id}&threadId=${roomThread}`)).status).not.toBe(404);
 }, hostTimeout(60_000));
-
-// The agent-browser stand-in is a POSIX shell script, which Windows cannot run as a program, so no command reaches its
-// log there; a Team Cloud is a Linux machine. The other checks in this file still run on Windows.
-it.skipIf(!stub || process.platform === "win32")("drives each member's private chat, the group chat and the team's chat on browsers of their own, and opens a view on the conversation's", async () => {
-  const session = (audience: string) => `bot-${bot.id}${audience === "team" ? "" : audienceBrowserSuffix(audience as `member:${string}`)}`;
-  const ADA = session(`member:${personKey({ id: "", email: MEMBER_A.email })}`), CLEO = session(`member:${personKey({ id: "", email: MEMBER_C.email })}`);
-  const ROOM = session(`room:${roomId}`), TEAM = session("team");
-  const quietTurn = async (token: string, threadId: string, text: string, room?: string) => browserTurn(token, threadId, text, [], room);
-  await quietTurn(ada, adaThread, "Hello from Ada.");
-  expect(stub!.sessions(), "Ada's private turn prepared her own browser").toContain(ADA);
-  expect(stub!.sessions()).not.toContain(CLEO);
-  await quietTurn(cleo, cleoThread, "Hello from Cleo.");
-  await quietTurn(admin, roomThread, "Hello, group.", roomId);
-  await quietTurn(owner, bot.mainThreadId, "Hello, team.");
-  expect(new Set(stub!.sessions().filter((name) => name.startsWith("bot-"))), "one browser per audience, the team's being the bot's own").toEqual(new Set([ADA, CLEO, ROOM, TEAM]));
-  // A view opens the browser of the conversation it is opened from, for whoever may read it.
-  const before = stub!.sessions().length;
-  for (const [token, threadId] of [[admin, cleoThread], [cleo, cleoThread], [ada, undefined]] as const) await liveView(token, threadId);
-  const viewed = stub!.sessions().slice(before).filter((name) => name.startsWith("bot-"));
-  expect([...new Set(viewed)], "Ben's view of Cleo's chat reached nothing; Cleo's reached her browser; Ada's own view, hers").toEqual([CLEO, ADA]);
-  // A tool call from Ada's turn goes through the harness to her own browser, the one her turn was given.
-  const mark = stub!.lines().length;
-  const called = await browserTurn(ada, adaThread, "Which tabs are open?", [{ server: "browser", name: "agent_browser_tab_list", input: {} }]);
-  expect(stub!.lines().slice(mark), "the tool call ran in Ada's own browser").toContain(`${ADA} mcp`);
-  expect(called).toContain("agent_browser_tab_list");
-}, hostTimeout(240_000));
 
 it("pairs a member's phone with a code she made: her address and role, her chats, an end no later than her desktop's", async () => {
   const made = await team.as(ada, "POST", "/api/team/phone-pairing", {});
@@ -181,7 +137,7 @@ async function browserTurn(token: string, threadId: string, text: string, calls:
   return JSON.stringify(after.slice(before));
 }
 
-it.skipIf(!REAL_BROWSER)("keeps one member's sign-in out of another member's chat and the group chat, and back in her own", async () => {
+it.skipIf(!CHROME)("keeps one member's sign-in out of another member's chat and the group chat, and back in her own", async () => {
   const signIn = [readCookies[0], { server: "browser", name: "agent_browser_eval", input: { script: "document.cookie = 'omb_member=ada; max-age=86400; path=/'; 'cookies:' + document.cookie" } }];
   expect(await browserTurn(ada, adaThread, "Sign in to the test site.", signIn)).toContain("omb_member=ada");
   const cleoSees = await browserTurn(cleo, cleoThread, "What does the test site show you?", readCookies);

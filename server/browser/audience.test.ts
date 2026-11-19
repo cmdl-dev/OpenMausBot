@@ -3,10 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { browserSessionId } from "../browser-engine.ts";
+import { browserSessionId } from "./session-names.ts";
 import { AudienceBrowsers, audienceBrowserSuffix } from "./audience.ts";
 
-const SOCKET_DIR = "/data/.agent-browser/";
 const BOT = "0b8e2c4e-6c8f-4d0b-9e64-2f7a1c3d5e6f";
 
 describe("the name an audience gives a bot's browser", () => {
@@ -20,12 +19,12 @@ describe("the name an audience gives a bot's browser", () => {
     expect(audienceBrowserSuffix("room:x")).not.toBe(audienceBrowserSuffix("member:x"));
   });
 
-  it("keeps agent-browser's socket path on a Cloud home under its 103 bytes, for a bot's or a shared profile's browser", () => {
+  it("keeps a bot's or a shared profile's browser session name file-system safe and short", () => {
     const longest = ["room:0b8e2c4e-6c8f-4d0b-9e64-2f7a1c3d5e6f", `member:p_${"x".repeat(22)}`, `room:${"g".repeat(200)}`] as const;
     for (const audience of longest) {
       for (const session of [browserSessionId(BOT + audienceBrowserSuffix(audience), ""), browserSessionId("", "p".repeat(40) + audienceBrowserSuffix(audience))]) {
         expect(session).toMatch(/^[A-Za-z0-9_.-]{1,96}$/);
-        expect(`${SOCKET_DIR}${session}.sock`.length, session).toBeLessThanOrEqual(103);
+        expect(session.length, session).toBeLessThanOrEqual(96 - 1 - "--room-".length);
       }
     }
   });

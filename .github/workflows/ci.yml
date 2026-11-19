@@ -570,9 +570,10 @@ jobs:
     needs: static
     if: contains(needs.static.outputs.jobs, '"ui-smoke"')
     # Advisory, outside the required `test` matrix: the renderer recipe in
-    # docs/verification/chat-ui.md run by a machine. It downloads the pinned
-    # agent-browser release (digest verified) and its Chrome, drives the real
-    # <App/> against the isolated fake-engine fixture, and keeps the screenshot.
+    # docs/verification/chat-ui.md run by a machine. It downloads the UI
+    # harness's pinned agent-browser (digest verified, a developer tool the
+    # bots never use) and its Chrome, drives the real <App/> against the
+    # isolated fake-engine fixture, and keeps the screenshot.
     name: renderer smoke (control-omb ui, Ubuntu 24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -596,7 +597,7 @@ jobs:
         env:
           OMB_UI_E2E: "1"
           OMB_UI_EVIDENCE_DIR: .omb-scratch/verify-evidence
-        run: pnpm exec vitest run scripts/testing/control-omb-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/org-library-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/browser-evidence.e2e.test.ts scripts/testing/browser-fill.e2e.test.ts scripts/testing/rich-table-composer-ui.e2e.test.ts scripts/testing/computer-panel-focus-ui.e2e.test.ts scripts/testing/mobile-code-blocks-ui.e2e.test.ts scripts/testing/inline-page-height-ui.e2e.test.ts scripts/testing/room-pages-ui.e2e.test.ts
+        run: pnpm exec vitest run scripts/testing/control-omb-ui.e2e.test.ts scripts/testing/bot-tools-ui.e2e.test.ts scripts/testing/thinking-timer-ui.e2e.test.ts scripts/testing/team-share-ui.e2e.test.ts scripts/testing/org-library-ui.e2e.test.ts scripts/testing/presets-ui.e2e.test.ts scripts/testing/rich-table-composer-ui.e2e.test.ts scripts/testing/computer-panel-focus-ui.e2e.test.ts scripts/testing/mobile-code-blocks-ui.e2e.test.ts scripts/testing/inline-page-height-ui.e2e.test.ts scripts/testing/room-pages-ui.e2e.test.ts
       - name: Upload the renderer screenshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -611,45 +612,6 @@ jobs:
             .omb-scratch/verify-evidence/room-pages-*.png
           if-no-files-found: warn
           retention-days: 7
-
-  browser-identity:
-    needs: static
-    if: contains(needs.static.outputs.jobs, '"browser-identity"')
-    # Advisory, outside the required gate: the pinned agent-browser drives a
-    # real Chrome for Testing through OMB's launcher and identity connection
-    # (scripts/testing/browser-identity.e2e.test.ts): a 1280x720 page whose
-    # user agent and client hints are the browser's own in the page, a
-    # worker, a service worker and a cross-site frame. On Windows this is
-    # also the check that the 0.36.0-omb.1 engine starts Chrome through the
-    # generated batch file. browser-passkey.e2e.test.ts: a passkey step's
-    # request ends at once there, so Try another way works. The same
-    # platforms as the vitest matrix.
-    name: browser identity (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(needs.static.outputs.vitest_os) }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Let Chrome build its sandbox on this runner
-        if: runner.os == 'Linux'
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Drive a real Chrome through the launcher
-        env:
-          OMB_UI_E2E: "1"
-        # One file at a time: a runner's first Chrome launch is slow (on Windows it waits for a scan of the binary), and two
-        # at once ran the identity probe past its 30 s.
-        run: pnpm exec vitest run scripts/testing/browser-identity.e2e.test.ts scripts/testing/browser-passkey.e2e.test.ts --no-file-parallelism
 
   package-linux:
     needs: static
@@ -698,8 +660,6 @@ jobs:
           sudo chown root:root release/linux-unpacked/chrome-sandbox
           sudo chmod 4755 release/linux-unpacked/chrome-sandbox
           test "$(stat -c '%U:%G %a' release/linux-unpacked/chrome-sandbox)" = "root:root 4755"
-      - name: Verify the installed browser with Ubuntu sandbox restrictions
-        run: node scripts/smoke-browser-bundle.mjs --resources /opt/OpenMausBot/resources
       - name: Launch packaged app and verify lifecycle
         env:
           OMB_KEEP_SMOKE_DIR: "1"

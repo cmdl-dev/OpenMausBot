@@ -4,7 +4,7 @@ import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled } fro
 import { t } from "@/lib/i18n";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import { api, useStore, type ConfigStatus } from "@/state/store";
-import { MoreText, SettingRow, Switch } from "./SettingsPrimitives";
+import { SettingRow, Switch } from "./SettingsPrimitives";
 
 /** Saves one config change through PATCH /api/config, one at a time, and shows the server's answer or its error. */
 export function useConfigSave() {
@@ -34,8 +34,6 @@ export function BuiltInBrowserRow() {
   const { state } = useStore();
   const browser = builtInBrowserEnabled(state.config);
   const desktopBrowser = browserAvailable(state.config);
-  const browserInstallable = state.config?.browserEngine?.installable === true;
-  const browserBlockedOnWindows = window.ogb?.platform === "win32" && !desktopBrowser && !browserInstallable;
   const { saving, error, save } = useConfigSave();
 
   return (
@@ -46,16 +44,13 @@ export function BuiltInBrowserRow() {
         ? browser
         ? t("settings.ai.ready")
         : t("settings.browser.offShort")
-        : browserBlockedOnWindows
-        ? t("settings.experimental.browserWindows")
-        : browserInstallable ? (browser ? t("settings.browser.installsFirst") : t("settings.browser.notInstalledShort"))
         : browserUnavailableReason(state.config)}
     message={error ? <p role="alert" className="text-danger">{error}</p> : null}
     >
       <Switch
           checked={browser}
           aria-label={t("settings.experimental.browserAria")}
-          disabled={saving || (!browser && !desktopBrowser && !browserInstallable)}
+          disabled={saving || (!browser && !desktopBrowser)}
           onClick={() => void save({ features: { browser: !browser } })}
           className="disabled:cursor-wait disabled:opacity-50"
       />
@@ -122,27 +117,5 @@ export function BrowserProxyRow() {
         {saved ? <button type="button" disabled={saving} onClick={() => void save({ browserEngine: { egress: { proxy: "" } } })} className="rounded-lg bg-control px-3 py-2 text-[13px] text-ink disabled:opacity-50">{t("settings.browser.proxyClear")}</button> : null}
       </div>
     </SettingRow>
-  );
-}
-
-/** browserEngine.engine: the bots' browsers run on OpenMausBot's own Chrome driver instead of agent-browser. */
-export function NewBrowserSettings() {
-  const { state } = useStore();
-  const on = state.config?.browserEngine?.engine === "chrome";
-  const { saving, error, save } = useConfigSave();
-
-  return (
-    <div data-testid="new-browser-settings" className="contents">
-      <SettingRow title={t("settings.experimental.newBrowser")} tag={t("settings.early.tag")} subtitle={<MoreText short={t("settings.experimental.newBrowserShort")} long={t("settings.experimental.newBrowserDetail")} />}
-        message={error ? <span role="alert" className="text-danger">{error}</span> : undefined}>
-        <Switch
-          checked={on}
-          aria-label={t("settings.experimental.newBrowserAria")}
-          disabled={saving}
-          onClick={() => void save({ browserEngine: { engine: on ? "agent-browser" : "chrome" } })}
-          className="disabled:cursor-wait disabled:opacity-50"
-        />
-      </SettingRow>
-    </div>
   );
 }

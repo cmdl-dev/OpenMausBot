@@ -2,13 +2,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const enabled = Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env })) || process.env.OMB_UI_E2E === "1";
+const enabled = Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env)) || process.env.OMB_UI_E2E === "1";
 if (!enabled) console.log("skipping tool selection UI: set OMB_UI_E2E=1 to install the pinned browser");
 interface SavedBot { id: string; name: string; toolScope?: { allow?: string[]; deny?: string[] }; busy?: boolean }
 

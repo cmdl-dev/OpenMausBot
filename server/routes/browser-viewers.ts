@@ -11,8 +11,7 @@ import { Readable, Transform } from "node:stream";
 import { BROWSER_UPLOAD_MAX_BYTES as UPLOAD_MAX_BYTES } from "../../shared/upload-limits.ts";
 import type { Audience } from "../audience.ts";
 import { storeUploads } from "../browser-upload.ts";
-import type { BrowserLive } from "../browser-live.ts";
-import type { LiveRouter } from "../browser/engines.ts";
+import type { BrowserLive, BrowserSpawnSpec } from "../browser/engines.ts";
 import { requestedSize } from "../browser/viewers/viewport.ts";
 import { messageFileDisposition } from "../message-file.ts";
 import { isSameOrigin, type RequestAuth } from "../request-auth.ts";
@@ -27,12 +26,12 @@ const CHOOSER = /^[\w-]{1,64}$/;
 const UPLOAD_MAX_FILES = 20;
 const PICKER_CLOSED = "The page's file picker is no longer open.";
 
-type Spec = Parameters<BrowserLive["open"]>[0]["spec"];
+type Spec = Pick<BrowserSpawnSpec, "command"> & { args?: readonly string[]; env?: BrowserSpawnSpec["env"] };
 type Failure = { status: number; error: string };
 
 export interface BrowserViewerRouteDeps {
   upgrades: Upgrades;
-  viewers: Pick<LiveRouter, "open" | "action" | "stream" | "fileChooserOffered" | "answerFileChooser" | "download">;
+  viewers: Pick<BrowserLive, "open" | "action" | "stream" | "fileChooserOffered" | "answerFileChooser" | "download">;
   /** Who is watching, as a hold of the browser knows them: every view and device of one person shares their hold. */
   person(auth: RequestAuth): string;
   /** Whose browser of the bot this person's view shows (`threadId` names the conversation they look at); null when

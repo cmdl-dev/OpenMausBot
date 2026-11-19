@@ -1,20 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ChevronDown, KeyRound, Loader2, LockKeyhole, ShieldCheck, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, KeyRound, Loader2, LockKeyhole, ShieldCheck, Trash2 } from "lucide-react";
 
 import { loginHeldBackFor, type LoginBots, type LoginSummary, type OnePasswordItemRef, type OnePasswordStatus, type OnePasswordVault } from "../../shared/logins";
+import { cardExpired, cardLabel, type VaultCard } from "../../shared/payment-cards";
 import type { LinkedSecret, VaultSecret } from "../../shared/vault";
 import { t } from "@/lib/i18n";
 import { productName } from "@/lib/brand";
 import { addLogin, changeLogin, connectOnePassword, deleteLogin, disconnectOnePassword, grantOnePasswordItem, grantVault, refreshOnePassword } from "@/lib/logins";
 import { relativeTime } from "@/lib/memory";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
-import { deleteSecret, listVault } from "@/lib/vault";
+import { deleteCard, deleteSecret, listVault } from "@/lib/vault";
 import { useStore } from "@/state/store";
 import { Segmented } from "./bot-panel/rows";
 import { LoginBotPicker, LoginForm } from "./LoginForm";
 import { Card, LearnMore, SETTINGS_INPUT, SettingsEmptyRow, SettingsField, SettingsGroup, SettingsLinkRow, SettingsRows } from "./SettingsPrimitives";
 import { SettingsDialog } from "./settings/SettingsDialog";
-import { EnvImportForm, SecretForm } from "./VaultSecretForms";
+import { CardForm, EnvImportForm, SecretForm } from "./VaultSecretForms";
 
 // Security: a row never shows a password or a secret, which no route returns. A saved value can only be replaced.
 
@@ -27,17 +28,18 @@ const SOURCE_KEYS = {
 
 const ROW_BUTTON = "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[12px] text-ink-secondary hover:bg-control hover:text-ink disabled:opacity-50";
 
-type Filter = "all" | "logins" | "secrets";
-type Adding = "login" | "secret" | "env" | null;
-type Row = { kind: "login"; key: string; login: LoginSummary } | { kind: "secret"; key: string; secret: VaultSecret | LinkedSecret };
+type Filter = "all" | "logins" | "secrets" | "cards";
+type Adding = "login" | "secret" | "card" | "env" | null;
+type Row = { kind: "login"; key: string; login: LoginSummary } | { kind: "secret"; key: string; secret: VaultSecret | LinkedSecret } | { kind: "card"; key: string; card: VaultCard };
 
-const ADD_CHOICES = [["login", "settings.vault.addLogin"], ["secret", "settings.vault.addSecret"], ["env", "settings.vault.importEnv"]] as const;
+const ADD_CHOICES = [["login", "settings.vault.addLogin"], ["secret", "settings.vault.addSecret"], ["card", "settings.vault.addCard"], ["env", "settings.vault.importEnv"]] as const;
 
-function rowsOf(logins: LoginSummary[], secrets: Array<VaultSecret | LinkedSecret>, filter: Filter, query: string): Row[] {
+function rowsOf(logins: LoginSummary[], secrets: Array<VaultSecret | LinkedSecret>, cards: VaultCard[], filter: Filter, query: string): Row[] {
   const q = query.trim().toLowerCase();
   const rows: Row[] = [
-    ...(filter === "secrets" ? [] : logins.map((login): Row => ({ kind: "login", key: [login.site, login.username, ...login.hosts].join(" "), login }))),
-    ...(filter === "logins" ? [] : secrets.map((secret): Row => ({ kind: "secret", key: secret.name, secret }))),
+    ...(filter === "all" || filter === "logins" ? logins.map((login): Row => ({ kind: "login", key: [login.site, login.username, ...login.hosts].join(" "), login })) : []),
+    ...(filter === "all" || filter === "secrets" ? secrets.map((secret): Row => ({ kind: "secret", key: secret.name, secret })) : []),
+    ...(filter === "all" || filter === "cards" ? cards.map((card): Row => ({ kind: "card", key: cardLabel(card), card })) : []),
   ];
   return rows.filter((row) => !q || row.key.toLowerCase().includes(q)).sort((a, b) => a.key.localeCompare(b.key));
 }
@@ -49,6 +51,7 @@ export function VaultSettings() {
   const bots = state.bots.map((bot) => ({ id: bot.id, name: bot.name }));
   const [logins, setLogins] = useState<LoginSummary[] | null>(null);
   const [secrets, setSecrets] = useState<Array<VaultSecret | LinkedSecret>>([]);
+  const [cards, setCards] = useState<VaultCard[]>([]);
   const [onePassword, setOnePassword] = useState<OnePasswordStatus>({ connected: false });
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -72,6 +75,7 @@ export function VaultSettings() {
       const answer = await listVault();
       setLogins(answer.logins ?? []);
       setSecrets(answer.secrets ?? []);
+      setCards(answer.cards ?? []);
       setOnePassword(answer.onePassword ?? { connected: false });
       setError(null);
     }
@@ -102,12 +106,13 @@ export function VaultSettings() {
     setDeleting(null);
     setAdding(kind);
   };
-  const remove = async (id: string, kind: "login" | "secret") => {
+  const remove = async (id: string, kind: "login" | "secret" | "card") => {
     if (deleting !== id) { setDeleting(id); return; }
     setBusy(true);
     setKeysOff([]);
     try {
       if (kind === "login") await deleteLogin(id);
+      else if (kind === "card") await deleteCard(id);
       else setKeysOff(await deleteSecret(id));
       setDeleting(null);
       await load();
@@ -115,7 +120,7 @@ export function VaultSettings() {
     catch (cause) { setError(cause instanceof Error && cause.message ? cause.message : t("settings.logins.deleteError")); }
     finally { setBusy(false); }
   };
-  const rowButtons = (id: string, kind: "login" | "secret", name: string, onChange: () => void) => (
+  const rowButtons = (id: string, kind: "login" | "secret" | "card", name: string, onChange: () => void) => (
     <div className="flex shrink-0 gap-1">
       {!member && <button type="button" className={ROW_BUTTON} disabled={busy} onClick={onChange}
         aria-label={kind === "login" ? t("settings.logins.changeFor", { site: name }) : t("settings.vault.secret.changeFor", { name })}>{t("settings.logins.change")}</button>}
@@ -136,8 +141,8 @@ export function VaultSettings() {
     <OnePasswordItemAccess item={item} value={value} bots={bots} onCancel={() => setEditing(null)}
       onSaved={async () => { setEditing(null); await load(); }} />
   );
-  const rows = rowsOf(logins ?? [], secrets, filter, query);
-  const empty = logins !== null && logins.length === 0 && secrets.length === 0;
+  const rows = rowsOf(logins ?? [], secrets, cards, filter, query);
+  const empty = logins !== null && logins.length === 0 && secrets.length === 0 && cards.length === 0;
 
   const loginRow = (login: LoginSummary) => (
     <li key={login.id} className="flex flex-col gap-2 py-2.5" data-login-row={login.site}>
@@ -213,6 +218,29 @@ export function VaultSettings() {
     </li>
   );
 
+  const cardRow = (card: VaultCard) => (
+    <li key={card.id} className="flex flex-col gap-2 py-3" data-card-row={card.last4}>
+      <div className="flex min-w-0 items-start gap-2">
+        <CreditCard size={14} aria-hidden="true" className="mt-[3px] shrink-0 text-ink-tertiary" />
+        <div className="min-w-0 flex-1">
+          <div dir="auto" className="truncate text-[13px] font-medium text-ink" title={cardLabel(card)}>{cardLabel(card)}</div>
+          <div className={`text-[12px] ${cardExpired(card, Date.now()) ? "text-warning" : "text-ink-secondary"}`} dir="ltr">
+            {t(cardExpired(card, Date.now()) ? "settings.vault.card.expired" : "settings.vault.card.expires", { date: `${String(card.expMonth).padStart(2, "0")}/${card.expYear}` })}
+          </div>
+          <div className="mt-0.5 text-[12px] leading-4 text-ink-tertiary">
+            {[t("settings.vault.card.approves"), botNames(card.bots), used(card.lastUsedAt)].join(" · ")}
+          </div>
+        </div>
+        {rowButtons(card.id, "card", cardLabel(card), () => startEdit(card.id))}
+      </div>
+      {editing === card.id && (
+        <div className="ms-6 rounded-lg bg-inset/60 p-3">
+          <CardForm card={card} bots={bots} onCancel={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />
+        </div>
+      )}
+    </li>
+  );
+
   return (
     <div className="flex flex-col gap-6" aria-busy={logins === null || busy} data-vault>
       <SettingsGroup label={t("settings.vault.saved")} block="saved-list"
@@ -234,7 +262,7 @@ export function VaultSettings() {
         {!empty && (
           <div className="flex flex-wrap items-center gap-3 px-4">
             {!member && <Segmented label={t("settings.vault.filter")} attr="data-vault-filter" value={filter} onChange={setFilter}
-              options={[{ value: "all", label: t("settings.vault.filter.all") }, { value: "logins", label: t("settings.vault.filter.logins") }, { value: "secrets", label: t("settings.vault.filter.secrets") }]} />}
+              options={[{ value: "all", label: t("settings.vault.filter.all") }, { value: "logins", label: t("settings.vault.filter.logins") }, { value: "secrets", label: t("settings.vault.filter.secrets") }, { value: "cards", label: t("settings.vault.filter.cards") }]} />}
             <input data-vault-search type="text" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" spellCheck={false}
               placeholder={t("settings.vault.search")} aria-label={t("settings.vault.search")} className={`${SETTINGS_INPUT} ms-auto h-7 max-w-[200px]`} />
           </div>
@@ -258,13 +286,14 @@ export function VaultSettings() {
             </div>
           )}
           {adding === "secret" && <div className="p-4"><SecretForm bots={bots} onCancel={() => setAdding(null)} onSaved={async () => { setAdding(null); await load(); }} /></div>}
+          {adding === "card" && <div className="p-4"><CardForm bots={bots} onCancel={() => setAdding(null)} onSaved={async () => { setAdding(null); await load(); }} /></div>}
           {adding === "env" && <div className="p-4"><EnvImportForm bots={bots} onCancel={() => setAdding(null)} onSaved={load} /></div>}
           {logins === null && !error && <SettingsEmptyRow>{t("settings.vault.loading")}</SettingsEmptyRow>}
           {empty && !adding && <SettingsEmptyRow>{t(member ? "settings.vault.memberEmpty" : "settings.vault.emptyShort")}</SettingsEmptyRow>}
           {!empty && logins !== null && rows.length === 0 && <div data-vault-none className="contents"><SettingsEmptyRow>{t("settings.vault.noMatch")}</SettingsEmptyRow></div>}
           {rows.length > 0 && (
             <ul className="divide-y-[0.5px] divide-(--settings-edge) px-4" data-logins-list>
-              {rows.map((row) => row.kind === "login" ? loginRow(row.login) : secretRow(row.secret))}
+              {rows.map((row) => row.kind === "login" ? loginRow(row.login) : row.kind === "card" ? cardRow(row.card) : secretRow(row.secret))}
             </ul>
           )}
         </SettingsRows>

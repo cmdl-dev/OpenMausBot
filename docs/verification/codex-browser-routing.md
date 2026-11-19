@@ -5,7 +5,7 @@ Codex bot processes use OpenMausBot's selected browser/desktop bridge. Process-l
 ## Regression checks
 
 ```sh
-pnpm exec vitest run server/browser-runtime.test.ts server/harness-mcp-proxy.test.ts server/surface.test.ts server/drivers/codex.test.ts scripts/testing/native-search-evidence.test.ts
+pnpm exec vitest run server/browser/engines.test.ts server/harness-mcp-proxy.test.ts server/surface.test.ts server/drivers/codex.test.ts scripts/testing/native-search-evidence.test.ts
 pnpm exec tsc --noEmit -p tsconfig.server.json
 ```
 
@@ -20,7 +20,7 @@ These checks spend real model quota. Each script launches a temporary server and
 - `OMB_VERIFY_OUTPUT`: local evidence directory; do not commit raw transcripts or screenshots containing private data.
 - `OMB_VERIFY_MODELS`: optional comma-separated models (default `gpt-5.6-luna`).
 
-For browser acceptance, also set `OMB_VERIFY_BROWSER_BINARY` to the installed pinned agent-browser executable and `OMB_VERIFY_BROWSER_CHROME` to Chrome. Run:
+For browser acceptance, also set `OMB_VERIFY_BROWSER_CHROME` to an installed Chrome. Run:
 
 ```sh
 node --experimental-strip-types scripts/verify-codex-browser-acceptance.ts

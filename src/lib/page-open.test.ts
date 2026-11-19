@@ -38,9 +38,7 @@ describe("where a published page opens", () => {
       ["no bot", { selectedId: "gone" }],
       ["bot's browser off", { bots: [{ id: "pepper", browser: false }] }],
       ["browser feature off", { config: { features: { browser: false }, browserEngine: { kind: "engine" } } }],
-      ["not installed", { config: { features: { browser: true }, browserEngine: { kind: "unavailable", installable: true } } }],
-      ["installing", { config: { features: { browser: true }, browserEngine: { kind: "engine", installing: true } } }],
-      ["install failed", { config: { features: { browser: true }, browserEngine: { kind: "engine", installError: "disk full" } } }],
+      ["no Chrome", { config: { features: { browser: true }, browserEngine: { kind: "unavailable", installChrome: true } } }],
     ];
     for (const [name, over] of cases) expect(pagePanelBot(PAGE, facts(over)), name).toBeNull();
   });

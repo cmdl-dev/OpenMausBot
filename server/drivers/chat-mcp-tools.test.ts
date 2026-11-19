@@ -208,7 +208,7 @@ describe("Chat MCP session", () => {
     ["browser", "Open the address with browser_agent_browser_open first, then call browser_agent_browser_read without url."],
     ["custom", "input schema"],
   ] as const)("names the way to read an address when agent_browser_read's url is hidden (%s)", async (mountAs, error) => {
-    // agent-browser's read with its url hidden by slimBrowserToolList (email bug 1a1cb892)
+    // agent_browser_read offers no url
     const readSchema = { type: "object", properties: { filter: { type: "string" } }, additionalProperties: false };
     const f = fixture(`if (message.method === "tools/list") { reply(message, {tools:[{name:"agent_browser_read",description:"Read the open page.",inputSchema:schema}]}); continue; }`, readSchema);
     const session = await mountChatTools(mountAs === "browser" ? { browser: f.server } : { custom: { browser: f.server } }, f.controller.signal, true);

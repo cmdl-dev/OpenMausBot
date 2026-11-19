@@ -145,7 +145,7 @@ describe("environment identity", () => {
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, ownHome: false }).capabilities).not.toHaveProperty("move");
     // A lent computer may lend its internet connection only to a Cloud home that lends at all.
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: false, cloudHome: true, sharedComputers: true }).capabilities)
-      .toEqual({ remoteSessions: true, sharedComputers: true, lendingDetails: true, commandTimeouts: true, longCommands: true, fileEdits: true, deviceLink: true, lentMcp: true, myChromeLink: true, computerAsks: true, cloudHome: true, move: 1, selfUpdate: "operator", install: expect.any(String), emailSignIn: false, jobs: true });
+      .toEqual({ remoteSessions: true, sharedComputers: true, lendingDetails: true, commandTimeouts: true, longCommands: true, fileEdits: true, deviceLink: true, lentMcp: true, computerAsks: true, cloudHome: true, move: 1, selfUpdate: "operator", install: expect.any(String), emailSignIn: false, jobs: true });
     expect(environmentDescriptor({ environmentId: "abc", desktopManaged: true, sharedComputers: true }).capabilities).not.toHaveProperty("deviceLink");
   });
 
@@ -156,12 +156,11 @@ describe("environment identity", () => {
     expect(environmentDescriptor({ ...base, sharedComputers: false, cloudHome: true }).capabilities).not.toHaveProperty("lentMcp");
   });
 
-  it("advertises myChromeLink only on a personal Cloud home with lending", () => {
+  it("never advertises myChromeLink: the bots' browser no longer runs on the person's Chrome", () => {
     const base = { environmentId: "abc", desktopManaged: false };
-    expect(environmentDescriptor({ ...base, sharedComputers: true, cloudHome: true }).capabilities.myChromeLink).toBe(true);
-    expect(environmentDescriptor({ ...base, sharedComputers: true, cloudHome: true, cloudTeam: true }).capabilities).not.toHaveProperty("myChromeLink");
-    expect(environmentDescriptor({ ...base, sharedComputers: true, cloudHome: false }).capabilities).not.toHaveProperty("myChromeLink");
-    expect(environmentDescriptor({ ...base, sharedComputers: false, cloudHome: true }).capabilities).not.toHaveProperty("myChromeLink");
+    for (const options of [{ cloudHome: true }, { cloudHome: true, cloudTeam: true }, { cloudHome: false }]) {
+      expect(environmentDescriptor({ ...base, sharedComputers: true, ...options }).capabilities).not.toHaveProperty("myChromeLink");
+    }
   });
 
   it("says a team's Cloud home is a team's, so a sign-in page names the team", () => {

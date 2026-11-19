@@ -1,13 +1,12 @@
 // A sign-in that stops at a passkey, on real Chrome: fixture pages shaped like Google's sign-in, whose passkey and
-// security-key steps ask WebAuthn for a credential as Google's do. The bot's answers go through the runtime router, as
+// security-key steps ask WebAuthn for a credential as Google's do. The bot's answers go through the browser runtime, as
 // on a server.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { BrowserRuntime } from "../browser-runtime.ts";
 import { hostTimeout } from "../testing/host-timeout.ts";
 import { FixtureServer } from "./cdp/testing/fixtures.ts";
 import { CHROME } from "./cdp/testing/real-chrome.ts";
-import { CHROME_ENGINE, RuntimeRouter, type ChromeEngine } from "./engines.ts";
+import { BrowserRuntime, CHROME_ENGINE, type ChromeEngine } from "./engines.ts";
 import { passkeyAnnotation, passkeyNotice } from "./passkey-notice.ts";
 import { startService, until, type RealService, type ToolResult } from "./testing/real-service.ts";
 
@@ -31,7 +30,7 @@ const OTHER_WAY = `<a href="/v3/signin/challenge/selection">Try another way</a>`
 suite("a passkey step in the bots' browser on real Chrome", () => {
   let fx: FixtureServer;
   let real: RealService;
-  let router: RuntimeRouter;
+  let router: BrowserRuntime;
   let bots = 0;
   const said = (result: unknown) => real.text(result as ToolResult);
 
@@ -46,8 +45,7 @@ suite("a passkey step in the bots' browser on real Chrome", () => {
     fx.page("/signed-in", `<!doctype html><meta charset="utf-8"><title>Google Account</title><h1>Welcome, Person</h1>`);
     fx.page("/passkey-enrollment", SIGN_IN(`<h1>Sign in faster with a passkey</h1><button>Not now</button>${ASKS(CREATE)}`));
     real = await startService();
-    const agentBrowser = { agentRpc: () => Promise.reject(new Error("agent-browser is not part of this suite")) } as unknown as BrowserRuntime;
-    router = new RuntimeRouter(agentBrowser, { service: real.service } as unknown as ChromeEngine, { annotate: passkeyAnnotation("cloud") });
+    router = new BrowserRuntime({ service: real.service } as unknown as ChromeEngine, { annotate: passkeyAnnotation("cloud") });
   }, hostTimeout(240_000));
 
   afterAll(async () => {

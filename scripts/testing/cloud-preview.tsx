@@ -172,7 +172,7 @@ function Fixture() {
   useEffect(() => {
     if (state.config && state.config.features?.browser !== true) {
       dispatch({ type: "configStatus", config: { ...state.config, features: { ...state.config.features, browser: true },
-        browserEngine: { kind: "unavailable", installable: true } } });
+        browserEngine: { kind: "unavailable", installChrome: true } } });
     }
   }, [state.config, dispatch]);
   const fixtureBot: Bot | undefined = bot && (scenario === "default"

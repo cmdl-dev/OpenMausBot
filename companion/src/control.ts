@@ -477,10 +477,7 @@ function render(s) {
       ? "<ul>" + s.devices.map((d) =>
           "<li><div class='grow'><div class=name>" + esc(d.name) + "</div>" +
           "<div class=dim>Last seen " + ago(d.lastSeenAt) + "</div>" +
-          "<button data-cloud='" + esc(d.id) + "' data-allowed='" + (d.cloudDesktopAccess ? "1" : "0") + "'>" +
-          (d.cloudDesktopAccess ? "Cloud desktop on" : "Allow cloud desktop") + "</button>" +
-          "<button data-browser='" + esc(d.id) + "' data-browser-allowed='" + (d.browserControlAccess ? "1" : "0") + "'>" +
-          (d.browserControlAccess ? "Browser control on" : "Allow browser control") + "</button></div>" +
+          "</div>" +
           "<button data-revoke='" + esc(d.id) + "'>Remove</button></li>").join("") + "</ul>"
       : "<p class=dim>No phones are paired yet.</p>");
 
@@ -488,18 +485,6 @@ function render(s) {
   el("cancel")?.addEventListener("click", async () => render(await api("/pairing", "DELETE")));
   for (const b of document.querySelectorAll("[data-revoke]")) {
     b.addEventListener("click", async () => render(await api("/devices/" + b.dataset.revoke, "DELETE")));
-  }
-  for (const b of document.querySelectorAll("[data-cloud]")) {
-    b.addEventListener("click", async () => render(await api(
-      "/devices/" + b.dataset.cloud + "/cloud-desktop",
-      b.dataset.allowed === "1" ? "DELETE" : "POST"
-    )));
-  }
-  for (const b of document.querySelectorAll("[data-browser]")) {
-    b.addEventListener("click", async () => render(await api(
-      "/devices/" + b.dataset.browser + "/browser-control",
-      b.dataset.browserAllowed === "1" ? "DELETE" : "POST"
-    )));
   }
   if (s.pairing) {
     const tick = () => {

@@ -94,21 +94,22 @@ describe("preparing a harness response for a device", () => {
     }
   });
 
-  it("requires the host to enable computer access for viewer and preview requests", async () => {
+  it("forwards viewer and preview requests from any paired device", async () => {
     cloudDesktopAccess = false;
+    respond = (res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end("{}");
+    };
     try {
       for (const path of ["computer/join", "computer/screenshot", "local-computer/screenshot", "local-computer/join"]) {
-        const { status, text } = await device(`/api/bots/b1/${path}`, "POST");
-        expect(status).toBe(403);
-        expect(text).toContain("enable it in OpenMausBot");
-        expect(text).toContain("Settings → Remote access");
+        expect((await device(`/api/bots/b1/${path}`, "POST")).status, path).toBe(200);
       }
     } finally {
       cloudDesktopAccess = true;
     }
   });
 
-  it("forwards only the enabled device's request for a fresh viewer", async () => {
+  it("forwards the device's request for a fresh viewer", async () => {
     respond = (res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ joinUrl: "https://desktop.example/session/fresh", state: "ready" }));

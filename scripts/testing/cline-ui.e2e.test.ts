@@ -1,8 +1,8 @@
 // Real model picker and chat transport against disposable provider CLIs.
 import { expect, it } from "vitest";
-import { closeBrowserSession } from "../../server/browser-engine.ts";
 import { launchVerificationServer, runControlOmb } from "../control-omb.ts";
 import { agentBrowser, ensureUiBrowser, sessionEnv } from "./control-omb-ui.ts";
+import { closeUiDriverSession } from "./ui-driver.ts";
 import { mountPreview } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -54,7 +54,7 @@ const enabled = process.env.OMB_UI_E2E === "1";
     }, { timeout: 15_000 }).toBe(true);
     expect((await browser("console")).messages).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
   } finally {
-    await closeBrowserSession(tools.binary, env);
+    await closeUiDriverSession(tools.binary, env);
     await preview?.close();
     await fixture.close();
   }

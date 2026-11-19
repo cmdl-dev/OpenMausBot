@@ -34,14 +34,14 @@ function tabsOf(value: unknown): BrowserTab[] {
 }
 
 /**
- * A bot's browser: the page fills the panel on either engine, streamed over the v2 WebSocket when the new engine runs
- * it, else over the v1 live view. Security: a new connection never replays old input. Only the server gives this view a
- * hold: one of the same person's, when none of their views uses it or when they take it over here.
+ * A bot's browser: the page fills the panel, streamed over the v2 WebSocket, or over the v1 live view when the stream
+ * cannot open. Security: a new connection never replays old input. Only the server gives this view a hold: one of the
+ * same person's, when none of their views uses it or when they take it over here.
  */
 export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserSignIn; page?: BrowserPage }) {
   const { state } = useStore();
   const [fallback, setFallback] = useState(false);
-  const stream = state.config?.browserEngine?.engine === "chrome" && !fallback;
+  const stream = !fallback;
   const [attempt, setAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
   const [control, setControl] = useState<PreviewStreamControl | null>(null);
@@ -98,7 +98,7 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
     setFallback(false);
     setAttempt((value) => value + 1);
   }, []);
-  // Another profile may run on the other engine: it gets the stream again if it has one.
+  // Another profile's browser gets the stream again.
   useEffect(() => { setFallback(false); }, [bot.id, bot.browserProfile, scopedThread]);
   useEffect(() => {
     setTabs([]);
@@ -382,24 +382,10 @@ export function LiveBrowser({ bot, signIn, page }: { bot: Bot; signIn?: BrowserS
 
 export function BrowserPanel({ bot, signIn, page }: { bot: Bot; signIn?: BrowserSignIn; page?: BrowserPage }) {
   const { state } = useStore();
-  const engine = state.config?.browserEngine;
-  const [requested, setRequested] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [admin, setAdmin] = useState<boolean | null>(null);
-  useEffect(() => { let active = true; void api("/api/auth/session").then((session) => { if (active) setAdmin(session.scopes.includes("admin")); }).catch(() => { if (active) setAdmin(false); }); return () => { active = false; }; }, []);
-  const installing = requested || engine?.installing === true;
-  const install = async () => {
-    setError(null); setRequested(true);
-    try { await api("/api/browser-engine/install", { method: "POST" }); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setRequested(false); }
-  };
   if (bot.browser === false) return <div className="p-5 text-[13px] text-ink-secondary">{t("browser.panel.enableBot")}</div>;
-  if (engine?.kind === "engine" && !installing && !engine.installError) return <LiveBrowser key={bot.id} bot={bot} signIn={signIn} page={page} />;
+  if (state.config?.browserEngine?.kind === "engine") return <LiveBrowser key={bot.id} bot={bot} signIn={signIn} page={page} />;
   return <div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-3 rounded-xl bg-card p-5">
-    <div className="text-[15px] font-medium text-ink">{engine?.kind === "engine" ? t("browser.panel.installIncomplete") : t("browser.panel.engineNotInstalled")}</div>
-    <p className="text-[13px] leading-relaxed text-ink-secondary">{engine?.kind === "engine" ? t("browser.panel.installIncompleteHelp") : engine?.installable && admin !== false ? t("browser.panel.engineNotInstalledHelp", { name: bot.name }) : browserUnavailableReason(state.config)}</p>
-    {engine?.installable || engine?.kind === "engine" ? <button type="button" onClick={() => void install()} disabled={installing || admin !== true} className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-ink disabled:opacity-60">{installing ? t("browser.panel.installing") : engine?.kind === "engine" ? t("browser.panel.retryInstall") : t("browser.panel.installEngine")}</button> : null}
-    {(engine?.installError || error) && <p role="alert" className="text-[12px] text-danger">{error ?? engine?.installError}</p>}
+    <div className="text-[15px] font-medium text-ink">{t("browser.panel.unavailable")}</div>
+    <p className="text-[13px] leading-relaxed text-ink-secondary">{browserUnavailableReason(state.config)}</p>
   </div>;
 }

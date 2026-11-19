@@ -1,6 +1,7 @@
 import { cn } from "@/lib/cn";
 import { failedTurnCause } from "@/lib/failed-turn";
 import { isStatusActivity } from "@/lib/activity-runs";
+import { emailDraftOf } from "@/lib/email-send";
 import { peerLine, peerRequest } from "@/lib/peer-message";
 import { localDay } from "@/lib/transcript-derivations";
 import type { TranscriptItem } from "@/lib/activity-runs";
@@ -63,7 +64,7 @@ export function quietRow(message: Message, showToolCalls: boolean): boolean {
   if (message.reaction || message.helperFollowup) return true;
   if (message.kind === "digest") return !showToolCalls;
   if (message.kind !== "activity" || showToolCalls) return false;
-  if (message.dataResult || message.comm || message.threadRef || message.relay || isStatusActivity(message)) return false;
+  if (message.dataResult || message.comm || message.threadRef || message.relay || isStatusActivity(message) || emailDraftOf(message)) return false;
   return !(message.tool && failedTurnCause(message.tool.name) !== null);
 }
 

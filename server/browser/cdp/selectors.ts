@@ -82,7 +82,7 @@ async function queryRole(frames: FrameTree, selector: Extract<Selector, { engine
 }
 
 /** Every match (CSS and text return a count instead of nodes when there is more than one). */
-async function query(frames: FrameTree, selector: Selector): Promise<{ count: number; backendNodeId?: number }> {
+async function query(frames: FrameTree, selector: Selector, frameId: string = frames.mainFrameId): Promise<{ count: number; backendNodeId?: number }> {
   if (selector.engine === "role") {
     const ids = [...new Set(await queryRole(frames, selector))];
     return { count: ids.length, ...(ids.length === 1 ? { backendNodeId: ids[0] } : {}) };
@@ -91,7 +91,7 @@ async function query(frames: FrameTree, selector: Selector): Promise<{ count: nu
   const args = selector.engine === "css" ? [selector.css] : [selector.text, selector.exact];
   let answer: Awaited<ReturnType<typeof callInWorld>>;
   try {
-    answer = await callInWorld(frames, frames.mainFrameId, fn, args);
+    answer = await callInWorld(frames, frameId, fn, args);
   } catch (error) {
     if (selector.engine === "css" && /SyntaxError|not a valid selector/i.test(messageOf(error))) {
       throw new DriverError("invalid-selector", `${selector.css} is not a valid CSS selector.`);
@@ -121,6 +121,15 @@ export async function resolveSelector(frames: FrameTree, input: string): Promise
     throw new DriverError("ambiguous", `strict mode violation: ${input} matches ${count} elements. Use a ref from a snapshot, or a selector that names one element.`, { count });
   }
   return { frameId: frames.mainFrameId, session: frames.mainSession, backendNodeId };
+}
+
+/** Exactly one element matching a CSS selector in one frame of the tab, out-of-process iframes included. */
+export async function resolveCssInFrame(frames: FrameTree, frameId: string, css: string): Promise<NodeHandle> {
+  const frame = frames.get(frameId);
+  if (!frame) throw new DriverError("not-found", "That frame is gone.");
+  const { count, backendNodeId } = await query(frames, { engine: "css", css }, frameId);
+  if (count !== 1 || backendNodeId === undefined) throw new DriverError(count ? "ambiguous" : "not-found", `${count} elements match ${css} in that frame.`);
+  return { frameId, session: frame.session, backendNodeId };
 }
 
 /** A ref, or a selector that reads as one ("aria-ref=e5"), resolves through the tab's refs. */

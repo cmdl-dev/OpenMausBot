@@ -2,7 +2,6 @@
 import { subscribe } from "node:diagnostics_channel";
 import type { Server } from "node:net";
 
-import { agentBrowserDevToolsPorts, agentBrowserStreamPorts } from "../../browser-engine.ts";
 import { sanitizePageText } from "../../browser-page-health.ts";
 import { FLEET_FIRST_PORT, FLEET_PORT_STRIDE } from "../../fleet.ts";
 import { botEngineSessions } from "../../procs.ts";
@@ -19,7 +18,6 @@ const FLEET_WORKSPACES = 100;
 /** A server's edge, Caddy's admin API, and the workspaces a fleet host runs side by side (server and webhooks). */
 const SERVER_PORTS = [8080, 2019, ...Array.from({ length: FLEET_WORKSPACES }, (_, n) => FLEET_FIRST_PORT + FLEET_PORT_STRIDE * n).flatMap((port) => [port, port + 1])];
 const PORT_ENV = ["OMB_PORT", "OMB_WEBHOOK_PORT", "OMB_COMPANION_PORT", "OMB_CONTROL_PORT"];
-const DEVTOOLS_SCAN_MS = 2_000;
 const NOTICE_LIMIT = 20;
 const NOTICE_SHOWN = 3;
 
@@ -61,24 +59,13 @@ function hearDesktopReports(): void {
 
 export class OwnListeners {
   private readonly fixed: Set<number>;
-  private devTools: { at: number; ports: Set<number> } = { at: -Infinity, ports: new Set() };
-  private readonly streamPorts: () => number[];
-  private readonly devToolsPorts: () => number[];
-  private readonly now: () => number;
 
-  constructor(host: EgressHost, options: { env?: NodeJS.ProcessEnv; streamPorts?: () => number[]; devToolsPorts?: () => number[]; now?: () => number } = {}) {
+  constructor(host: EgressHost, options: { env?: NodeJS.ProcessEnv } = {}) {
     this.fixed = staticOwnPorts(host, options.env);
-    this.streamPorts = options.streamPorts ?? (() => agentBrowserStreamPorts());
-    this.devToolsPorts = options.devToolsPorts ?? (() => agentBrowserDevToolsPorts());
-    this.now = options.now ?? Date.now;
   }
 
   has(port: number): boolean {
-    if (this.fixed.has(port) || processPorts.has(port) || reportedPorts.has(port)) return true;
-    // Read fresh: a bot's page may look for a stream server the moment it opens.
-    if (this.streamPorts().includes(port)) return true;
-    if (this.now() - this.devTools.at >= DEVTOOLS_SCAN_MS) this.devTools = { at: this.now(), ports: new Set(this.devToolsPorts()) };
-    return this.devTools.ports.has(port);
+    return this.fixed.has(port) || processPorts.has(port) || reportedPorts.has(port);
   }
 
   add(port: number): void { processPorts.add(port); }

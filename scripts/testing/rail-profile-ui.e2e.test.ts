@@ -13,14 +13,14 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cleanWorkspaceConfig, profileDir, profilesDir } from "../../electron/clean-workspace.mjs";
 import { parseCloudList } from "../../electron/cloud-list.mjs";
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
 import { launchCloudSendFixture, type CloudSendFixture } from "./cloud-send-fixture.ts";
 import { ensureUiBrowser, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { launchHomeWorld, shotsDir, welcomed, type HomeWorld } from "./one-workspace-fixture.ts";
 import { decodePng, encodePng } from "./png.ts";
 
-const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.info("skipping the rail workspaces UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
 
 const MAC = '[data-rail-place="profile:default"]';

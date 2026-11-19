@@ -3524,6 +3524,45 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     });
   });
 
+  it("counts a config.toml provider with its own credential as signed in and lists only that provider's models", async () => {
+    const home = join(scratch, "routed-home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.toml"), [
+      'model_provider = "router"',
+      'model = "gpt-routed"',
+      "[model_providers.router]",
+      'name = "Router"',
+      'base_url = "http://127.0.0.1:1/v1"',
+      'wire_api = "responses"',
+      "[model_providers.router.auth]",
+      'command = "/usr/bin/true"',
+    ].join("\n"));
+    await create({ mode: "logged-out", environment: { CODEX_HOME: home } });
+
+    await expect(instance.snapshot()).resolves.toMatchObject({
+      state: "available",
+      authenticated: true,
+      account: { organization: "Router", method: "api-key" },
+    });
+    expect(instance.models.options.map((option) => option.id)).toEqual(["router::gpt-routed"]);
+    expect(instance.models.default).toBe("router::gpt-routed");
+  });
+
+  it("still asks for a sign-in when config.toml's provider needs OpenAI's", async () => {
+    const home = join(scratch, "openai-auth-home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.toml"), [
+      'model_provider = "proxy"',
+      "[model_providers.proxy]",
+      'base_url = "http://127.0.0.1:1/v1"',
+      "requires_openai_auth = true",
+    ].join("\n"));
+    await create({ mode: "logged-out", environment: { CODEX_HOME: home } });
+
+    await expect(instance.snapshot()).resolves.toMatchObject({ authenticated: false });
+    expect(instance.models.options.some((option) => !option.id.includes("::"))).toBe(true);
+  });
+
   it("counts an API-key login as signed in, marked as an API key so Settings offers no ChatGPT sign-out", async () => {
     await create({ mode: "api-key-configured" });
     await expect(instance.snapshot()).resolves.toMatchObject({

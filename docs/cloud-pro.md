@@ -602,11 +602,6 @@ The grant (`automaticGrant`) is the same for every Cloud of the person's own:
   YouTube, Google sign-in) open for the bots' browser on that Cloud through this
   computer, so they see the person's home connection; every other site loads
   straight from the Cloud (see "The internet connection" below).
-- **Your Chrome**: bots whose browser profile is **My Chrome** act inside Chrome
-  on this computer, signed in as the person, in their own conversations and
-  routines only (see "Your Chrome" below). Chrome needs remote debugging on
-  (`chrome://inspect/#remote-debugging`) and asks the person to allow the
-  connection. Activity lists it as **Used your Chrome**.
 - **The home folder, to read and edit.** A write overwrites a file only after
   reading its current version (checked against its hash), and nothing is ever
   deleted. A read takes a file of up to 2 MiB (text whose escaping would not fit
@@ -764,36 +759,11 @@ the names in `server/browser/egress/home-sites.ts`):
 
 ### Your Chrome
 
-A browser profile set to **My Chrome** on My Cloud uses the person's own Chrome
-on the computer that lends it, over the same device link as the internet
-connection. Only a personal Cloud home advertises `capabilities.myChromeLink`,
-and a desktop sends its Chrome only to a Cloud that does; on a Team
-Cloud every profile stays built-in.
-
-- **One door per browser session** (`server/browser/lent-chrome.ts`). The
-  profile's agent-browser attaches to `ws://127.0.0.1:<port>/devtools/browser/<token>`,
-  a loopback listener with a 32-byte token. Each connection is checked against
-  who may use the lent computer, then opened as a Chrome stream on the newest
-  online link of a computer that lends Chrome. My Cloud never names a host or a
-  port for Chrome.
-- **The computer finds Chrome itself** (`electron/device-chrome.mjs`). It reads
-  `DevToolsActivePort` from Chrome's own data folders (Google Chrome, Chrome
-  Canary, Brave), connects to `127.0.0.1` on that port only, and lets through
-  one WebSocket upgrade to Chrome's browser or a page, with Chrome's own browser
-  path and Host and no Origin; anything else gets 403. It opens a Chrome stream
-  only while its own grant lends Chrome, whatever My Cloud asks.
-- **Who may use it**: exactly the turns that may use the lent computer, so the
-  person's own conversations and routines. agent-browser keeps its connection
-  across turns, so when a turn that may not lend takes the browser, the open
-  connection is dropped, and each of its calls gets "Someone else wrote in this
-  conversation, so it can't use your Chrome. Start a new conversation to use it."
-- **When it can't**, the call says why in one line the bot can pass on: the
-  computer is offline, no computer lends Chrome (open OpenMausBot there), Chrome
-  isn't open with remote debugging on, or Chrome did not accept the connection
-  (it may be waiting for Allow). It never falls back to the built-in browser,
-  whose sign-ins differ. A connection no bot has used for the desktop's browser
-  idle time (10 minutes by default) is closed, so Chrome stops showing it as
-  controlled; the next call connects again by itself.
+My Cloud no longer takes the person's own Chrome: every bot's browser is a
+Chrome of its own on the Cloud, and a browser profile that used **My Chrome**
+opens in a profile of its own there (see [the bots' browser](browser-packaging.md#from-agent-browser)).
+A Cloud home no longer advertises `capabilities.myChromeLink`, so a desktop app
+lends it no Chrome.
 
 ### How it is enforced
 
@@ -842,8 +812,8 @@ On the Mac (the authority; `electron/computer-sharing.mjs`,
   arguments or inspector port and opens only `http`/`https` addresses, and a
   cursor image cannot be read from a path. Any other argument is refused, and
   the tool list the Cloud sees shows only what is accepted. Chrome's DevTools
-  are never reached through the screen: Chrome is lent only over the device
-  link, to the port this computer finds itself (see "Your Chrome" above).
+  are never reached through the screen, and My Cloud takes no Chrome from this
+  computer (see "Your Chrome" above).
 - **Activity log**: `lending-activity.jsonl` in the app's data folder, owner
   only: time, action, folder and relative path, tool name or website name, and
   whether it ran (a refused website keeps the computer's reason). Never contents, output or typed text. The app only ever appends to it
@@ -1083,7 +1053,7 @@ the `list_shared_computers` and `shared_computer` tools.
 ## The image
 
 The `Dockerfile`'s `cloud-home` target shares the server image's runtime
-layers (Node, Chrome's libraries, agent-browser and its Chrome) and adds:
+layers (Node, Chrome's libraries and Chrome for Testing) and adds:
 
 - Caddy, as the only listener the network can reach: `0.0.0.0:8080` with
   `deploy/fly/Caddyfile`, and also 443 for the home's own domain with
@@ -1234,8 +1204,8 @@ provider outage. So on a Cloud home (`server/engine-memory.ts`):
 - **The kernel's order** (`server/oom-score.ts`): everything a bot runs is
   born with `oom_score_adj` 1000: its engine and every tool and MCP server
   that engine starts, the MCP servers the server runs for it, the helper
-  engines (background text, keep-warm pings), and its browser (agent-browser,
-  its daemon and Chrome, whose tabs Chrome then scores 200 and up). The
+  engines (background text, keep-warm pings), and its browser (Chrome, whose
+  tabs Chrome then scores 200 and up). The
   server is -800 and Caddy -900, so the health check is the last to go, and
   the root supervisor that restarts them is -1000, never picked. When memory
   runs out the kernel takes a bot's process, never the workspace.

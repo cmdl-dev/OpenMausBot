@@ -1,14 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, isIP, type AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { agentBrowserDevToolsPorts, agentBrowserStreamPorts } from "../../browser-engine.ts";
 import { BrowserEgress, OwnListeners, staticOwnPorts, UNSHARED_NOTICE } from "./registry.ts";
 import type { ListenerOwnership } from "./ownership.ts";
-
-const noScans = { streamPorts: () => [], devToolsPorts: () => [] };
 
 describe("OpenMausBot's own listeners", () => {
   it("lists the default ports everywhere, and a server's edge, Caddy admin and fleet ports on servers", () => {
@@ -21,7 +15,7 @@ describe("OpenMausBot's own listeners", () => {
   });
 
   it("includes every port this process listens on, the moment it listens", async () => {
-    const listeners = new OwnListeners("desktop", { env: {}, ...noScans });
+    const listeners = new OwnListeners("desktop", { env: {} });
     const server = createServer();
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
@@ -33,46 +27,13 @@ describe("OpenMausBot's own listeners", () => {
     // A probe often reserves a port for a child that listens on it next.
     expect(listeners.has(port)).toBe(true);
   });
-
-  it("reads agent-browser's stream servers fresh, and its Chrome DevTools ports every few seconds", () => {
-    let streams = [41000];
-    let devTools = [42000];
-    let now = 0;
-    const listeners = new OwnListeners("desktop", { env: {}, streamPorts: () => streams, devToolsPorts: () => devTools, now: () => now });
-    expect(listeners.has(41000)).toBe(true);
-    expect(listeners.has(42000)).toBe(true);
-    streams = [41001];
-    devTools = [42001];
-    expect(listeners.has(41001)).toBe(true);
-    expect(listeners.has(42001)).toBe(false);
-    now = 2_000;
-    expect(listeners.has(42001)).toBe(true);
-    expect(listeners.has(3000)).toBe(false);
-  });
-
-  it("finds the ports agent-browser's daemons and Chrome profiles name", () => {
-    const home = mkdtempSync(join(tmpdir(), "omb-egress-ports-"));
-    const run = join(home, ".agent-browser");
-    mkdirSync(run, { recursive: true });
-    writeFileSync(join(run, "bot-1.stream"), "50832\n");
-    writeFileSync(join(run, "bot-2.stream"), "not a port");
-    writeFileSync(join(run, "bot-1.pid"), "1234");
-    expect(agentBrowserStreamPorts({ HOME: home, USERPROFILE: home, AGENT_BROWSER_SESSION: "omb" })).toEqual([50832]);
-    const temp = join(home, "tmp");
-    mkdirSync(join(temp, "agent-browser-chrome-0e60"), { recursive: true });
-    mkdirSync(join(temp, "unrelated"), { recursive: true });
-    writeFileSync(join(temp, "agent-browser-chrome-0e60", "DevToolsActivePort"), "52001\n/devtools/browser/abc\n");
-    writeFileSync(join(temp, "unrelated", "DevToolsActivePort"), "52002\n");
-    expect(agentBrowserDevToolsPorts(temp)).toEqual([52001]);
-    expect(agentBrowserDevToolsPorts(join(home, "missing"))).toEqual([]);
-  });
 });
 
 describe("one gate per browser session", () => {
   const ownership = { botOwned: async () => false } as unknown as ListenerOwnership;
   const egress = (config = {}) => {
     const value = new BrowserEgress();
-    value.configure({ host: "server", config: () => config, listeners: new OwnListeners("server", { env: {}, ...noScans }), ownership, resolve: async (host) => {
+    value.configure({ host: "server", config: () => config, listeners: new OwnListeners("server", { env: {} }), ownership, resolve: async (host) => {
       const family = isIP(host);
       return family ? [{ address: host, family }] : [];
     } });
@@ -100,7 +61,7 @@ describe("one gate per browser session", () => {
     const allow = { allow: ["10.0.0.0/8"] };
     expect(egress(allow).rules().allowed("10.1.2.3", 80)).toBe(true);
     const cloud = new BrowserEgress();
-    cloud.configure({ host: "cloud", config: () => allow, listeners: new OwnListeners("cloud", { env: {}, ...noScans }), ownership });
+    cloud.configure({ host: "cloud", config: () => allow, listeners: new OwnListeners("cloud", { env: {} }), ownership });
     expect(cloud.rules().allowed("10.1.2.3", 80)).toBe(false);
     // On a server the switch is off unless the owner turned it on.
     expect(egress().rules().localNetwork).toBe(false);
@@ -150,7 +111,7 @@ describe("one gate per browser session", () => {
     const looked: string[] = [];
     const sessions: string[] = [];
     const cloud = new BrowserEgress();
-    cloud.configure({ host: "cloud", config: () => ({}), listeners: new OwnListeners("cloud", { env: {}, ...noScans }), ownership,
+    cloud.configure({ host: "cloud", config: () => ({}), listeners: new OwnListeners("cloud", { env: {} }), ownership,
       resolve: async (host) => { looked.push(host); return []; },
       device: (session) => { sessions.push(session); return { open: async (target) => { asked.push(`${target.host}:${target.port}`); return { refused: "home-network" }; } }; } });
     const port = await cloud.open("bot-1");
@@ -175,7 +136,7 @@ describe("one gate per browser session", () => {
   it("on MausBot Cloud says once, and only for those sites, when they load from the Cloud's own connection because the computer is away", async () => {
     let device: { open(target: { host: string; port: number }): Promise<{ refused: string }> } | { away: string } | { unshared: true } | null = { away: "Mac" };
     const cloud = new BrowserEgress();
-    cloud.configure({ host: "cloud", config: () => ({}), listeners: new OwnListeners("cloud", { env: {}, ...noScans }), ownership, resolve: async () => [], device: () => device });
+    cloud.configure({ host: "cloud", config: () => ({}), listeners: new OwnListeners("cloud", { env: {} }), ownership, resolve: async () => [], device: () => device });
     const port = await cloud.open("bot-1");
     try {
       expect(await socksCode(port, "en.wikipedia.org", 443)).toBe(4);
@@ -217,7 +178,7 @@ describe("one gate per browser session", () => {
     for (const host of ["desktop", "server"] as const) {
       const offered: string[] = [];
       const other = new BrowserEgress();
-      other.configure({ host, config: () => ({}), listeners: new OwnListeners(host, { env: {}, ...noScans }), ownership, resolve: async () => [],
+      other.configure({ host, config: () => ({}), listeners: new OwnListeners(host, { env: {} }), ownership, resolve: async () => [],
         device: () => ({ open: async (target) => { offered.push(target.host); return { refused: "port" }; } }) });
       const otherPort = await other.open("bot-1");
       try {

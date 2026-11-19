@@ -11,6 +11,7 @@ import { ApiKeyEngineManage, EngineSetup, EngineUpdateNotice, EngineWarningNotic
 import { AppCopyNotice } from "./EngineAppCopy";
 import { forgetAppCopySwitches } from "@/state/engine-install";
 import { AccountsCard, AddAccount, accountGroupOf, accountsReady, type AccountGroup } from "./EngineAccounts";
+import { RouterSettings } from "./RouterSettings";
 import { ClaudeEndpoints, CodexEndpoints } from "./ClaudeEndpoints";
 import { ClaudeBedrockEndpoints } from "./ClaudeBedrock";
 import { DEVICE_SIGN_IN_COPY, deviceSignInProvider } from "./DeviceSignIn";
@@ -502,7 +503,8 @@ export function EnginesSettings({ simple = false, more }: { simple?: boolean; mo
   const { state } = useStore();
   // Leaving Settings ends the "now uses the copy OpenMausBot installed" lines.
   useEffect(() => forgetAppCopySwitches, []);
-  const listed = state.instances.filter((i) => i.readOnly || i.cli !== undefined || i.cliDefault !== undefined || i.snapshot.state === "unavailable" || isApiKeyEngine(i) || i.claudeEndpoint !== undefined || i.claudeBedrock !== undefined || i.codexEndpoint !== undefined);
+  // A Router's engines are listed with their Router.
+  const listed = state.instances.filter((i) => !i.router).filter((i) => i.readOnly || i.cli !== undefined || i.cliDefault !== undefined || i.snapshot.state === "unavailable" || isApiKeyEngine(i) || i.claudeEndpoint !== undefined || i.claudeBedrock !== undefined || i.codexEndpoint !== undefined);
   // A provider's accounts share one card, which takes the place of its first account.
   const groups = new Map<AccountGroup, InstanceInfo[]>();
   for (const instance of listed) {
@@ -532,6 +534,7 @@ export function EnginesSettings({ simple = false, more }: { simple?: boolean; mo
     <SimpleEngines rows={rows} isReady={isReady} renderEngine={renderEngine} more={more} />
     {orphanEndpoints && <div className="px-4"><ClaudeEndpoints /><ClaudeBedrockEndpoints /></div>}
     {orphanCodexEndpoints && <div className="px-4"><CodexEndpoints /></div>}
+    {!hostedWorkspace && <div className="px-4 pt-3"><RouterSettings /></div>}
   </>;
 
   return (
@@ -546,6 +549,7 @@ export function EnginesSettings({ simple = false, more }: { simple?: boolean; mo
       <EngineSections instances={rows} isReady={isReady} renderEngine={renderEngine} />
       {orphanEndpoints && <div className="px-4"><ClaudeEndpoints /><ClaudeBedrockEndpoints /></div>}
       {orphanCodexEndpoints && <div className="px-4"><CodexEndpoints /></div>}
+      {!hostedWorkspace && <div className="px-4"><RouterSettings /></div>}
       <HiddenEngines />
       <CacheKeepWarmSettings />
     </div>

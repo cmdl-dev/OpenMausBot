@@ -9,7 +9,7 @@ import { BROWSER_HELD_ELSEWHERE } from "../../shared/browser-held";
 
 const fixture = vi.hoisted(() => ({
   api: vi.fn(),
-  state: { config: { browserProfiles: [], browserEngine: { kind: "engine", engine: "chrome" } }, computerControl: {} } as Record<string, any>,
+  state: { config: { browserProfiles: [], browserEngine: { kind: "engine" } }, computerControl: {} } as Record<string, any>,
 }));
 vi.mock("@/state/store", async (importOriginal) => ({ ...await importOriginal<typeof import("@/state/store")>(), api: fixture.api, useStore: () => ({ state: fixture.state }) }));
 vi.mock("./BrowserProfilesManager", () => ({ BrowserProfilesManager: () => null }));
@@ -63,7 +63,7 @@ beforeEach(() => {
   FakeSocket.instances = [];
   FixtureEventSource.instances = [];
   fixture.api.mockReset().mockResolvedValue({ ok: true });
-  fixture.state = { config: { browserProfiles: [], browserEngine: { kind: "engine", engine: "chrome" } }, computerControl: {} };
+  fixture.state = { config: { browserProfiles: [], browserEngine: { kind: "engine" } }, computerControl: {} };
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("EventSource", FixtureEventSource);
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
@@ -115,18 +115,13 @@ describe("the browser panel's connection", () => {
     expect(host.querySelector("[data-browser-transport]")!.getAttribute("data-browser-transport")).toBe("stream");
   });
 
-  it("uses the v1 live view on agent-browser, sized to the panel, and when the stream is refused before it opens", async () => {
-    fixture.state.config.browserEngine = { kind: "engine", engine: "agent-browser" };
+  it("uses the v1 live view, sized to the panel, when the stream is refused before it opens", async () => {
     await render();
-    expect(FakeSocket.instances).toHaveLength(0);
-    expect(FixtureEventSource.instances[0]!.url).toBe("/api/bots/pepper/browser/live?width=1600&height=1000");
-    act(() => root.unmount());
-    root = createRoot(host);
-    fixture.state.config.browserEngine = { kind: "engine", engine: "chrome" };
-    await render();
+    expect(FixtureEventSource.instances).toHaveLength(0);
     await act(async () => FakeSocket.instances.at(-1)!.refuse());
     await flush();
-    expect(FixtureEventSource.instances).toHaveLength(2);
+    expect(FixtureEventSource.instances).toHaveLength(1);
+    expect(FixtureEventSource.instances[0]!.url).toBe("/api/bots/pepper/browser/live?width=1600&height=1000");
     expect(host.querySelector("[data-browser-transport]")!.getAttribute("data-browser-transport")).toBe("live");
   });
 
@@ -209,12 +204,15 @@ describe("a v1 live view whose stream dropped", () => {
   const emit = (name: string, data: unknown) => act(async () => live().emit(name, data));
 
   it("asks for the hold its last view had when the person reconnects", async () => {
-    fixture.state.config.browserEngine = { kind: "engine", engine: "agent-browser" };
     await render();
+    await act(async () => FakeSocket.instances.at(-1)!.refuse());
+    await flush();
     await emit("ready", { viewerId: "old-viewer" });
     await emit("error", { message: "Browser connection ended." });
     expect(host.textContent).toContain("Browser disconnected");
     await act(async () => button("Reconnect").click());
+    await flush();
+    await act(async () => FakeSocket.instances.at(-1)!.refuse());
     await flush();
     expect(live().url).toBe("/api/bots/pepper/browser/live?resume=old-viewer&width=1600&height=1000");
     await emit("ready", { viewerId: "new-viewer" });
@@ -222,8 +220,9 @@ describe("a v1 live view whose stream dropped", () => {
   });
 
   it("says the browser closed after it sat unused, and opens a new view only when asked", async () => {
-    fixture.state.config.browserEngine = { kind: "engine", engine: "agent-browser" };
     await render();
+    await act(async () => FakeSocket.instances.at(-1)!.refuse());
+    await flush();
     await emit("ready", { viewerId: "old-viewer" });
     await emit("error", { retryable: false, asleep: true, message: "This browser closed after it sat unused, to save memory." });
     await flush();
@@ -233,13 +232,16 @@ describe("a v1 live view whose stream dropped", () => {
     expect(FixtureEventSource.instances).toHaveLength(1);
     await act(async () => button(t("browser.panel.wake")).click());
     await flush();
+    await act(async () => FakeSocket.instances.at(-1)!.refuse());
+    await flush();
     expect(FixtureEventSource.instances).toHaveLength(2);
     expect(host.textContent).not.toContain(t("browser.panel.asleep"));
   });
 
   it("comes back when the window is focused after its retries ran out", async () => {
-    fixture.state.config.browserEngine = { kind: "engine", engine: "agent-browser" };
     await render();
+    await act(async () => FakeSocket.instances.at(-1)!.refuse());
+    await flush();
     vi.useFakeTimers();
     await emit("ready", { viewerId: "old-viewer" });
     for (const delay of [1_000, 2_000, 4_000, 8_000, 15_000]) {
@@ -481,24 +483,20 @@ describe("a sign-in that stops at a passkey", () => {
   });
 });
 
-describe("the browser panel before the browser is installed", () => {
-  async function renderUninstalled(scopes: string[]) {
-    fixture.state = { config: { browserProfiles: [], browserEngine: { kind: "unavailable", installable: true } }, computerControl: {} };
-    fixture.api.mockImplementation(async (path: string) => path === "/api/auth/session" ? { scopes } : { ok: true });
+describe("the browser panel where this computer has no Chrome", () => {
+  it("says plainly that installing Google Chrome gives the bots a browser, and offers no install of its own", async () => {
+    fixture.state = { config: { browserProfiles: [], browserEngine: { kind: "unavailable", reason: "Google Chrome is not installed.", installChrome: true } }, computerControl: {} };
     await act(async () => root.render(createElement(BrowserPanel, { bot })));
     await flush();
-  }
-
-  it("offers the install here instead of sending an admin to the panel they are on", async () => {
-    await renderUninstalled(["admin"]);
-    expect(host.textContent).toContain(t("browser.panel.engineNotInstalledHelp", { name: "Pepper" }));
-    expect(host.textContent).not.toContain(t("browser.notInstalled"));
-    expect(button(t("browser.panel.installEngine")).disabled).toBe(false);
+    expect(host.textContent).toContain(t("browser.panel.unavailable"));
+    expect(host.textContent).toContain(t("browser.installChrome"));
+    expect(host.querySelector("button")).toBeNull();
   });
 
-  it("keeps the setup steps for someone who cannot install", async () => {
-    await renderUninstalled([]);
-    expect(host.textContent).toContain(t("browser.notInstalled"));
-    expect(button(t("browser.panel.installEngine")).disabled).toBe(true);
+  it("shows the server's own reason when installing Chrome would not fix it", async () => {
+    fixture.state = { config: { browserProfiles: [], browserEngine: { kind: "unavailable", reason: "Google Chrome here is managed by an organization" } }, computerControl: {} };
+    await act(async () => root.render(createElement(BrowserPanel, { bot })));
+    await flush();
+    expect(host.textContent).toContain("Google Chrome here is managed by an organization");
   });
 });

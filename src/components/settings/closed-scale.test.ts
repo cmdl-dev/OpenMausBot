@@ -98,7 +98,7 @@ const FILES = [
 const DEBT: Record<string, number> = {
   "src/components/AboutMeSettings.tsx": 2,
   "src/components/ActivitySection.tsx": 4,
-  "src/components/BrowserProfilesManager.tsx": 10,
+  "src/components/BrowserProfilesManager.tsx": 5,
   "src/components/CloudAccountSettings.tsx": 2,
   "src/components/CloudUsageMeter.tsx": 9,
   "src/components/EnginesSettings.tsx": 14,

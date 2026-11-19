@@ -151,7 +151,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "shared_computer",
-    description: "Use a desktop the user explicitly shared. Get computer_id and folder_id from list_shared_computers. File actions stay in chosen folders; paths are relative. read_file returns sha256, needed as expected_sha256 to overwrite or delete_file. edit_file swaps old_text (once) for new_text; append_file adds content. Binary files: base64 encoding. run_command requires a SEPARATE unrestricted terminal grant and stops after timeout_seconds (default 120, at most 900), returning what it printed so far: run longer jobs in the background with output to a file, then read it. computer_tools lists the native computer-control tools; computer_call invokes one with arguments and needs a SEPARATE computer-control grant. To browse there, open pages with launch_app urls (the person's own browser) and use get_window_state, click and type_text: the browser_* tools need a DevTools endpoint most browsers lack. codex_task hands a whole job (prompt) to Codex on that computer when it lends its Codex: Codex uses that computer's own apps itself (computer use), the person approves each app it opens from a card in this chat (not on that computer), and you get its final answer; timeout_seconds defaults to 600 (at most 900). Prefer it over many computer_call steps for work in that computer's apps. Never substitute the server's filesystem when this desktop is offline. Actions are not retried: inspect an uncertain outcome before retrying.",
+    description: "Use a desktop the user explicitly shared. Get computer_id and folder_id from list_shared_computers. File actions stay in chosen folders; paths are relative. read_file returns sha256, needed as expected_sha256 to overwrite or delete_file. edit_file swaps old_text (once) for new_text; append_file adds content. Binary files: base64 encoding. run_command requires a SEPARATE unrestricted terminal grant and stops after timeout_seconds (default 120, at most 900), returning what it printed so far: run longer jobs in the background with output to a file, then read it. computer_tools lists the native computer-control tools; computer_call invokes one with arguments and needs a SEPARATE computer-control grant. To browse there, open pages with launch_app urls (the person's own browser) and use get_window_state, click and type_text: the browser_* tools need a DevTools endpoint most browsers lack. codex_task hands a job (prompt) to Codex on that computer when it lends its Codex: Codex uses that computer's own apps itself (computer use), the person approves each app it opens from a card in this chat (not on that computer), and you get its final answer; timeout_seconds defaults to 600 (at most 900). Prefer it over many computer_call steps for work in that computer's apps. Never substitute the server's filesystem when this desktop is offline. Actions are not retried: inspect an uncertain outcome before retrying.",
     inputSchema: { type: "object", additionalProperties: false, properties: {
       computer_id: { type: "string" }, action: { type: "string", enum: ["list_files", "read_file", "write_file", "edit_file", "append_file", "delete_file", "run_command", "computer_tools", "computer_call", "codex_task"] },
       folder_id: { type: "string" }, path: { type: "string" }, content: { type: "string" }, encoding: { type: "string", enum: ["utf8", "base64"] }, expected_sha256: { type: "string" },
@@ -489,6 +489,21 @@ const TOOL_DEFINITIONS = [
         email: { type: "string" },
         submit: { type: "boolean", description: "false: fill only, you submit." },
       },
+    },
+  },
+  {
+    name: "fill_card",
+    description:
+      "Pay on the checkout open in your browser, once it shows the final total. The first call shows the person a Pay card for a saved card, or a secure card to add one, and ends your turn. Once they approve you are resumed: call it again with the same amount, OpenMausBot types the card in (you never see it), then press the page's pay button once. Never ask for card details in chat.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        amount: { type: "string", minLength: 1, maxLength: 40, description: "The total as the checkout shows it, such as $42.10." },
+        item: { type: "string", minLength: 1, maxLength: 160, description: "What is being bought." },
+        card: { type: "string", maxLength: 80, description: "A saved card's last four digits, or new for one the person adds." },
+      },
+      required: ["amount", "item"],
     },
   },
   {

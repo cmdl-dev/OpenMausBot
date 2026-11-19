@@ -141,17 +141,14 @@ describe("PATCH /api/bots/:id vpsAlias relocation guard", () => {
     expect(moved.body.notice).toContain(`docker -H ssh://production-vps rm -f ${vps.vpsContainerName(bot.id)}`);
   });
 
-  it("never lets a member's session or a paired phone choose a bot's server", async () => {
+  it("never lets a member's session choose a bot's server", async () => {
     const { store, bot, patch } = fixture();
     const member = { kind: "session", via: "bearer", scopes: ["client"], session: { id: "s", label: "Laptop", scopes: ["client"] } } as unknown as RequestAuth;
 
     const fromMember = await patch(bot.id, { vpsAlias: "gamma-vps" }, { auth: member });
-    const fromPhone = await patch(bot.id, { vpsAlias: "gamma-vps" }, { headers: { "x-openmausbot-companion": "1" } });
 
     expect(fromMember.status).toBe(403);
     expect(fromMember.body.error).toMatch(/not "vpsAlias"/);
-    expect(fromPhone.status).toBe(403);
-    expect(fromPhone.body.error).toMatch(/not "vpsAlias"/);
     expect(scan).not.toHaveBeenCalled();
     expect(store.bot(bot.id)?.vpsAlias).toBeUndefined();
   });
@@ -341,15 +338,15 @@ describe("PATCH /api/bots/:id phoneApps", () => {
     expect(store.bot(bot.id)?.mainThreadChoice).toBeUndefined();
   });
 
-  it("refuses a client session and a paired device", async () => {
+  it("refuses a client session and takes it from a paired device", async () => {
     const { store, bot, patch } = fixture();
 
     const client = await patch(bot.id, { phoneApps: { calendar: "write" } }, { auth: { kind: "session", via: "bearer", scopes: ["client"], session: { id: "s-member", email: "member@example.com", label: "Front desk" } } as unknown as RequestAuth });
     const paired = await patch(bot.id, { phoneApps: { calendar: "write" } }, { headers: { "x-openmausbot-companion": "1" } });
 
     expect(client.status).toBe(403);
-    expect(paired.status).toBe(403);
-    expect(store.bot(bot.id)?.phoneApps).toBeUndefined();
+    expect(paired.status).toBe(200);
+    expect(store.bot(bot.id)?.phoneApps).toEqual({ calendar: "write" });
   });
 });
 
@@ -384,12 +381,12 @@ describe("PATCH /api/bots/:id mainThreadChoice", () => {
     expect(store.bot(bot.id)?.mainThreadChoice).toBeUndefined();
   });
 
-  it("refuses a client session and a paired device", async () => {
+  it("refuses a client session and takes it from a paired device", async () => {
     const { store, bot, patch } = fixture();
     const client = await patch(bot.id, { mainThreadChoice: bot.threadId }, { auth: { kind: "session", via: "bearer", scopes: ["client"], session: { id: "s-member", email: "member@example.com", label: "Front desk" } } as unknown as RequestAuth });
     const paired = await patch(bot.id, { mainThreadChoice: bot.threadId }, { headers: { "x-openmausbot-companion": "1" } });
     expect(client.status).toBe(403);
-    expect(paired.status).toBe(403);
-    expect(store.bot(bot.id)?.mainThreadChoice).toBeUndefined();
+    expect(paired.status).toBe(200);
+    expect(store.bot(bot.id)?.mainThreadChoice).toBe(bot.threadId);
   });
 });

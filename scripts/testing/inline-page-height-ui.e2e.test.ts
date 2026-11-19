@@ -8,14 +8,14 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
 
-import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { resolveUiDriver } from "./ui-driver.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { UI_TOOLS_DIR, agentBrowser, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const forced = process.env.OMB_UI_E2E === "1";
-const enabled = forced || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+const enabled = forced || Boolean(resolveUiDriver(UI_TOOLS_DIR, process.env));
 if (!enabled) console.log("skipping inline page height UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
 const LAUNCH_TIMEOUT_MS = forced ? 600_000 : 180_000;
 const evidenceDir = process.env.OMB_UI_EVIDENCE_DIR

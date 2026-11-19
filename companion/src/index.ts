@@ -32,7 +32,7 @@ import { createE2EOrigin } from "./e2e/origin.ts";
 import { E2ERegistry } from "./e2e/registry.ts";
 import { RelayClient } from "./e2e/relay-client.ts";
 import { companionOriginSocket, listenCompanionOrigin } from "./origin.ts";
-import { gzipTunnelReplies } from "./tunnel-gzip.ts";
+import { gzipRemoteReplies } from "./tunnel-gzip.ts";
 import { normalizedPhoneSecretPublicKey } from "./phone-secret-key.ts";
 import { machineNameFromConfig } from "./machine-name.ts";
 
@@ -164,7 +164,7 @@ const proxy = createProxyHandler({
     e2ePaired: (context, deviceId) => e2e.paired(context, deviceId),
   });
 const e2eOrigin = createE2EOrigin((req, res) => proxy(req, res), (req, socket, head) => proxy.upgrade(req, socket, head));
-const companion = createServer((req, res) => proxy(req, res, "lan"));
+const companion = createServer(gzipRemoteReplies((req, res) => proxy(req, res, "lan")));
 const directSockets = new Set<import("node:net").Socket>();
 companion.on("connection", (socket) => {
   if (!acceptsConnection(socket.localAddress, socket.remoteAddress)) return void socket.destroy();
@@ -188,8 +188,7 @@ async function syncDirectListener(): Promise<void> {
 // `createServer` handles plain HTTP only; noVNC's WebSocket and /v1/e2e arrive as Node's separate `upgrade` event.
 companion.on("upgrade", (req, socket, head) =>
   isE2EUpgrade(req) ? handleDirectUpgrade(req, socket, head, e2e, e2eOrigin) : proxy.upgrade(req, socket, head, "lan"));
-// Large JSON replies go gzipped here: this is the only listener whose replies go up the home connection to Cloudflare.
-const managedOrigin = PRIVATE_ORIGIN ? createServer(gzipTunnelReplies((req, res) => proxy(req, res, "origin"))) : null;
+const managedOrigin = PRIVATE_ORIGIN ? createServer(gzipRemoteReplies((req, res) => proxy(req, res, "origin"))) : null;
 managedOrigin?.on("upgrade", (req, socket, head) => proxy.upgrade(req, socket, head, "origin"));
 
 function applyRelay(config: RelayConfig | null): void {

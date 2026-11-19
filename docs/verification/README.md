@@ -105,6 +105,7 @@ Use only mapped, tested commands:
 - [Who can see, chat with and change each team bot](team-bot-access.md)
 - [Usage ledger](usage-ledger.md)
 - [Bounded built-in tool results](tool-results.md)
+- [What crosses the network: gzip streams, ETags, repeated bot frames](network-payload.md)
 - [Memory: recall, upkeep and the tidy-up](memory-layer.md)
 - [Spend cap and sell prices](spend-cap.md)
 - [Enterprise layer loading and license expiry](enterprise-license.md)
@@ -315,6 +316,10 @@ The [Claude custom endpoints](claude-endpoint.md) checks a per-bot DeepSeek/GLM
 endpoint in Settings and its turn against the fake Claude CLI: its own
 directory, its model and routing, the token kept out of the engine list, and
 edits that keep the saved token.
+
+The [Router recipe](router.md) connects a fake CLIProxyAPI Router as a Claude
+and an OpenAI account, runs a turn through it, and checks its keys, usage,
+model refresh and removal.
 
 The [provider recovery recipe](provider-recovery.md) verifies real Grok image
 transport and Claude authentication against loopback APIs, plus scoped thread

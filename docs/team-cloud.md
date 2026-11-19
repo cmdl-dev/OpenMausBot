@@ -490,18 +490,14 @@ one of a deleted conversation, the prompt history, shell snapshots, Codex's logs
 all of `engine-homes`), and it is deleted 30 days later. `engine-homes/.migrated` marks the move done.
 
 Browsers follow the same rule (`server/browser/audience.ts`). A non-team audience adds a fixed suffix to the browser's
-name, `--member-<hash>` or `--room-<hash>` (16 hex characters of the person key's or the room id's SHA-256: agent-browser
-refuses a socket path over 103 bytes), to the agent-browser session, its saved state, its profile folder, the new
-engine's profile key (`bot:<bot>--member-…`, `shared:<profile>--member-…`) and a temporary browser. Which suffixes exist
-is kept in `browser/audiences.json`, so deleting a bot or a shared profile erases every audience's browser, after a
-restart too. The live view takes `?threadId=` (the desktop's panel sends it on a team), and so do the signed-in sites
-routes.
+name, `--member-<hash>` or `--room-<hash>` (16 hex characters of the person key's or the room id's SHA-256, so a
+browser's name stays short), to its session, its profile key (`bot:<bot>--member-…`, `shared:<profile>--member-…`) and
+its profile folder, and to a temporary browser. Which suffixes exist is kept in `browser/audiences.json`, so deleting a
+bot or a shared profile erases every audience's browser, after a restart too. The live view takes `?threadId=` (the
+desktop's panel sends it on a team).
 
-**Each Chrome in a box.** On a Team Cloud with the bot box on, the Chrome launcher agent-browser runs starts every
-Chrome inside bubblewrap (`net: "shared"`, as the browser's own gate filters its traffic): the system read-only, private
-`/tmp` (its HOME), the seccomp filter, and of the disk only the profile it was started on (`--user-data-dir`). A file a
-turn uploads is linked into that profile's `omb-uploads/` first. The agent-browser daemon itself stays outside: it
-holds the session's saved-state key and talks to the server's runtime by its own socket and pid files.
+**Chrome outside the bot box.** OpenMausBot starts each Chrome itself, over a pipe, and does not put it in the bot box:
+each member's browser is a profile of its own, but its Chrome runs as the server does, with the same view of the disk.
 
 On a My Cloud and on a desktop there is one person: every audience is the team's, every layer is the bot's own folder,
 every browser keeps its old name and Chrome its old launcher, every engine keeps the server's HOME, and nothing here
@@ -1016,9 +1012,9 @@ opens the team's page on the Cloud site (`/cloud/team/<id>`), not a chat. Nothin
 - **A secret typed into a card outside a private chat.** In a bot's shared chats and group chats the card is entered by
   whoever looks after the bot there (the Admins when nobody does), and what they type is the team's, for that bot
   everywhere, as before; only a private chat's secrets are the person's own.
-- **The new browser engine and temporary browsers in a box.** The new engine (`browserEngine.engine: "chrome"`, off by
-  default) starts Chrome itself over a pipe and is not boxed; a temporary browser is boxed, but a file a turn uploads
-  into it is not reachable from its box.
+- **The bots' Chrome in a box.** Every bot's Chrome, a member's and a temporary one included, runs outside the bot box
+  (above): a page that broke out of Chrome's own sandbox would reach what the server process reaches, other members'
+  browser profiles among it.
 - **Per-member engine sign-ins.** Every audience's engine signs in as the team (its key through the broker, or the
   team's sign-in files in each engine home, above); a member cannot sign an engine in as themselves, by design.
 - **Removal without `member-left`.** Without the Admin's `member-left` request (above), removal takes effect at the next

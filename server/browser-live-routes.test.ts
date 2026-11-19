@@ -38,23 +38,24 @@ beforeAll(async () => {
 
 afterAll(async () => { await fixture?.close(); });
 
+/** Past the route's people and origin checks: what answers is the browser itself (no Chrome starts in this fixture, a
+ * forged viewer or a missing download is not found, no file picker is open), never a refusal of who asked. */
+const pastAuthorization = (answer: { status: number; body: any }) => {
+  expect([404, 409, 503], JSON.stringify(answer.body)).toContain(answer.status);
+};
+
 describe("live browser route authorization", () => {
   it.each([["GET", "live"], ["POST", "action"]])("opens %s %s to the bot's people, never to strangers or another origin", async (method, suffix) => {
     const path = `/api/bots/${botId}/browser/${suffix}`;
     const body = method === "POST" ? { viewerId: "forged", type: "take" } : undefined;
     expect((await call(method, path, body, remote)).status).toBe(403);
     expect((await call("PATCH", "/api/config", { features: { browser: true } })).status).toBe(200);
-    const client = await call(method, path, body, { ...remote, authorization: `Bearer ${clientToken}` });
-    expect(client.status).toBe(503);
-    expect(client.body.error).toContain("Install the browser");
+    pastAuthorization(await call(method, path, body, { ...remote, authorization: `Bearer ${clientToken}` }));
     const crossOrigin = await call(method, path, body, { ...remote, cookie: ownerCookie, origin: "https://attacker.invalid" });
     expect(crossOrigin.status).toBe(403);
     expect(crossOrigin.body.error).toContain("cross-origin");
-    // No native browser is installed or launched in this fixture; the built-in browser is on by default, so the first gate met is the missing engine.
     expect((await call("PATCH", "/api/config", { features: { browser: true } })).status).toBe(200);
-    const onByDefault = await call(method, path, body, { ...remote, cookie: ownerCookie });
-    expect(onByDefault.status).toBe(503);
-    expect(onByDefault.body.error).toContain("Install the browser");
+    pastAuthorization(await call(method, path, body, { ...remote, cookie: ownerCookie }));
     expect((await call("PATCH", "/api/config", { features: { browser: false } })).status).toBe(200);
     const owner = await call(method, path, body, { ...remote, cookie: ownerCookie });
     expect(owner.status).toBe(409);
@@ -65,9 +66,7 @@ describe("live browser route authorization", () => {
     const path = `/api/bots/${botId}/browser/${suffix}`;
     expect((await call("PATCH", "/api/config", { features: { browser: true } })).status).toBe(200);
     expect((await call(method, path, undefined, remote)).status).toBe(403);
-    const client = await call(method, path, undefined, { ...remote, authorization: `Bearer ${clientToken}` });
-    expect(client.status).toBe(503);
-    expect(client.body.error).toContain("Install the browser");
+    pastAuthorization(await call(method, path, undefined, { ...remote, authorization: `Bearer ${clientToken}` }));
     const crossOrigin = await call(method, path, undefined, { ...remote, cookie: ownerCookie, origin: "https://attacker.invalid" });
     expect(crossOrigin.status).toBe(403);
   });

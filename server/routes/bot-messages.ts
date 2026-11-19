@@ -38,7 +38,6 @@ import type { UsageTrigger } from "../usage-ledger.ts";
 import { noteTypedSend } from "../typed-sends.ts";
 import { startFresh } from "../fresh-start.ts";
 import { parseMentionPicks } from "../../shared/room-mentions.ts";
-import { pinnedClientThreadGuard } from "./pinned-client-thread.ts";
 import { refusalBody, userError } from "../user-errors.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -100,6 +99,10 @@ export interface BotMessageRouteDeps {
   resolveAndSendTrust(res: ServerResponse, threadId: string, requestId: string, behavior: Behavior): boolean;
   resolveAndSendTeamSetup(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<boolean>;
   resolveAndSendMcp(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<boolean>;
+  /** A Pay card: approving it lets the bot fill a saved card once. */
+  resolveAndSendPayment(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; behavior: string }, ownerReview: boolean): boolean;
+  /** A card the person typed into a card-entry ask, which approves that payment. */
+  providePaymentCard(res: ServerResponse, args: { botId: string; threadId: string; requestId: string; body: Record<string, unknown> }, ownerReview: boolean): void;
   resolveAndSendRoutine(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendProfile(res: ServerResponse, args: CardAnswer): boolean;
   resolveAndSendModel(res: ServerResponse, args: CardAnswer): boolean;
@@ -171,12 +174,11 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     acceptDirectSend, directSendRefusal, startTurn, usageTriggerFor, messageSender, cloudGuestSendRefusal, cloudThreadRefusal,
     cardAnswerRefusal, commandRememberRefusal, requestBehavior, requestedTaskBot, botForThread, threadBusy,
     botAtThreadCapacity, parksBehindCoordination, activeGroupTurnForBot, runningTurnInstance, engineSteersImages, resolveReplyTarget,
-    turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup, resolveAndSendMcp,
+    turnSelection, policyModelRefusal, clearUnattended, drainQueuedSends, answeringCardAs, resolveAndSendTrust, resolveAndSendTeamSetup, resolveAndSendMcp, resolveAndSendPayment, providePaymentCard,
     resolveAndSendRoutine, resolveAndSendProfile, resolveAndSendModel, resolveSkillRequest, sendSkillResolution, answerRequest,
     deliverLateQuestionAnswer, stopThreadForPerson, cancelDirectTurnDispatch, revokeInternalCapabilitiesForThread,
     cancelGroupTurnOperations, closeOpenApprovals, harnessCardOutcome, pressRecords, serverPress, relayedReaction, answeredIn, fromPhone, notePhoneSend, goals,
   } = deps; const owners = routeRunOwners(deps.runOwners, deps.runActor);
-  const pinnedClientThread = pinnedClientThreadGuard(store);
   /** Security: a bot's own shell must never approve its own card, so a local request counts only from the desktop app, or
    * from a browser while every bot is idle. */
   const ownerReview = (auth: RequestAuth, req: IncomingMessage) => auth.kind === "loopback"
@@ -188,7 +190,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
   const route: RouteHandler = async (ctx) => {
     const { req, res, path, method, auth, json, readBody } = ctx;
     let m: RegExpMatchArray | null = null;
-    const requirePinnedClientThread = pinnedClientThread(auth, req);
     const routines = deps.routines();
     m = path.match(/^\/api\/bots\/([\w-]+)\/messages(?:\/(guarded))?$/);
     if (m && method === "POST") {
@@ -229,7 +230,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
       if (!pressed && !fromAnApp && !typed) return json(res, 400, { error: "text required" });
       const bot = store.bot(m[1]);
       if (!bot) return json(res, 404, { error: "no such bot" });
-      requirePinnedClientThread(bot.id, body.threadId);
       if (body.threadId !== undefined && (typeof body.threadId !== "string" || !/^[\w-]+$/.test(body.threadId))) {
         return json(res, 400, { error: "threadId must be a task id" });
       }
@@ -360,7 +360,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/queue\/([\w-]+)$/);
     if (m && method === "DELETE") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const queueId = m[2];
       const waiting = queuedSteerSender(bot.id, bot.threadId, queueId);
@@ -377,7 +376,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/queue\/([\w-]+)\/steer$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       // Hold the whole queue atomically: a racing settle drains it or this request steers it, never both.
       const held = holdSteeredQueue(bot.id, bot.threadId, m[2]);
@@ -471,7 +469,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/compact$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -484,7 +481,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/start-fresh$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body?.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -498,7 +494,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     if (m && method === "POST") {
       const messageId = m[2];
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
       const notYours = owners.decidesRetry(bot.threadId) ? null : cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -549,7 +544,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
     m = path.match(/^\/api\/bots\/([\w-]+)\/active-branch$/);
     if (m && method === "POST") {
       const body = await readBody(req);
-      requirePinnedClientThread(m[1], body?.threadId);
       const bot = requestedTaskBot(m[1], body.threadId);
       const notYours = cloudThreadRefusal(auth, bot.threadId);
       if (notYours) return json(res, 403, { error: notYours });
@@ -588,6 +582,7 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         const answer = { botId: bot.id, threadId: bot.threadId, requestId: String(body.requestId), behavior };
         if (await resolveAndSendTeamSetup(res, answer, ownerReview(auth, req))) return;
         if (await resolveAndSendMcp(res, answer, ownerReview(auth, req))) return;
+        if (resolveAndSendPayment(res, answer, ownerReview(auth, req))) return;
         if (resolveAndSendRoutine(res, {
           botId: bot.id,
           botName: bot.name,
@@ -637,6 +632,17 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         }
         return json(res, 200, { ok: true, outcome });
       });
+    }
+    m = path.match(/^\/api\/threads\/([\w-]+)\/payment-card$/);
+    if (m && method === "POST") {
+      const body = await readBody(req, 8_192);
+      const requestId = String(body.requestId);
+      const refusal = cardAnswerRefusal(auth, m[1], requestId, "allow");
+      if (refusal) return json(res, 403, { error: refusal });
+      const paymentCard = store.messagesFor(m[1]).find((message) => message.card?.requestId === requestId && message.card.paymentRequest);
+      const paymentBotId = paymentCard?.card?.paymentRequest?.botId;
+      if (!paymentBotId) return json(res, 404, { error: "This card is no longer here." });
+      return await answeringCardAs(auth, m[1], requestId, async () => providePaymentCard(res, { botId: paymentBotId, threadId: m![1]!, requestId, body }, ownerReview(auth, req)));
     }
     m = path.match(/^\/api\/threads\/([\w-]+)\/respond$/);
     if (m && method === "POST") {
@@ -699,6 +705,12 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
           const mcpBotId = mcpCard.from?.botId ?? store.botByThread(threadId)?.id;
           if (!mcpBotId) return json(res, 400, { error: "This MCP server card has no valid owner" });
           if (await resolveAndSendMcp(res, { botId: mcpBotId, threadId, requestId, behavior }, ownerReview(auth, req))) return;
+        }
+        const paymentCard = store.messagesFor(threadId).find((message) => message.card?.requestId === requestId && message.card.paymentRequest);
+        if (paymentCard) {
+          const paymentBotId = paymentCard.from?.botId ?? store.botByThread(threadId)?.id;
+          if (!paymentBotId) return json(res, 400, { error: "This payment card has no valid owner" });
+          if (resolveAndSendPayment(res, { botId: paymentBotId, threadId, requestId, behavior }, ownerReview(auth, req))) return;
         }
         const profileCard = store.messagesFor(threadId).find(
           (message) => message.card?.requestId === requestId && message.card.profileRequest,
@@ -774,7 +786,6 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         return json(res, 400, { error: "body must be a JSON object" });
       }
       const body = rawBody ?? {};
-      requirePinnedClientThread(bot.id, body.threadId);
       const expectedThreadId = body.threadId;
       if (expectedThreadId !== undefined && (typeof expectedThreadId !== "string" || !/^[\w-]+$/.test(expectedThreadId))) {
         return json(res, 400, { error: "threadId must be a task id" });

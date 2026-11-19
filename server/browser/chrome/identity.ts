@@ -70,7 +70,7 @@ export function isChromeIdentity(value: unknown): value is ChromeIdentity {
   }
 }
 
-/** agent-browser 0.37 adds --no-sandbox in these same places; a sandboxed Chrome cannot start there. */
+/** A container, root, or CI: a sandboxed Chrome cannot start there, so the bots' Chrome runs without its own sandbox. */
 export function needsNoSandbox(env: NodeJS.ProcessEnv = process.env, exists: (path: string) => boolean = existsSync): boolean {
   if (process.platform !== "linux") return false;
   return exists("/.dockerenv") || exists("/run/.containerenv") || process.getuid?.() === 0 || Boolean(env.CI);

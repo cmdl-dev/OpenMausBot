@@ -1,4 +1,4 @@
-import { processAlive } from "./browser-processes.ts";
+import { processAlive } from "./browser/chrome/processes.ts";
 import type { ProviderAdapter, RuntimeEvent } from "./contracts.ts";
 import type { ServerTextParams } from "../shared/server-text.ts";
 import { sampleProcessTree, type ProcessSample } from "./drivers/acp/quiet-status.ts";

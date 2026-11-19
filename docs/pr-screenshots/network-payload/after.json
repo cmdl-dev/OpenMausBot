@@ -1,0 +1,24 @@
+{
+  "firstLoad": {
+    "/api/bots": 4615,
+    "/api/config": 1500,
+    "/api/instances": 219,
+    "/api/notifications": 853,
+    "/api/routines": 260,
+    "/api/webhooks": 328
+  },
+  "firstLoadTotal": 7775,
+  "live": {
+    "remoteWire": 9167,
+    "localWire": 108423,
+    "frames": 156,
+    "botFrames": 42,
+    "localFrames": 156
+  },
+  "again": {
+    "/api/instances": 219,
+    "/api/config": 198,
+    "/api/notifications": 1014
+  },
+  "againTotal": 1431
+}

@@ -199,3 +199,9 @@ test("the Chief of Staff stands apart, then unsectioned bots, then the computer'
     ["section", "Ops", ["ops-1"]],
   ]);
 });
+
+test("a widget row becomes a card with its tree, not its text fallback", () => {
+  const widget = { v: 1 as const, root: { type: "Card", id: "root", title: "Your brief", children: [] }, rev: 3 };
+  const views = messageViews([{ id: "w1", role: "bot", kind: "widget", at: NOW, text: "**Your brief**", widget }]);
+  expect(views).toEqual([{ id: "w1", from: "widget", messageId: "w1", at: NOW, widget }]);
+});

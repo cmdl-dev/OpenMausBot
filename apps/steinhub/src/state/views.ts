@@ -2,6 +2,7 @@ import { botAvatarProfile, mascotFaceInk } from "@openmausbot/phone-protocol/bot
 import { cronScheduleLabel } from "@openmausbot/phone-protocol/cron-label.ts";
 import { botMascotBody, type MascotBodyId } from "@openmausbot/phone-protocol/mascot-bodies.ts";
 import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-protocol/routines.ts";
+import type { WidgetPayload } from "@openmausbot/phone-protocol/widget.ts";
 import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
 import { readMessageAttachments, type SentAttachment } from "@/api/attachments";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
@@ -98,6 +99,15 @@ export interface HandoffView {
   botId?: string;
 }
 
+/** A card a bot or the computer drew in the chat (the daily brief, a form, a list to pick from). */
+export interface WidgetView {
+  id: string;
+  from: "widget";
+  messageId: string;
+  at?: number;
+  widget: WidgetPayload;
+}
+
 export type MessageView =
   | { id: string; from: "user"; text: string; attachments?: SentAttachment[]; pending?: "sending" | "failed" }
   | {
@@ -114,7 +124,8 @@ export type MessageView =
     }
   | { id: string; from: "working" }
   | HandoffView
-  | ApprovalView;
+  | ApprovalView
+  | WidgetView;
 
 export interface RunView {
   id: string;
@@ -363,6 +374,10 @@ export function messageViews(
     }
     if (message.kind === "options" && message.card) {
       views.push(cardView(message, message.card));
+      continue;
+    }
+    if (message.kind === "widget" && message.widget) {
+      views.push({ id: message.id, from: "widget", messageId: message.id, at: message.at, widget: message.widget });
       continue;
     }
     const images = sentImages(message);

@@ -36,7 +36,7 @@ export function Button({ label, icon: Icon, onPress, variant = "primary", small,
       ]}
     >
       {Icon ? <Icon size={small ? 16 : 18} color={palette.fg} strokeWidth={size.iconStroke} /> : null}
-      <Txt variant={small ? "subhead" : "callout"} weight={variant === "ghost" ? "500" : "600"} style={{ color: palette.fg }}>
+      <Txt variant={small ? "subhead" : "callout"} weight={variant === "ghost" ? "500" : "600"} numberOfLines={1} style={[styles.label, { color: palette.fg }]}>
         {label}
       </Txt>
     </Pressable>
@@ -53,7 +53,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: space[2],
+    maxWidth: "100%",
   },
+  label: { flexShrink: 1 },
   small: { height: 36, paddingHorizontal: 14 },
   block: { alignSelf: "stretch" },
 });

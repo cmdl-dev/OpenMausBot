@@ -160,6 +160,7 @@
   "server.notify.delegationSettled": "{who} नतीजों के साथ आगे बढ़ा",
   "server.notify.mention": "{who} ने आपका ज़िक्र किया",
   "server.notify.wait": "{who} का इंतज़ार खत्म हुआ",
+  "server.notify.alert": "{who} ने कुछ ज़रूरी बताया है",
   "server.notify.done": "{who} ने काम पूरा किया",
   "server.notify.inRoom": "{room} में {bot}",
   "server.notify.assistantAnswered": "{title} · आपके असिस्टेंट ने जवाब दिया",

@@ -160,6 +160,7 @@
   "server.notify.delegationSettled": "{who} a repris avec les résultats",
   "server.notify.mention": "{who} vous a mentionné",
   "server.notify.wait": "L'attente de {who} est terminée",
+  "server.notify.alert": "{who} a signalé quelque chose d'important",
   "server.notify.done": "{who} a terminé",
   "server.notify.inRoom": "{bot} dans {room}",
   "server.notify.assistantAnswered": "{title} · votre assistant a répondu",

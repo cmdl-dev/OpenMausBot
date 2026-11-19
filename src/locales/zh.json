@@ -313,6 +313,7 @@
   "server.notify.delegationSettled": "{who} 已带着结果继续",
   "server.notify.mention": "{who} 提到了你",
   "server.notify.wait": "{who} 的等待结束了",
+  "server.notify.alert": "{who} 标记了一件重要的事",
   "server.notify.done": "{who} 已完成",
   "server.notify.inRoom": "{room} 中的 {bot}",
   "server.notify.assistantAnswered": "{title} · 你的助理已回复",

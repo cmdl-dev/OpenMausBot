@@ -190,6 +190,7 @@
   "server.notify.delegationSettled": "{who} siguió con los resultados",
   "server.notify.mention": "{who} te mencionó",
   "server.notify.wait": "{who} ya no tiene que esperar",
+  "server.notify.alert": "{who} marcó algo importante",
   "server.notify.done": "{who} terminó",
   "server.notify.inRoom": "{bot} en {room}",
   "server.notify.assistantAnswered": "{title} · tu asistente respondió",

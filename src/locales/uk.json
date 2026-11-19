@@ -160,6 +160,7 @@
   "server.notify.delegationSettled": "{who} продовжив із результатами",
   "server.notify.mention": "{who} згадав вас",
   "server.notify.wait": "Очікування бота {who} завершилося",
+  "server.notify.alert": "Бот {who} позначив щось важливе",
   "server.notify.done": "{who} завершив",
   "server.notify.inRoom": "{bot} у кімнаті {room}",
   "server.notify.assistantAnswered": "{title} · ваш асистент відповів",

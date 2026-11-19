@@ -191,6 +191,7 @@
   "server.notify.delegationSettled": "{who} sonuçlarla devam etti",
   "server.notify.mention": "{who} sizden bahsetti",
   "server.notify.wait": "{who} botunun beklemesi bitti",
+  "server.notify.alert": "{who} önemli bir şeyi işaretledi",
   "server.notify.done": "{who} işini bitirdi",
   "server.notify.inRoom": "{room} içinde {bot}",
   "server.notify.assistantAnswered": "{title} · asistanınız yanıtladı",

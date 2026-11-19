@@ -71,6 +71,8 @@ COPY packages/phone-protocol/package.json ./packages/phone-protocol/package.json
 # it, and .dockerignore keeps .git out — so copy it in before install or the
 # whole build dies on MODULE_NOT_FOUND.
 COPY scripts/install-git-hooks.mjs ./scripts/install-git-hooks.mjs
+# pnpm-workspace.yaml's patchedDependencies hashes each patch while it resolves the lockfile
+COPY patches ./patches
 RUN pnpm install --frozen-lockfile
 COPY . .
 # The Cloud home runs these as root, so nobody else may write them. The web app's

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { e164, numberRefusal, numberRule } from "../../shared/phone-calls.ts";
 import { callsConfigWithEnv, callsNotReadyText, callsOffered, callsSettings, callsSetup, publicBase } from "./config.ts";
+import { phoneCallsPrompt } from "./prompt.ts";
 
 const SID = `AC${"a".repeat(32)}`;
 const FULL = { calls: { accountSid: SID, authToken: "token-123", callerId: "+1 (415) 555-0100", publicUrl: "https://calls.example.com/" }, openai: { key: "sk-test" } };
@@ -83,5 +84,18 @@ describe("numbers", () => {
     expect(numberRefusal("+19005550100", { allow: ["+1*"], deny: ["+1900*"] })).toContain("denylist");
     expect(numberRefusal("+442071234567", { allow: ["+1*"], deny: [] })).toContain("isn't on the phone calls allowlist");
     expect(numberRefusal("+14155550100", { allow: ["+14155550100"], deny: [] })).toBeNull();
+  });
+});
+
+describe("the bot's instructions about phone calls", () => {
+  it("tell a bot with the call tools that it can phone people and where place_call is, and say nothing otherwise", () => {
+    const told = phoneCallsPrompt({ agentsTools: true, offered: true, room: false });
+    expect(told).toContain("place_call dials a number");
+    expect(told).toContain("find it with your tool search");
+    expect(told).toContain("never say you can't make phone calls");
+    expect(phoneCallsPrompt({ agentsTools: true, offered: false, room: false })).toBe("");
+    expect(phoneCallsPrompt({ agentsTools: false, offered: true, room: false })).toBe("");
+    expect(phoneCallsPrompt({ agentsTools: true, offered: true, room: true })).toBe("");
+    expect(phoneCallsPrompt({ agentsTools: true, offered: true, room: false, toolsOff: ["calls"] })).toBe("");
   });
 });

@@ -2,6 +2,7 @@
 // server starts and says what is missing; set up, a bot's place_call waits on the person's approval, the call runs over
 // the call listener (signed webhooks, the media stream bridged to the voice), its card follows it, and when it ends the
 // transcript is saved and a summary turn starts in the conversation with the transcript as outside data.
+import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -19,6 +20,32 @@ const freePort = () => new Promise<number>((resolve) => {
     server.close(() => resolve(typeof address === "object" && address ? address.port : 0));
   });
 });
+
+/** The tools an MCP server a turn launched lists, as the engine receives them. */
+async function listedTools(server: { command: string; args?: string[]; env?: Record<string, string> }): Promise<Array<{ name: string; _meta?: Record<string, unknown> }>> {
+  const child = spawn(server.command, server.args ?? [], { env: { ...process.env, ...server.env }, stdio: ["pipe", "pipe", "ignore"] });
+  let buffer = "";
+  const reply = new Promise<Array<{ name: string; _meta?: Record<string, unknown> }>>((resolve, reject) => {
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString();
+      for (const line of buffer.split("\n")) {
+        try {
+          const frame = JSON.parse(line) as { id?: number; result?: { tools?: Array<{ name: string }> } };
+          if (frame.id === 2) resolve(frame.result?.tools ?? []);
+        } catch { /* a partial line */ }
+      }
+    });
+    child.on("exit", () => reject(new Error("the agents server exited before listing its tools")));
+  });
+  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } })}\n`);
+  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
+  child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })}\n`);
+  try {
+    return await reply;
+  } finally {
+    child.kill();
+  }
+}
 
 function client(fixture: () => VerificationServer) {
   return async (method: string, path: string, body?: unknown) => {
@@ -41,6 +68,8 @@ describe("phone calls with nothing set up", () => {
     expect(setup).toMatchObject({ ready: false, listening: false, port: 8805, maxMinutes: 10, model: "gpt-realtime-2.1-mini" });
     expect(setup.missing.map((setting: { id: string }) => setting.id)).toEqual(["twilioAccountSid", "twilioAuthToken", "callerId", "openaiKey", "publicUrl"]);
     expect((await api("GET", "/api/calls")).body).toEqual({ calls: [] });
+    const bot = (await api("POST", "/api/bots", { name: "Iris" })).body.bot as { id: string };
+    expect(JSON.stringify((await api("GET", `/api/bots/${bot.id}/system-prompt`)).body)).not.toContain("place_call");
   });
 });
 
@@ -87,6 +116,12 @@ describe("a phone call placed by a bot", () => {
       card = (await messages(bot.threadId)).findLast((row) => row.card?.outboundRequest && !row.card.answered);
       return Boolean(card);
     }, { timeout: 30_000 }).toBe(true);
+    const launched = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as { systemPrompt: string | null; mcpConfig: { mcpServers: Record<string, { command: string; args?: string[]; env?: Record<string, string> }> } };
+    expect(launched.systemPrompt).toContain("You can phone people for the person: place_call dials a number");
+    const tools = await listedTools(launched.mcpConfig.mcpServers.agents!);
+    expect(tools.filter((tool) => ["place_call", "call_status", "hang_up", "get_call_transcript"].includes(tool.name)).map((tool) => tool.name).sort())
+      .toEqual(["call_status", "get_call_transcript", "hang_up", "place_call"]);
+    expect(JSON.stringify((await api("GET", `/api/bots/${bot.id}/system-prompt`)).body)).toContain("place_call dials a number");
     expect(card.card.title).toBe("Send on your behalf?");
     expect(card.card.subtitle).toContain("+14155550100");
     expect(twilio.requests).toHaveLength(0);

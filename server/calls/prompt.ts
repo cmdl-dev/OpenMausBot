@@ -5,6 +5,13 @@ import type { CallRecord } from "./manager.ts";
 
 const INLINE_CHARS = 40_000;
 
+/** The system prompt part that tells a bot it can phone people. On Claude the call tools are deferred behind its tool
+ * search, so without this line a bot asked to call someone answers that it can't. Empty when it has no call tools. */
+export function phoneCallsPrompt({ agentsTools, offered, room, toolsOff }: { agentsTools: boolean; offered: boolean; room: boolean; toolsOff?: readonly string[] }): string {
+  if (!agentsTools || !offered || room || toolsOff?.includes("calls")) return "";
+  return " You can phone people for the person: place_call dials a number (E.164, like +14155550123) and an AI voice runs the call from your brief, once the person approves the call on a card. If place_call isn't loaded yet, find it with your tool search. When the person asks you to call someone, use it; never say you can't make phone calls or suggest another calling service.";
+}
+
 /** Spoken by Twilio before the voice says anything, on every call. */
 export function disclosureLine(onBehalfOf: string): string {
   return `Hi, this is an AI assistant calling on behalf of ${onBehalfOf}. This call is transcribed.`;

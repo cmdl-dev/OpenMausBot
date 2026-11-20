@@ -1,6 +1,6 @@
 # Announcements: cards without a release
 
-The app can show a card in its corner (a sponsor's offer, product news, a tip) that nobody shipped in a release. The cards
+The app can show a card in its corner (product news, a tip) that nobody shipped in a release. The cards
 live in one file in this repository, [`announcements/announcements.json`](../announcements/announcements.json). Merge a
 change to it on `main` and every install that runs this version or later picks it up within about an hour.
 
@@ -104,7 +104,7 @@ shows it again to everyone.
 | Field | Required | What it is |
 | --- | --- | --- |
 | `id` | yes | Stable and unique: 3–40 lowercase letters, digits and dashes, e.g. `phone-app-2026-12`. Each person sees each id once. |
-| `kind` | yes | `sponsor`, `product` or `tip`. An app that does not know a kind skips the card. |
+| `kind` | yes | `sponsor`, `product` or `tip`. An app that does not know a kind skips the card. The app never shows a `sponsor` card. |
 | `label` | sponsor: yes | A short word above the body, e.g. `Sponsor`, `New`, `Tip` (16 characters). A sponsor's card must say it is one. |
 | `title` | yes | 60 characters. |
 | `body` | yes | 240 characters, at most 3 lines (`\n` breaks a line). |
@@ -150,25 +150,21 @@ that use it.
 
 ## The rules the app keeps, whatever the file says
 
-- **Once per person per `id`.** The app remembers a card someone closed or used the way it remembers the built-in sponsor card (`MODELGO_OFFER_NOTICE`):
+- **Once per person per `id`.** The app remembers a card someone closed or used the way it remembers its own notices:
   in the browser, in the desktop app's own record for every page its window shows (My Cloud's included), and in the
   workspace's record. On a Team Cloud the workspace record is the whole team's, so there it uses only the first two.
 - **One card on screen, through the notice queue.** A remote card comes after everything else in
   `src/lib/notices.ts`'s queue that is due: the Grok Bot move, the What's new popup, the product-updates question, bots
-  in two places, the Cloud trial and account notices, and the built-in sponsor and partner offers; only the GitHub star comes
-  after it. Like the built-in sponsor card it may also follow the launch's first notice in the same launch, once that
-  notice is closed, after the product-updates question and the built-in sponsor card, so it reaches people on their next
+  in two places, and the Cloud trial and account notices; only the GitHub star comes after it. It may also follow the
+  launch's first notice in the same launch, once that notice is closed, after the product-updates question, so it reaches people on their next
   launch rather than some later one. It never replaces a card still on screen, and never goes ahead of a notice someone
   has to act on (the Grok Bot move, a trial's notice, the account's card), even one left for a later launch: it waits for
   that launch and follows it there.
-- **At most one remote card a launch**, and **at most one `sponsor` card in any 7 days** per person (counted from the day
-  one was shown).
+- **At most one remote card a launch.**
+- **Never a `sponsor` card.** The app shows no ads: a card of that kind is skipped wherever it would show.
 - **Never** in the launch whose welcome just finished, over MausBot's first-launch card, during a live call, or while a
-  move to My Cloud is under way (the built-in sponsor card's exclusions).
+  move to My Cloud is under way.
 - **Never on a branded build** (`brandStatus().source === "file"`), any kind, as the What's new popup.
-- **Sponsor cards** also skip a desktop whose organization's policy limits the AI providers (company models only, or a
-  list of allowed engines), and a Team Cloud's members who are not its owner or an admin
-  (`SPONSOR_CARDS_FOR_TEAM_MEMBERS` in `src/lib/announcements.ts`, off).
 - **Invalid is ignored.** A card that fails validation, has no `ends` or is past it is skipped; a file that fails as a
   whole is ignored and the last good copy kept. At most 20 cards and 64 KB are read.
 
@@ -192,13 +188,6 @@ The `id` is the card's own id from this public file, the same for everyone. See 
 Tests never download the live file: `server/testing/setup.ts` and the verification server
 (`scripts/control-omb.ts`, which the renderer previews and UI tests run on) set `OMB_DISABLE_ANNOUNCEMENTS=1`, so their
 pages get no cards whatever `main` holds. The server's tests hand the store a fake fetch.
-
-## Moving the built-in sponsor card into the feed later
-
-The built-in sponsor card (`MODELGO_OFFER_NOTICE`) stays built in. To move it: publish a `sponsor` card with the same
-words, its mark and `MODELGO_URL` as its `open_url`; release a version whose app treats the old seen id as the card's
-(mark `announcement:<id>` seen when `modelgo-offer-2026-11` is), then remove the built-in card. Until every install runs
-that version, older ones keep showing the built-in card.
 
 ## Design notes
 

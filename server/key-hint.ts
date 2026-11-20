@@ -27,6 +27,8 @@ export function nestedKeyStatus(cfg: AppConfig) {
     customImageApiKey: keyStatus(cfg.imageGen?.customApiKey),
     geminiImageApiKey: keyStatus(cfg.imageGen?.geminiKey),
     openaiLiveKey: keyStatus(usableLiveKey(cfg.live)),
+    twilioAccountSid: keyStatus(cfg.calls?.accountSid),
+    twilioAuthToken: keyStatus(cfg.calls?.authToken),
   };
 }
 

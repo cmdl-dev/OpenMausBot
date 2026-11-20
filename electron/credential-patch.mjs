@@ -29,6 +29,8 @@ export const CREDENTIAL_PATCH = {
   openaiLiveKey: (value) => ({ live: { key: value } }),
   tregApiKey: (value) => ({ treg: { key: value } }),
   postizApiKey: (value) => ({ postiz: { key: value } }),
+  twilioAccountSid: (value) => ({ calls: { accountSid: value } }),
+  twilioAuthToken: (value) => ({ calls: { authToken: value } }),
 };
 
 const DECIDER_ERRORS = Object.freeze({

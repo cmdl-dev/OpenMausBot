@@ -15,7 +15,7 @@ export function phoneCallsPrompt({ agentsTools, offered, room, toolsOff }: { age
 /** The built-in call texts. Each can be replaced whole in Settings → Phone calls (`calls.<key>`); a saved text is used
  * exactly as written, with only its `{placeholders}` filled. */
 export const DEFAULT_CALL_PROMPTS: Record<CallPromptKey, string> = {
-  disclosure: "Hi, this is an AI assistant calling on behalf of {onBehalfOf}. This call is transcribed.",
+  disclosure: "Hi, this is an AI assistant calling on behalf of {onBehalfOf}. {recordingNotice}",
   instructions: [
     "You are speaking on a phone call to {callee} ({to}). {botName}, an AI assistant working for {onBehalfOf}, placed it and wrote your brief below.",
     "The line already said this to them when they answered: \"{disclosure}\"",
@@ -66,9 +66,12 @@ export interface CallTexts {
 }
 
 /** Every text a call sends, from the saved (or built-in) templates and this call's facts. */
-export function callTexts(prompts: Record<CallPromptKey, string>, call: { botName: string; brief: string; calleeName?: string; onBehalfOf: string; to: string; maxMinutes: number }): CallTexts {
+export function callTexts(prompts: Record<CallPromptKey, string>, call: { botName: string; brief: string; calleeName?: string; onBehalfOf: string; to: string; maxMinutes: number; recorded: boolean }): CallTexts {
   const calleeName = realName(call.calleeName) ?? "";
-  const base = { onBehalfOf: call.onBehalfOf, callee: calleeName || "the person you called", calleeName, to: call.to, botName: call.botName, maxMinutes: call.maxMinutes };
+  const base = {
+    onBehalfOf: call.onBehalfOf, callee: calleeName || "the person you called", calleeName, to: call.to, botName: call.botName, maxMinutes: call.maxMinutes,
+    recordingNotice: call.recorded ? "This call is recorded." : "This call is transcribed.",
+  };
   const brief = call.brief.trim() || renderTemplate(prompts.defaultBrief, base);
   const disclosure = renderTemplate(prompts.disclosure, { ...base, brief });
   const values = { ...base, brief, disclosure };

@@ -46,6 +46,7 @@ exactly what is missing.
 | Turn detection (default server VAD, threshold 0.6, 300 ms padding, 700 ms silence) | Settings → Phone calls | `calls.turnDetection` | |
 | Noise reduction (default `near_field`) | Settings → Phone calls | `calls.noiseReduction` | |
 | Voice turns without a reply before it says goodbye and hangs up (default 3) | Settings → Phone calls | `calls.maxTurnsWithoutReply` | |
+| Record calls on this computer (default on) | Settings → Phone calls → Record calls | `calls.record` | |
 
 ## What a call says
 
@@ -53,8 +54,9 @@ Every text a call sends is shown and editable in Settings → Phone calls → Wh
 the call says, with a Reset to default button each. A saved text is used exactly
 as written, with nothing added before or after; only its `{placeholders}` are
 filled: `{onBehalfOf}`, `{callee}` (the name, or "the person you called"),
-`{calleeName}`, `{to}`, `{botName}`, `{brief}`, `{disclosure}` and
-`{maxMinutes}`.
+`{calleeName}`, `{to}`, `{botName}`, `{brief}`, `{disclosure}`,
+`{maxMinutes}` and `{recordingNotice}` ("This call is recorded." while
+recording is on, else "This call is transcribed.").
 
 | Text | `config.json` | Sent |
 | --- | --- | --- |
@@ -78,6 +80,26 @@ offers no call tools; `GET /api/calls/setup` lists what is missing.
 
 A non-empty allowlist admits only the numbers it names. The denylist always
 wins. A bot can't call the caller ID number itself, and runs one call at a time.
+
+## Recordings
+
+With Record calls on, OpenMausBot records every call itself from the audio
+already passing through the call listener: the callee's side and the voice's,
+placed on one timeline and mixed into one WAV (16-bit PCM, 8 kHz, mono). Voice
+audio that the callee talked over and Twilio dropped is left out. Nothing uses
+Twilio's recording, so it costs nothing extra. The disclosure Twilio speaks
+when the callee answers comes before the audio stream starts, so it isn't in
+the recording; it is the first line of the transcript.
+
+Recordings are written while the call runs to
+`~/.openmausbot/calls/recordings/<call id>.wav` (folder 700, file 600) and
+finalized when it ends; one cut short by a crash is repaired at the next start.
+They play and download from the call's details in the app and SteinHub, through
+`GET /api/calls/<call id>/recording` (signed-in app routes only, with Range for
+seeking, `?download=1` to save). The public call listener never serves them.
+Deleting a call (`DELETE /api/calls/<call id>`, or Delete call in its details)
+deletes its recording, transcript and event log. While Record calls is on, the
+default disclosure says "This call is recorded."
 
 ## Twilio
 

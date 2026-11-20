@@ -26,7 +26,7 @@ describe("phone call settings", () => {
       accountSid: SID, authToken: "token-123", callerId: "+14155550100", publicUrl: "https://calls.example.com", openaiKey: "sk-test",
       maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-transcribe", allow: [], deny: [],
       turnDetection: { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 }, noiseReduction: "near_field", maxTurnsWithoutReply: 3,
-      prompts: DEFAULT_CALL_PROMPTS,
+      prompts: DEFAULT_CALL_PROMPTS, record: true,
     });
     expect(callsNotReadyText(FULL)).toBeNull();
   });
@@ -104,7 +104,7 @@ describe("the bot's instructions about phone calls", () => {
 });
 
 describe("what a call says", () => {
-  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10 };
+  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10, recorded: false };
 
   it("never greets a stand-in name like \"You\" or a blank one", () => {
     for (const stand of ["You", " you ", "", "  ", "them", "Unknown", "N/A", "[name]", "the person"]) expect(realName(stand), stand).toBeUndefined();
@@ -123,6 +123,17 @@ describe("what a call says", () => {
     expect(texts.instructions).toContain("\"Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.\"");
     expect(texts.instructions).toContain("Your brief:\nAsk how their day is going.");
     expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, brief: "  " }).instructions).toContain("Your brief:\nIntroduce yourself, ask how they are doing, listen, and note anything GrandStein should know.");
+  });
+
+  it("says the call is recorded while recording is on, and follows the toggle in a saved text through {recordingNotice}", () => {
+    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, recorded: true }).disclosure).toBe("Hi, this is an AI assistant calling on behalf of GrandStein. This call is recorded.");
+    expect(callTexts(DEFAULT_CALL_PROMPTS, CALL).disclosure).toBe("Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.");
+    const custom = callPrompts({ disclosure: "Hello for {onBehalfOf}. {recordingNotice}" });
+    expect(callTexts(custom, { ...CALL, recorded: true }).disclosure).toBe("Hello for GrandStein. This call is recorded.");
+    expect(callTexts(callPrompts({ disclosure: "Exactly this." }), { ...CALL, recorded: true }).disclosure).toBe("Exactly this.");
+    expect(callsSettings(FULL).ready?.record).toBe(true);
+    expect(callsSettings({ ...FULL, calls: { ...FULL.calls, record: false } }).ready?.record).toBe(false);
+    expect(callsSetup({ ...FULL, calls: { ...FULL.calls, record: false } }, true).record).toBe(false);
   });
 
   it("uses a saved text exactly as written, only its placeholders filled, and the default again once reset", () => {

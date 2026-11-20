@@ -1,7 +1,7 @@
 // A whole call, locally: the call is placed on a stand-in Twilio, its webhooks arrive signed, Twilio's media stream
 // connects to the listener and is bridged to a stand-in OpenAI Realtime server, the callee interrupts, the voice ends
 // the call, and the transcript is saved and handed to a summary turn.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
@@ -86,7 +86,7 @@ describe("a phone call end to end", () => {
 
     const answer = await webhook(record, "answer", { CallStatus: "in-progress" });
     expect(answer.status).toBe(200);
-    expect(answer.text).toContain("<Say>Hi, this is an AI assistant calling on behalf of Cesar. This call is transcribed.</Say>");
+    expect(answer.text).toContain("<Say>Hi, this is an AI assistant calling on behalf of Cesar. This call is recorded.</Say>");
     const streamUrl = /<Stream url="([^"]+)"/.exec(answer.text)![1]!;
     expect(streamUrl).toMatch(new RegExp(`^wss://calls\\.example\\.com/calls/twilio/stream/${record.id}/[0-9a-f]{48}$`));
     expect(calls.record(record.id)!.phase).toBe("in_progress");
@@ -143,6 +143,14 @@ describe("a phone call end to end", () => {
     expect(calls.lines(record.id).map((line) => line.speaker)).toEqual(["note", "bot", "callee", "bot"]);
     expect(calls.detail(record.id)).toMatchObject({ brief: BRIEF, to: "+14155550100", transcript: expect.arrayContaining([expect.objectContaining({ speaker: "callee" })]) });
 
+    const recordingPath = join(dir, "calls", "recordings", `${record.id}.wav`);
+    expect(calls.detail(record.id)!.recording).toEqual({ path: recordingPath, bytes: statSync(recordingPath).size, seconds: expect.any(Number), url: `/api/calls/${record.id}/recording` });
+    expect(calls.record(record.id)!.recording).toMatchObject({ finalized: true });
+    expect(readFileSync(recordingPath).toString("ascii", 0, 4)).toBe("RIFF");
+    expect(readFileSync(recordingPath).readUInt32LE(40)).toBe(statSync(recordingPath).size - 44);
+    expect(statSync(recordingPath).size).toBeGreaterThan(44);
+    expect(JSON.stringify(logs)).not.toMatch(/AAAA|BBBB|CCCC|DDDD/);
+    expect(readFileSync(join(dir, "calls", `${record.id}.events.jsonl`), "utf8")).not.toMatch(/AAAA|BBBB|CCCC|DDDD/);
     expect(followUps).toHaveLength(1);
     const { prompt } = followUps[0]!;
     expect(prompt).toContain(`[Phone call ended] The call you placed to Luigi's at +14155550100 (call_id ${record.id}) has ended`);
@@ -179,6 +187,43 @@ describe("a phone call end to end", () => {
     } finally {
       Object.assign(READY, callsSettings({ calls: { accountSid: FAKE_ACCOUNT_SID, authToken: FAKE_AUTH_TOKEN, callerId: "+14155550199", publicUrl: PUBLIC }, openai: { key: "sk-fake-openai" } }).ready!);
     }
+  });
+
+  it("records nothing with recording off, and deleting a call deletes its recording, transcript and event log", async () => {
+    Object.assign(READY, { record: false });
+    try {
+      const unrecorded = await place();
+      const answer = await webhook(unrecorded, "answer", {});
+      expect(answer.text).toContain("This call is transcribed.");
+      const stream = await twilioStream(/<Stream url="([^"]+)"/.exec(answer.text)![1]!.replace("wss://calls.example.com", listener.replace("http:", "ws:")));
+      stream.socket.send(JSON.stringify({ event: "start", start: { streamSid: "MZ5", callSid: unrecorded.providerCallId } }));
+      stream.socket.send(JSON.stringify({ event: "media", media: { track: "inbound", timestamp: "20", payload: "AAAA" } }));
+      await realtime.waitFor("session.update");
+      await calls.hangUp(unrecorded.id, "hung_up");
+      await webhook(unrecorded, "status", { CallStatus: "completed" });
+      expect(calls.detail(unrecorded.id)!.recording).toBeUndefined();
+      expect(existsSync(join(dir, "calls", "recordings", `${unrecorded.id}.wav`))).toBe(false);
+      expect(calls.list()[0]!.recorded).toBeUndefined();
+    } finally {
+      Object.assign(READY, { record: true });
+    }
+
+    const recorded = await place();
+    const answer = await webhook(recorded, "answer", {});
+    const stream = await twilioStream(/<Stream url="([^"]+)"/.exec(answer.text)![1]!.replace("wss://calls.example.com", listener.replace("http:", "ws:")));
+    stream.socket.send(JSON.stringify({ event: "start", start: { streamSid: "MZ6", callSid: recorded.providerCallId } }));
+    stream.socket.send(JSON.stringify({ event: "media", media: { track: "inbound", timestamp: "20", payload: "AAAA" } }));
+    await realtime.waitFor("session.update", 1);
+    expect(() => calls.remove(recorded.id)).toThrow("still running");
+    await calls.hangUp(recorded.id, "hung_up");
+    await webhook(recorded, "status", { CallStatus: "completed" });
+    const file = join(dir, "calls", "recordings", `${recorded.id}.wav`);
+    expect(existsSync(file)).toBe(true);
+    expect(calls.list()[0]).toMatchObject({ id: recorded.id, recorded: true });
+    calls.remove(recorded.id);
+    expect(existsSync(file)).toBe(false);
+    expect(readdirSync(join(dir, "calls")).filter((name) => name.startsWith(recorded.id))).toEqual([]);
+    expect(calls.record(recorded.id)).toBeUndefined();
   });
 
   it("hangs up on voicemail without leaving a message, and the summary turn says nobody talked", async () => {

@@ -46,6 +46,7 @@ export const callsConfigSchema = z.object({
   }).optional(),
   noiseReduction: z.enum(["near_field", "far_field", "off"]).optional(),
   maxTurnsWithoutReply: z.number().int().min(1).max(10).optional(),
+  record: z.boolean().optional(),
   ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, z.string().max(12_000).optional()])) as Record<CallPromptKey, z.ZodOptional<z.ZodString>>,
 });
 
@@ -108,6 +109,8 @@ export interface ReadyCalls {
   turnDetection: CallTurnDetection;
   noiseReduction: CallNoiseReduction;
   maxTurnsWithoutReply: number;
+  /** Each call is recorded on this computer. */
+  record: boolean;
   /** Each call text: the saved one, else the built-in default. */
   prompts: Record<CallPromptKey, string>;
   allow: string[];
@@ -142,6 +145,7 @@ export function callVoice(calls: CallsConfig | undefined) {
     noiseReduction: calls?.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
     maxTurnsWithoutReply: calls?.maxTurnsWithoutReply ?? DEFAULT_TURNS_WITHOUT_REPLY,
     maxMinutes: calls?.maxMinutes ?? DEFAULT_CALL_MINUTES,
+    record: calls?.record !== false,
   };
 }
 

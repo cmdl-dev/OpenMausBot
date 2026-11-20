@@ -49,6 +49,18 @@ export interface CallSummary {
   /** Seconds from answer to end; 0 for a call nobody answered. */
   seconds: number;
   lines: number;
+  /** A recording of the call is kept on this computer. */
+  recorded?: true;
+}
+
+/** A call's recording on this computer: both sides mixed into one WAV (PCM 16-bit, 8 kHz, mono). */
+export interface CallRecording {
+  /** Where the file is on the OpenMausBot computer. */
+  path: string;
+  bytes: number;
+  seconds: number;
+  /** Authenticated, supports Range; add `?download=1` to save it as a file. */
+  url: string;
 }
 
 /** A call with its brief and transcript (`GET /api/calls/:id`). The transcript is what the callee and the voice said:
@@ -58,6 +70,8 @@ export interface CallDetail extends CallSummary {
   transcript: CallLine[];
   /** Everything sent to OpenAI Realtime and spoken by Twilio for this call, exactly as sent; absent on older calls. */
   sent?: CallSent;
+  /** Absent when the call wasn't recorded or the file is gone. */
+  recording?: CallRecording;
 }
 
 /** The texts of a call that a person can edit in Settings → Phone calls; each is `calls.<key>` in config.json. */
@@ -85,6 +99,7 @@ export const CALL_PLACEHOLDERS: ReadonlyArray<{ name: string; meaning: string }>
   { name: "brief", meaning: "The bot's brief for this call." },
   { name: "disclosure", meaning: "The disclosure line, as spoken." },
   { name: "maxMinutes", meaning: "The call's time limit in minutes." },
+  { name: "recordingNotice", meaning: "\"This call is recorded.\" while recording is on, else \"This call is transcribed.\"" },
 ];
 
 /** OpenAI Realtime's turn detection for the call. `threshold`, `prefixPaddingMs` and `silenceDurationMs` are for
@@ -113,6 +128,8 @@ export interface CallSent {
   noiseReduction: CallNoiseReduction;
   maxTurnsWithoutReply: number;
   maxMinutes: number;
+  /** The call was recorded on this computer. */
+  recorded: boolean;
   session: Record<string, unknown>;
 }
 
@@ -147,6 +164,8 @@ export interface CallsSetup {
   noiseReduction: CallNoiseReduction;
   /** Voice turns in a row without the callee saying anything before the voice says goodbye and hangs up. */
   maxTurnsWithoutReply: number;
+  /** Each call is recorded on this computer (`calls.record`, on unless false). */
+  record: boolean;
   /** Each editable text: what calls use now, the built-in default, and whether a saved one replaces it. */
   prompts: Record<CallPromptKey, { value: string; default: string; custom: boolean }>;
   /** What is also sent to OpenAI Realtime and can't be edited as text, shown as it is sent: the end_call tool. */

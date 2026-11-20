@@ -181,9 +181,40 @@ describe("a phone call placed by a bot", () => {
     expect(readFileSync(join(fixture.info.dataDir, "calls", "calls.json"), "utf8")).not.toContain(FAKE_AUTH_TOKEN);
   });
 
-  it("refuses a forged webhook on the public listener, and answers nothing but call paths", async () => {
+  it("serves the call's recording only to an authenticated caller, with Range, never on the public listener, and deletes it with the call", async () => {
     const [call] = (await api("GET", "/api/calls")).body.calls;
-    expect((await twilioWebhook(listener, PUBLIC, `/calls/twilio/status/${call.id}`, { CallStatus: "ringing" }, "wrong")).status).toBe(403);
+    expect(call.recorded).toBe(true);
+    const detail = (await api("GET", `/api/calls/${call.id}`)).body;
+    expect(detail.recording).toMatchObject({ path: join(fixture.info.dataDir, "calls", "recordings", `${call.id}.wav`), url: `/api/calls/${call.id}/recording` });
+    const whole = await fetch(`${fixture.info.url}/api/calls/${call.id}/recording`);
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("content-type")).toBe("audio/wav");
+    expect(whole.headers.get("accept-ranges")).toBe("bytes");
+    const body = Buffer.from(await whole.arrayBuffer());
+    expect(body.toString("ascii", 0, 4)).toBe("RIFF");
+    expect(body.length).toBe(detail.recording.bytes);
+    const part = await fetch(`${fixture.info.url}/api/calls/${call.id}/recording`, { headers: { range: "bytes=0-43" } });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe(`bytes 0-43/${body.length}`);
+    expect(Buffer.from(await part.arrayBuffer())).toEqual(body.subarray(0, 44));
+    expect((await fetch(`${fixture.info.url}/api/calls/${call.id}/recording`, { headers: { range: `bytes=${body.length + 10}-` } })).status).toBe(416);
+    const saved = await fetch(`${fixture.info.url}/api/calls/${call.id}/recording?download=1`);
+    expect(saved.headers.get("content-disposition")).toBe(`attachment; filename="${call.id}.wav"`);
+    await saved.arrayBuffer();
+    const remote = await fetch(`${fixture.info.url}/api/calls/${call.id}/recording`, { headers: { "x-forwarded-for": "203.0.113.7" } });
+    expect([401, 403]).toContain(remote.status);
+    expect((await remote.text()).startsWith("RIFF")).toBe(false);
+    expect((await fetch(`${listener}/api/calls/${call.id}/recording`)).status).toBe(404);
+    expect((await fetch(`${listener}/calls/twilio/recording/${call.id}`)).status).toBe(404);
+
+    expect((await api("DELETE", `/api/calls/${call.id}`)).body).toEqual({ ok: true });
+    expect(existsSync(detail.recording.path)).toBe(false);
+    expect((await fetch(`${fixture.info.url}/api/calls/${call.id}/recording`)).status).toBe(404);
+    expect((await api("GET", "/api/calls")).body.calls).toEqual([]);
+  });
+
+  it("refuses a forged webhook on the public listener, and answers nothing but call paths", async () => {
+    expect((await twilioWebhook(listener, PUBLIC, "/calls/twilio/status/c-00000000-0000-4000-8000-000000000000", { CallStatus: "ringing" }, "wrong")).status).toBe(403);
     expect((await fetch(`${listener}/api/calls`)).status).toBe(404);
     expect((await fetch(`${listener}/api/bots`, { method: "POST" })).status).toBe(404);
   });

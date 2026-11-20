@@ -1,5 +1,6 @@
 // The call tools' routes, called by the agents server on a bot's turn, and the app's call history routes.
-import type { ServerResponse } from "node:http";
+import { createReadStream, statSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { CALL_END_TEXT, e164, numberRefusal, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
 import type { json } from "../harness/http.ts";
@@ -121,7 +122,9 @@ export function createCallRoutes(deps: CallRouteDeps) {
         const pages = Math.max(1, Math.ceil(all.length / PER_PAGE));
         const page = Math.min(input.page ?? 1, pages);
         const head = `call_id ${record.id} to ${record.to} (${record.phase === "ended" ? "ended" : record.phase.replace("_", " ")}). Brief: ${record.brief.replace(/\s+/g, " ").slice(0, 300)}`;
-        const sent = page === 1 && record.sent ? `\n${sentText(record.sent)}` : "";
+        const recording = calls.recording(record.id);
+        const recorded = recording ? `\nRecording: ${recording.path} (${minutesText(recording.seconds)}, ${Math.round(recording.bytes / 1024)} KB), playable in the call's details in OpenMausBot.` : "";
+        const sent = (page === 1 && record.sent ? `\n${sentText(record.sent)}` : "") + recorded;
         if (!all.length) return { status: 200, text: `${head}${sent}\nNo transcript.` };
         deps.markOutside(ctx.threadId);
         const text = transcriptText(all.slice((page - 1) * PER_PAGE, page * PER_PAGE), record.answeredAt ?? record.createdAt, speakerNames(record));
@@ -155,17 +158,57 @@ export interface CallAppRouteDeps {
 }
 
 /** The app's call history: GET /api/calls, GET /api/calls/setup, GET /api/calls/:id and POST /api/calls/:id/hang-up. */
+/** One byte range of a `size`-byte file from a Range header; null for the whole file, "bad" when it can't be served. */
+export function byteRange(header: string | undefined, size: number): { start: number; end: number } | null | "bad" {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match || (!match[1] && !match[2]) || size === 0) return "bad";
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    return suffix > 0 ? { start: Math.max(0, size - suffix), end: size - 1 } : "bad";
+  }
+  const start = Number(match[1]);
+  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  return start <= end && start < size ? { start, end } : "bad";
+}
+
+function sendRecording(req: IncomingMessage, res: ServerResponse, file: string, name: string, download: boolean): void {
+  const size = statSync(file).size;
+  const range = byteRange(typeof req.headers.range === "string" ? req.headers.range : undefined, size);
+  const headers = {
+    "content-type": "audio/wav", "accept-ranges": "bytes", "cache-control": "private, no-store", "x-content-type-options": "nosniff",
+    ...(download ? { "content-disposition": `attachment; filename="${name}"` } : {}),
+  };
+  if (range === "bad") {
+    res.writeHead(416, { ...headers, "content-range": `bytes */${size}` }).end();
+    return;
+  }
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  res.writeHead(range ? 206 : 200, { ...headers, "content-length": String(end - start + 1), ...(range ? { "content-range": `bytes ${start}-${end}/${size}` } : {}) });
+  if (req.method === "HEAD") return void res.end();
+  createReadStream(file, { start, end }).on("error", () => res.destroy()).pipe(res);
+}
+
 export function createCallAppRoutes(deps: CallAppRouteDeps): RouteHandler {
-  return async ({ method, path, res, json, auth }) => {
+  return async ({ req, method, path, url, res, json, auth }) => {
     if (!path.startsWith("/api/calls")) return PASS;
     if (method === "GET" && path === "/api/calls") {
       return void json(res, 200, { calls: deps.calls().list().filter((call) => deps.sees(auth, call.threadId)) } as never);
     }
     if (method === "GET" && path === "/api/calls/setup") return void json(res, 200, deps.setup() as never);
-    const one = /^\/api\/calls\/(c-[0-9a-f-]{36})(\/hang-up)?$/.exec(path);
+    const one = /^\/api\/calls\/(c-[0-9a-f-]{36})(\/hang-up|\/recording)?$/.exec(path);
     if (!one) return PASS;
     const record = deps.calls().record(one[1]!);
     if (!record || !deps.sees(auth, record.threadId)) return void json(res, 404, { error: "There is no such call." });
+    if ((method === "GET" || method === "HEAD") && one[2] === "/recording") {
+      const recording = deps.calls().recording(record.id);
+      if (!recording) return void json(res, 404, { error: "This call has no recording on this computer." });
+      return void sendRecording(req, res, recording.path, `${record.id}.wav`, url.searchParams.get("download") === "1");
+    }
+    if (method === "DELETE" && !one[2]) {
+      deps.calls().remove(record.id);
+      return void json(res, 200, { ok: true });
+    }
     if (method === "GET" && !one[2]) return void json(res, 200, deps.calls().detail(record.id) as never);
     if (method === "POST" && one[2]) {
       await deps.calls().hangUp(record.id, "hung_up");

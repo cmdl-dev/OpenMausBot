@@ -1,16 +1,17 @@
 // Phone calls bots place: their records and transcripts on disk, what the provider's callbacks and the media stream do
 // to them, the time limit, and the summary turn once a call ends.
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type WebSocket from "ws";
-import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallSent, type CallSummary } from "../../shared/phone-calls.ts";
+import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallRecording, type CallSent, type CallSummary } from "../../shared/phone-calls.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import type { ReadyCalls } from "./config.ts";
 import { callTexts, summaryPrompt } from "./prompt.ts";
 import type { CallProvider, ProviderProgress } from "./provider.ts";
 import { bridgeCall, realtimeSession, type CallBridge } from "./realtime.ts";
 import { connectStreamTwiml, hangUpTwiml } from "./twilio.ts";
+import { createCallRecorder, repairRecording, type CallRecorder } from "./recording.ts";
 
 export interface CallRecord {
   id: string;
@@ -37,6 +38,8 @@ export interface CallRecord {
   summary?: "asked" | "failed";
   /** Everything this call sends to OpenAI Realtime and has Twilio say, fixed when it is placed. */
   sent?: CallSent;
+  /** The call's recording on this computer; `finalized` once the call ended and the file was closed. */
+  recording?: { path: string; bytes: number; seconds: number; finalized: boolean };
 }
 
 export interface CallDeps {
@@ -81,6 +84,7 @@ interface Live {
   timers: NodeJS.Timeout[];
   watchdog?: NodeJS.Timeout;
   counts: Record<string, number>;
+  recorder?: CallRecorder;
 }
 
 export function createCalls(deps: CallDeps) {
@@ -99,12 +103,25 @@ export function createCalls(deps: CallDeps) {
   function save(): void {
     const all = [...records.values()].sort((a, b) => a.createdAt - b.createdAt);
     const ended = all.filter(isEnded);
-    for (const old of ended.slice(0, Math.max(0, ended.length - KEEP_ENDED))) records.delete(old.id);
+    for (const old of ended.slice(0, Math.max(0, ended.length - KEEP_ENDED))) forget(old);
     writeFileAtomic(join(folder, FILE), JSON.stringify({ calls: [...records.values()] }));
   }
 
   const transcriptFile = (id: string) => join(folder, `${id}.jsonl`);
   const eventsFile = (id: string) => join(folder, `${id}.events.jsonl`);
+  const recordingFile = (id: string) => join(folder, "recordings", `${id}.wav`);
+
+  /** The call and every file it left: transcript, event log and recording. */
+  function forget(record: CallRecord): void {
+    records.delete(record.id);
+    for (const file of [transcriptFile(record.id), eventsFile(record.id), record.recording?.path ?? recordingFile(record.id)]) rmSync(file, { force: true });
+  }
+
+  function recordingOf(record: CallRecord): CallRecording | undefined {
+    const kept = record.recording;
+    if (!kept || !existsSync(kept.path)) return undefined;
+    return { path: kept.path, bytes: kept.bytes, seconds: kept.seconds, url: `/api/calls/${record.id}/recording` };
+  }
 
   function debug(id: string, type: string, detail: Record<string, string | number | boolean> = {}): void {
     const running = live.get(id);
@@ -134,9 +151,15 @@ export function createCalls(deps: CallDeps) {
     const running = live.get(id);
     if (!running) return;
     if (Object.keys(running.counts).length) deps.log(`call ${id}: voice events ${JSON.stringify(running.counts)}`);
+    running.bridge?.close();
+    running.bridge = undefined;
+    const record = records.get(id);
+    if (running.recorder && record) {
+      const done = running.recorder.finish();
+      record.recording = { path: done.path, bytes: done.bytes, seconds: done.seconds, finalized: true };
+    }
     for (const timer of running.timers) clearTimeout(timer);
     if (running.watchdog) clearInterval(running.watchdog);
-    running.bridge?.close();
     live.delete(id);
   }
 
@@ -247,6 +270,7 @@ export function createCalls(deps: CallDeps) {
     phase: record.phase, createdAt: record.createdAt,
     ...(record.answeredAt ? { answeredAt: record.answeredAt } : {}), ...(record.endedAt ? { endedAt: record.endedAt } : {}),
     ...(record.endReason ? { endReason: record.endReason } : {}), seconds: seconds(record), lines: record.lines,
+    ...(record.recording ? { recorded: true as const } : {}),
   });
 
   const urls = (settings: ReadyCalls, record: CallRecord, token: string) => {
@@ -278,11 +302,11 @@ export function createCalls(deps: CallDeps) {
         onBehalfOf: (settings.onBehalfOf?.trim() || input.onBehalfOf).slice(0, 80), provider: "twilio", maxMinutes: settings.maxMinutes,
         phase: "dialing", createdAt: now(), lines: 0,
       };
-      const texts = callTexts(settings.prompts, record);
+      const texts = callTexts(settings.prompts, { ...record, recorded: settings.record });
       record.sent = {
         disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
         model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel, turnDetection: settings.turnDetection,
-        noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes,
+        noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes, recorded: settings.record,
         session: realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription }),
       };
       records.set(record.id, record);
@@ -345,8 +369,14 @@ export function createCalls(deps: CallDeps) {
       const expected = Buffer.from(running.token);
       if (given.length !== expected.length || !timingSafeEqual(given, expected)) return false;
       const { sent } = record;
+      if (sent.recorded && !running.recorder) {
+        running.recorder = createCallRecorder(recordingFile(id));
+        record.recording = { path: recordingFile(id), bytes: 44, seconds: 0, finalized: false };
+        save();
+      }
       running.bridge = bridgeCall(socket, () => deps.openRealtime(settings), {
         session: sent.session, opening: sent.opening, goodbye: sent.goodbye, maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
+        ...(running.recorder ? { recorder: running.recorder } : {}),
       }, {
         started: () => answered(record),
         line: (line) => { if (!isEnded(record)) addLine(record, line); },
@@ -378,11 +408,32 @@ export function createCalls(deps: CallDeps) {
     },
     detail(id: string): CallDetail | null {
       const record = records.get(id);
-      return record ? { ...summary(record), brief: record.brief, transcript: lines(id), ...(record.sent ? { sent: record.sent } : {}) } : null;
+      if (!record) return null;
+      const recording = recordingOf(record);
+      return { ...summary(record), brief: record.brief, transcript: lines(id), ...(record.sent ? { sent: record.sent } : {}), ...(recording ? { recording } : {}) };
     },
     active: () => [...records.values()].some((record) => !isEnded(record)),
     /** After a restart: a call still running lost its voice, so it is hung up; one that ended meanwhile is closed. */
+    recording: (id: string) => {
+      const record = records.get(id);
+      return record ? recordingOf(record) : undefined;
+    },
+    /** Deletes an ended call with its transcript, event log and recording. */
+    remove(id: string): void {
+      const record = records.get(id);
+      if (!record) throw new CallError("There is no such call.", 404);
+      if (!isEnded(record)) throw new CallError("The call is still running. Hang up first.");
+      forget(record);
+      save();
+    },
     async resume(): Promise<void> {
+      for (const record of records.values()) {
+        if (!record.recording || record.recording.finalized) continue;
+        const repaired = repairRecording(record.recording.path);
+        if (repaired) record.recording = { ...repaired, finalized: true };
+        else delete record.recording;
+      }
+      save();
       const settings = deps.settings();
       for (const record of records.values()) {
         if (isEnded(record)) continue;

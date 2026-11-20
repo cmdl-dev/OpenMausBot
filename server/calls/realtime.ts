@@ -4,6 +4,7 @@
 // Twilio sends a mark back once the audio queued before it has played, and sends every pending mark back on `clear`.
 import WebSocket from "ws";
 import type { CallLine, CallNoiseReduction, CallTurnDetection } from "../../shared/phone-calls.ts";
+import type { CallRecorder } from "./recording.ts";
 
 const OPENAI_REALTIME = "wss://api.openai.com/v1/realtime";
 const GOODBYE_WAIT_MS = 10_000;
@@ -68,6 +69,8 @@ export interface RealtimeSession {
   /** Said when the voice has taken `maxTurnsWithoutReply` turns in a row with nothing from the callee; then it hangs up. */
   goodbye: string;
   maxTurnsWithoutReply: number;
+  /** Records both sides of the call, when recording is on. */
+  recorder?: CallRecorder;
 }
 
 export interface BridgeEvents {
@@ -137,6 +140,9 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
   let turnsWithoutReply = 0;
   let goodbye: { responseId?: string } | null = null;
   let ending: { reason: "completed" | "no_reply"; why: string; timer: NodeJS.Timeout; done: boolean } | null = null;
+  const { recorder } = session;
+  let streamStart: number | null = null;
+  const streamMs = () => (streamStart === null ? 0 : now() - streamStart);
 
   const toRealtime = (event: Json) => {
     if (realtime.readyState === WebSocket.OPEN) realtime.send(JSON.stringify(event));
@@ -184,7 +190,10 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
       events.debug("truncate", { item: speaking, heardMs, sentMs: Math.floor(item.sentBytes / MULAW_BYTES_PER_MS) });
       write(speaking);
     }
-    if (marks.size) toTwilio({ event: "clear" });
+    if (marks.size) {
+      toTwilio({ event: "clear" });
+      recorder?.clearOutbound(streamMs());
+    }
     marks.clear();
     speaking = null;
   }
@@ -245,8 +254,10 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
           items.set(id, item);
         }
         speaking = id;
-        item.sentBytes += Buffer.from(delta, "base64").length;
+        const audio = Buffer.from(delta, "base64");
+        item.sentBytes += audio.length;
         toTwilio({ event: "media", media: { payload: delta } });
+        recorder?.outbound(streamMs(), audio);
         const mark = `m${++markSeq}`;
         marks.set(mark, { item: id, through: item.sentBytes });
         toTwilio({ event: "mark", mark: { name: mark } });
@@ -314,6 +325,7 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
     switch (event.event) {
       case "start": {
         streamSid = text(field(event.start, "streamSid")) || text(event.streamSid);
+        streamStart ??= now();
         const providerCallId = text(field(event.start, "callSid"));
         events.started({ streamSid, ...(providerCallId ? { providerCallId } : {}) });
         return;
@@ -322,7 +334,12 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
         const media = event.media;
         if (field(media, "track") && field(media, "track") !== "inbound") return;
         const payload = text(field(media, "payload"));
-        if (payload && ready) toRealtime({ type: "input_audio_buffer.append", audio: payload });
+        if (!payload) return;
+        if (recorder) {
+          const at = Number(field(media, "timestamp"));
+          recorder.inbound(Number.isFinite(at) ? at : streamMs(), Buffer.from(payload, "base64"));
+        }
+        if (ready) toRealtime({ type: "input_audio_buffer.append", audio: payload });
         return;
       }
       case "mark": {

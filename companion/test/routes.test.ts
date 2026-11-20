@@ -116,6 +116,8 @@ describe("what the app may do", () => {
     ["POST", "/api/live/session"],
     ["POST", "/api/live/call/end"],
     ["GET", "/api/live/call"],
+    ["GET", "/api/calls"],
+    ["GET", "/api/calls/call_1"],
     ["PATCH", "/api/live/settings"],
     ["GET", "/api/routines"],
     ["POST", "/api/routines"],

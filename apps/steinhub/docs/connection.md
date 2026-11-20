@@ -131,6 +131,7 @@ don't have it.
 | Settings, Pairing section | **Live**: computer, app version, pairing date, this phone, re-pair, unpair (forgets locally) | stored session |
 | Bot profile | **Live** header, model and threads; New chat starts one with that bot | `GET /api/bots` |
 | Memory: the bot's MEMORY.md, its topic notes and daily notes, read-only | **Live** from a server the phone paired with directly; the desktop companion refuses it, and the screen says so | `GET /api/bots/:id/memory`, `GET /api/bots/:id/memory/file?path=` |
+| Phone calls: a bot's calls from its profile, then one call's brief and transcript (who spoke, when), read-only | **Live** | `GET /api/calls`, `GET /api/calls/:id` |
 | Inbox: lines, Approve and Deny on approval cards, Mark all as read, open a line's conversation | **Live** from a server the phone paired with directly, read again on `notify` frames and when the screen shows. **Sample data**, with a note and nothing to press, from a computer that serves none (the desktop companion) | `GET /api/inbox`, `POST /api/inbox/read-all`, `POST /api/threads/:id/respond` |
 | Drawer search | **Live**: filters the conversations already loaded by title and bot name | none |
 | New automation | **Live**: a new chat with the Chief of Staff, drafted "Set up an automation that " | `POST /api/bots/:id/messages` |

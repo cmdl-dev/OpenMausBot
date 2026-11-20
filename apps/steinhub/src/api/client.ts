@@ -1,3 +1,4 @@
+import type { CallDetail, CallLine, CallSummary } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type {
   BotsResponse,
   BotUpdateResponse,
@@ -140,6 +141,8 @@ export interface MemoryDocReply {
   exists: boolean;
 }
 
+export type { CallDetail, CallLine, CallSummary };
+
 export interface StreamFrame {
   frame: ServerFrame;
   /** The SSE `id`, the cursor a reconnect resumes from. */
@@ -213,6 +216,8 @@ export function desktopClient(transport: Transport) {
     memory: (botId: string) => transport.request<MemoryReply>("GET", `/api/bots/${id(botId)}/memory`),
     memoryFile: (botId: string, path: string) =>
       transport.request<MemoryDocReply>("GET", `/api/bots/${id(botId)}/memory/file?path=${id(path)}`),
+    calls: () => transport.request<{ calls: CallSummary[] }>("GET", "/api/calls"),
+    call: (callId: string) => transport.request<CallDetail>("GET", `/api/calls/${id(callId)}`),
     inbox: () => transport.request<InboxView>("GET", "/api/inbox"),
     inboxReadAll: () => transport.request<InboxView>("POST", "/api/inbox/read-all", {}),
     /** The live stream, without screen frames: a phone draws no live desktop yet. */

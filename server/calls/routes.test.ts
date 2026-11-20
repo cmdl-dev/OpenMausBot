@@ -36,7 +36,7 @@ const settings = (): ReadyCalls | { refusal: string } => callsSettings(cfg).read
 function route(action: string, body: Record<string, unknown>, active = () => true) {
   let out: { status: number; body: Record<string, unknown> } | null = null;
   const routes = createCallRoutes({
-    calls: () => calls, settings, personName: () => "Cesar", markOutside: vi.fn(),
+    calls: () => calls, settings, personName: () => "Cesar", ownerName: () => undefined, markOutside: vi.fn(),
     outbound: () => ({
       async hold(input) {
         holds.push(input);
@@ -114,7 +114,11 @@ describe("place_call guardrails", () => {
     const placed = await route("place", { to: "+14155550100", brief: "Ask whether they are open." });
     const id = /call_id (c-[0-9a-f-]{36})/.exec(String(placed.body.text))![1]!;
     expect((await route("status", { call_id: id })).body.text).toContain(`call_id ${id} to +14155550100: dialing.`);
-    expect((await route("transcript", { call_id: id })).body.text).toContain("No transcript.");
+    const transcript = String((await route("transcript", { call_id: id })).body.text);
+    expect(transcript).toContain("No transcript.");
+    expect(transcript).toContain("Disclosure (spoken by Twilio): Hi, this is an AI assistant calling on behalf of Cesar. This call is transcribed.");
+    expect(transcript).toContain("Opening: They just heard the disclosure.");
+    expect(transcript).toContain("Instructions:\nYou are speaking on a phone call to the person you called (+14155550100).");
     expect((await route("status", { call_id: "c-00000000-0000-0000-0000-000000000000" })).status).toBe(404);
     expect((await route("hang_up", { call_id: id })).body.text).toContain("Hanging up now.");
     expect(provider.hungUp).toEqual(["CA1"]);

@@ -4,7 +4,7 @@ export type CallPhase = "dialing" | "ringing" | "in_progress" | "ended";
 
 /** Why a call ended. */
 export type CallEndReason =
-  | "completed" | "hung_up" | "no_answer" | "busy" | "failed" | "voicemail" | "max_length" | "canceled" | "lost" | "error";
+  | "completed" | "hung_up" | "no_answer" | "busy" | "failed" | "voicemail" | "max_length" | "canceled" | "lost" | "error" | "no_reply";
 
 export const CALL_END_TEXT: Record<CallEndReason, string> = {
   completed: "The call ended.",
@@ -17,6 +17,7 @@ export const CALL_END_TEXT: Record<CallEndReason, string> = {
   canceled: "The call was canceled before it connected.",
   lost: "OpenMausBot lost the call's connection. What was said until then is kept.",
   error: "The voice stopped working during the call.",
+  no_reply: "The callee didn't answer the voice, so it said goodbye and hung up.",
 };
 
 /** One line of a call's transcript. `at` is epoch milliseconds; `bot` is the voice, `callee` the person called and
@@ -25,6 +26,8 @@ export interface CallLine {
   speaker: "bot" | "callee" | "note";
   text: string;
   at: number;
+  /** The callee talked over this bot line, so it was cut off before the end. */
+  cut?: true;
 }
 
 /** A call as the app lists it (`GET /api/calls`). */
@@ -53,6 +56,64 @@ export interface CallSummary {
 export interface CallDetail extends CallSummary {
   brief: string;
   transcript: CallLine[];
+  /** Everything sent to OpenAI Realtime and spoken by Twilio for this call, exactly as sent; absent on older calls. */
+  sent?: CallSent;
+}
+
+/** The texts of a call that a person can edit in Settings → Phone calls; each is `calls.<key>` in config.json. */
+export const CALL_PROMPT_KEYS = ["disclosure", "instructions", "opening", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const;
+export type CallPromptKey = (typeof CALL_PROMPT_KEYS)[number];
+
+/** What each editable text is, for the Settings screen. */
+export const CALL_PROMPT_ROLES: Record<CallPromptKey, string> = {
+  disclosure: "Spoken by Twilio's voice the moment the callee answers, before the AI voice says anything.",
+  instructions: "The AI voice's instructions (OpenAI Realtime session instructions), sent whole at the start of the call.",
+  opening: "Sent once as the first response's instructions: what the voice says first.",
+  wrapUp: "Sent as a system message shortly before the time limit.",
+  goodbye: "Sent when the callee hasn't said anything for several voice turns in a row; the call hangs up after it.",
+  defaultBrief: "Used as {brief} when a bot placed a call without one.",
+  endCallDescription: "The description of the end_call tool the voice uses to hang up.",
+};
+
+/** The `{name}` placeholders every call text may use. */
+export const CALL_PLACEHOLDERS: ReadonlyArray<{ name: string; meaning: string }> = [
+  { name: "onBehalfOf", meaning: "Who the call is for: Calls on behalf of, else your profile name." },
+  { name: "callee", meaning: "The callee's name, or \"the person you called\" when the bot gave none." },
+  { name: "calleeName", meaning: "The callee's name as the bot gave it, empty when there is none." },
+  { name: "to", meaning: "The number called, E.164." },
+  { name: "botName", meaning: "The bot that placed the call." },
+  { name: "brief", meaning: "The bot's brief for this call." },
+  { name: "disclosure", meaning: "The disclosure line, as spoken." },
+  { name: "maxMinutes", meaning: "The call's time limit in minutes." },
+];
+
+/** OpenAI Realtime's turn detection for the call. `threshold`, `prefixPaddingMs` and `silenceDurationMs` are for
+ * server_vad; `eagerness` for semantic_vad. */
+export interface CallTurnDetection {
+  type: "server_vad" | "semantic_vad";
+  threshold?: number;
+  prefixPaddingMs?: number;
+  silenceDurationMs?: number;
+  eagerness?: "low" | "medium" | "high" | "auto";
+}
+
+export type CallNoiseReduction = "near_field" | "far_field" | "off";
+
+/** What a call was placed with, kept on its record. `session` is the session.update sent to OpenAI Realtime, whole. */
+export interface CallSent {
+  disclosure: string;
+  instructions: string;
+  opening: string;
+  wrapUp: string;
+  goodbye: string;
+  model: string;
+  voice: string;
+  transcriptionModel: string;
+  turnDetection: CallTurnDetection;
+  noiseReduction: CallNoiseReduction;
+  maxTurnsWithoutReply: number;
+  maxMinutes: number;
+  session: Record<string, unknown>;
 }
 
 /** A setting phone calls need, named where a person sets it. */
@@ -81,6 +142,15 @@ export interface CallsSetup {
   voice: string;
   allow: string[];
   deny: string[];
+  transcriptionModel: string;
+  turnDetection: CallTurnDetection;
+  noiseReduction: CallNoiseReduction;
+  /** Voice turns in a row without the callee saying anything before the voice says goodbye and hangs up. */
+  maxTurnsWithoutReply: number;
+  /** Each editable text: what calls use now, the built-in default, and whether a saved one replaces it. */
+  prompts: Record<CallPromptKey, { value: string; default: string; custom: boolean }>;
+  /** What is also sent to OpenAI Realtime and can't be edited as text, shown as it is sent: the end_call tool. */
+  tools: Array<Record<string, unknown>>;
   /** The local port the call listener answers on; expose it (only it) at `publicUrl`. */
   port: number;
   listening: boolean;

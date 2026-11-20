@@ -28,7 +28,7 @@ export interface CallsHostDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-export type CallsHostRoutes = Omit<CallRouteDeps, "calls" | "settings">;
+export type CallsHostRoutes = Omit<CallRouteDeps, "calls" | "settings" | "ownerName">;
 
 export function createCallsHost(deps: CallsHostDeps, routeDeps: () => CallsHostRoutes) {
   const { store } = deps;
@@ -97,6 +97,7 @@ export function createCallsHost(deps: CallsHostDeps, routeDeps: () => CallsHostR
     calls: () => calls,
     settings,
     personName: (threadId) => routeDeps().personName(threadId),
+    ownerName: () => deps.cfg().profile?.name,
     outbound: () => routeDeps().outbound(),
     markOutside: (threadId) => routeDeps().markOutside(threadId),
   });

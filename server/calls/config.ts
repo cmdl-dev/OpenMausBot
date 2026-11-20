@@ -1,7 +1,9 @@
 // Phone calls' settings in config.json, their OMB_* overrides, and what is still missing before a call can be placed.
 import { z } from "zod";
-import { CALL_SETTINGS, e164, numberRule, type CallSetting, type CallsSetup } from "../../shared/phone-calls.ts";
+import { CALL_PROMPT_KEYS, CALL_SETTINGS, e164, numberRule, type CallNoiseReduction, type CallPromptKey, type CallSetting, type CallsSetup, type CallTurnDetection } from "../../shared/phone-calls.ts";
 import { usableLiveKey, type LiveConfig } from "../live-config.ts";
+import { DEFAULT_CALL_PROMPTS } from "./prompt.ts";
+import { endCallTool } from "./realtime.ts";
 
 export const DEFAULT_CALL_MINUTES = 10;
 export const MAX_CALL_MINUTES = 60;
@@ -9,6 +11,10 @@ export const DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 export const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
 export const DEFAULT_CALL_VOICE = "marin";
 export const DEFAULT_CALLS_PORT = 8805;
+export const DEFAULT_TURNS_WITHOUT_REPLY = 3;
+export const DEFAULT_NOISE_REDUCTION: CallNoiseReduction = "near_field";
+/** Phone audio is noisy and has echo: a higher threshold than OpenAI's default and a longer silence before a turn ends. */
+export const DEFAULT_TURN_DETECTION: CallTurnDetection = { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 };
 
 /** `calls` in config.json. `accountSid` and `authToken` are the Twilio account's (encrypted on the desktop like every
  * API key); `callerId` is a number verified on that account (E.164) that calls come from; `publicUrl` is the https
@@ -31,9 +37,24 @@ export const callsConfigSchema = z.object({
   allow: z.array(z.string().trim().max(20)).max(200).optional(),
   deny: z.array(z.string().trim().max(20)).max(200).optional(),
   onBehalfOf: z.string().trim().max(80).optional(),
+  turnDetection: z.object({
+    type: z.enum(["server_vad", "semantic_vad"]),
+    threshold: z.number().min(0).max(1).optional(),
+    prefixPaddingMs: z.number().int().min(0).max(2_000).optional(),
+    silenceDurationMs: z.number().int().min(100).max(5_000).optional(),
+    eagerness: z.enum(["low", "medium", "high", "auto"]).optional(),
+  }).optional(),
+  noiseReduction: z.enum(["near_field", "far_field", "off"]).optional(),
+  maxTurnsWithoutReply: z.number().int().min(1).max(10).optional(),
+  ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, z.string().max(12_000).optional()])) as Record<CallPromptKey, z.ZodOptional<z.ZodString>>,
 });
 
 export type CallsConfig = z.infer<typeof callsConfigSchema>;
+
+/** A change to `calls`: any field may be null, which deletes it, so it falls back to its default. */
+export const callsPatchSchema = z.object(Object.fromEntries(Object.entries(callsConfigSchema.shape).map(([key, field]) => [key, field.unwrap().nullable().optional()])) as {
+  [K in keyof typeof callsConfigSchema.shape]: z.ZodOptional<z.ZodNullable<(typeof callsConfigSchema.shape)[K] extends z.ZodOptional<infer T> ? T : never>>
+});
 
 const list = (value: string | undefined) => (value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 
@@ -84,13 +105,49 @@ export interface ReadyCalls {
   model: string;
   voice: string;
   transcriptionModel: string;
+  turnDetection: CallTurnDetection;
+  noiseReduction: CallNoiseReduction;
+  maxTurnsWithoutReply: number;
+  /** Each call text: the saved one, else the built-in default. */
+  prompts: Record<CallPromptKey, string>;
   allow: string[];
   deny: string[];
   onBehalfOf?: string;
 }
 
+/** The saved text for each key, or the built-in default when none (or only blanks) is saved. */
+export function callPrompts(calls: CallsConfig | undefined): Record<CallPromptKey, string> {
+  return Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, calls?.[key]?.trim() ? calls[key]! : DEFAULT_CALL_PROMPTS[key]])) as Record<CallPromptKey, string>;
+}
+
+/** The saved turn detection, a server_vad number left out taking the phone default. */
+function turnDetectionOf(saved: CallTurnDetection | undefined): CallTurnDetection {
+  if (!saved) return DEFAULT_TURN_DETECTION;
+  if (saved.type === "semantic_vad") return { type: "semantic_vad", ...(saved.eagerness ? { eagerness: saved.eagerness } : {}) };
+  return {
+    type: "server_vad",
+    threshold: saved.threshold ?? DEFAULT_TURN_DETECTION.threshold!,
+    prefixPaddingMs: saved.prefixPaddingMs ?? DEFAULT_TURN_DETECTION.prefixPaddingMs!,
+    silenceDurationMs: saved.silenceDurationMs ?? DEFAULT_TURN_DETECTION.silenceDurationMs!,
+  };
+}
+
+/** What a call sends beyond the texts, from saved settings and defaults. */
+export function callVoice(calls: CallsConfig | undefined) {
+  return {
+    model: calls?.model || DEFAULT_REALTIME_MODEL,
+    voice: calls?.voice || DEFAULT_CALL_VOICE,
+    transcriptionModel: calls?.transcriptionModel || DEFAULT_TRANSCRIPTION_MODEL,
+    turnDetection: turnDetectionOf(calls?.turnDetection),
+    noiseReduction: calls?.noiseReduction ?? DEFAULT_NOISE_REDUCTION,
+    maxTurnsWithoutReply: calls?.maxTurnsWithoutReply ?? DEFAULT_TURNS_WITHOUT_REPLY,
+    maxMinutes: calls?.maxMinutes ?? DEFAULT_CALL_MINUTES,
+  };
+}
+
 export interface CallsConfigInput {
   calls?: CallsConfig;
+  profile?: { name?: string };
   openai?: { key?: string };
   live?: LiveConfig;
 }
@@ -137,8 +194,7 @@ export function callsSettings(cfg: CallsConfigInput): { ready: ReadyCalls | null
   return {
     ready: {
       accountSid: calls.accountSid!, authToken: calls.authToken!, callerId: callerId!, publicUrl: publicUrl!, openaiKey: openaiKey!,
-      maxMinutes: calls.maxMinutes ?? DEFAULT_CALL_MINUTES, model: calls.model || DEFAULT_REALTIME_MODEL, voice: calls.voice || DEFAULT_CALL_VOICE,
-      transcriptionModel: calls.transcriptionModel || DEFAULT_TRANSCRIPTION_MODEL, allow, deny, ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
+      ...callVoice(calls), prompts: callPrompts(calls), allow, deny, ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
     },
     missing,
     problems,
@@ -168,9 +224,9 @@ export function callsSetup(cfg: CallsConfigInput, listening: boolean): CallsSetu
     ...(calls.callerId ? { callerId: calls.callerId } : {}),
     ...(calls.publicUrl ? { publicUrl: publicBase(calls.publicUrl) ?? calls.publicUrl } : {}),
     ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
-    maxMinutes: calls.maxMinutes ?? DEFAULT_CALL_MINUTES,
-    model: calls.model || DEFAULT_REALTIME_MODEL,
-    voice: calls.voice || DEFAULT_CALL_VOICE,
+    ...callVoice(calls),
+    prompts: Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: callPrompts(calls)[key], default: DEFAULT_CALL_PROMPTS[key], custom: Boolean(calls[key]?.trim()) }])) as CallsSetup["prompts"],
+    tools: [endCallTool(callPrompts(calls).endCallDescription)],
     allow: rules(calls.allow),
     deny: rules(calls.deny),
     port: callsPort(cfg),

@@ -71,6 +71,23 @@ describe("phone calls with nothing set up", () => {
     const bot = (await api("POST", "/api/bots", { name: "Iris" })).body.bot as { id: string };
     expect(JSON.stringify((await api("GET", `/api/bots/${bot.id}/system-prompt`)).body)).not.toContain("place_call");
   });
+
+  it("saves a call text and the voice settings, shows them as custom, and resets each to its default with null", async () => {
+    const before = (await api("GET", "/api/calls/setup")).body;
+    expect(before.prompts.instructions).toMatchObject({ custom: false });
+    expect(before.tools).toEqual([expect.objectContaining({ name: "end_call" })]);
+    const saved = await api("PUT", "/api/config", { calls: { instructions: "Only this: {brief}", maxTurnsWithoutReply: 5, turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field" } });
+    expect(saved.status).toBe(200);
+    expect((await api("GET", "/api/calls/setup")).body).toMatchObject({
+      prompts: { instructions: { value: "Only this: {brief}", default: before.prompts.instructions.default, custom: true } },
+      maxTurnsWithoutReply: 5, turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field",
+    });
+    expect((await api("PUT", "/api/config", { calls: { maxTurnsWithoutReply: 99 } })).status).toBe(400);
+    expect((await api("PUT", "/api/config", { calls: { instructions: null, maxTurnsWithoutReply: null, turnDetection: null, noiseReduction: null } })).status).toBe(200);
+    expect((await api("GET", "/api/calls/setup")).body).toMatchObject({
+      prompts: { instructions: { value: before.prompts.instructions.default, custom: false } }, maxTurnsWithoutReply: 3, turnDetection: { type: "server_vad" }, noiseReduction: "near_field",
+    });
+  });
 });
 
 describe("a phone call placed by a bot", () => {

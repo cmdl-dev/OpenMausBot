@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { e164, numberRefusal, numberRule } from "../../shared/phone-calls.ts";
 import { callsConfigWithEnv, callsNotReadyText, callsOffered, callsSettings, callsSetup, publicBase } from "./config.ts";
-import { phoneCallsPrompt } from "./prompt.ts";
+import { callTexts, DEFAULT_CALL_PROMPTS, phoneCallsPrompt, realName, renderTemplate } from "./prompt.ts";
+import { callPrompts } from "./config.ts";
 
 const SID = `AC${"a".repeat(32)}`;
 const FULL = { calls: { accountSid: SID, authToken: "token-123", callerId: "+1 (415) 555-0100", publicUrl: "https://calls.example.com/" }, openai: { key: "sk-test" } };
@@ -24,6 +25,8 @@ describe("phone call settings", () => {
     expect(callsSettings(FULL).ready).toEqual({
       accountSid: SID, authToken: "token-123", callerId: "+14155550100", publicUrl: "https://calls.example.com", openaiKey: "sk-test",
       maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-transcribe", allow: [], deny: [],
+      turnDetection: { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 }, noiseReduction: "near_field", maxTurnsWithoutReply: 3,
+      prompts: DEFAULT_CALL_PROMPTS,
     });
     expect(callsNotReadyText(FULL)).toBeNull();
   });
@@ -97,5 +100,49 @@ describe("the bot's instructions about phone calls", () => {
     expect(phoneCallsPrompt({ agentsTools: false, offered: true, room: false })).toBe("");
     expect(phoneCallsPrompt({ agentsTools: true, offered: true, room: true })).toBe("");
     expect(phoneCallsPrompt({ agentsTools: true, offered: true, room: false, toolsOff: ["calls"] })).toBe("");
+  });
+});
+
+describe("what a call says", () => {
+  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10 };
+
+  it("never greets a stand-in name like \"You\" or a blank one", () => {
+    for (const stand of ["You", " you ", "", "  ", "them", "Unknown", "N/A", "[name]", "the person"]) expect(realName(stand), stand).toBeUndefined();
+    expect(realName("  Ann  Lee ")).toBe("Ann Lee");
+    const texts = callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, calleeName: "You" });
+    expect(texts.opening).toBe("They just heard the disclosure. Greet the person you called once and say in one or two sentences why you are calling, then stop and wait for their answer. Don't repeat the disclosure.");
+    expect(texts.instructions).toContain("You are speaking on a phone call to the person you called (+15625550100).");
+    expect(JSON.stringify(texts)).not.toMatch(/Greet You|\{\w+\}/);
+    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, calleeName: "Luigi's" }).opening).toContain("Greet Luigi's once");
+  });
+
+  it("fills the disclosure and instructions from the call, and uses the default goal for an empty brief", () => {
+    const texts = callTexts(DEFAULT_CALL_PROMPTS, CALL);
+    expect(texts.disclosure).toBe("Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.");
+    expect(texts.instructions).toContain("Iris, an AI assistant working for GrandStein, placed it");
+    expect(texts.instructions).toContain("\"Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.\"");
+    expect(texts.instructions).toContain("Your brief:\nAsk how their day is going.");
+    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, brief: "  " }).instructions).toContain("Your brief:\nIntroduce yourself, ask how they are doing, listen, and note anything GrandStein should know.");
+  });
+
+  it("uses a saved text exactly as written, only its placeholders filled, and the default again once reset", () => {
+    const saved = callPrompts({ instructions: "Talk like a pirate to {callee} about: {brief} {unknown}", opening: "Ahoy {calleeName}!" });
+    const texts = callTexts(saved, { ...CALL, calleeName: "Ann" });
+    expect(texts.instructions).toBe("Talk like a pirate to Ann about: Ask how their day is going. {unknown}");
+    expect(texts.opening).toBe("Ahoy Ann!");
+    expect(texts.disclosure).toBe("Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.");
+    expect(callPrompts({ instructions: "   " }).instructions).toBe(DEFAULT_CALL_PROMPTS.instructions);
+    expect(callPrompts({}).opening).toBe(DEFAULT_CALL_PROMPTS.opening);
+    expect(renderTemplate("{a}{b}{a}", { a: 1, b: "x" })).toBe("1x1");
+  });
+
+  it("reports every text with its default and whether a saved one replaces it, plus the tool sent as-is", () => {
+    const setup = callsSetup({ ...FULL, calls: { ...FULL.calls, goodbye: "Bye {callee}.", maxTurnsWithoutReply: 4, turnDetection: { type: "semantic_vad", eagerness: "low" } } }, true);
+    expect(setup.prompts.goodbye).toEqual({ value: "Bye {callee}.", default: DEFAULT_CALL_PROMPTS.goodbye, custom: true });
+    expect(setup.prompts.instructions).toEqual({ value: DEFAULT_CALL_PROMPTS.instructions, default: DEFAULT_CALL_PROMPTS.instructions, custom: false });
+    expect(setup).toMatchObject({ maxTurnsWithoutReply: 4, turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "near_field", transcriptionModel: "gpt-transcribe" });
+    expect(setup.tools).toEqual([expect.objectContaining({ type: "function", name: "end_call", description: DEFAULT_CALL_PROMPTS.endCallDescription })]);
+    expect(callsSetup({ ...FULL, calls: { ...FULL.calls, turnDetection: { type: "server_vad", threshold: 0.8 } } }, true).turnDetection)
+      .toEqual({ type: "server_vad", threshold: 0.8, prefixPaddingMs: 300, silenceDurationMs: 700 });
   });
 });

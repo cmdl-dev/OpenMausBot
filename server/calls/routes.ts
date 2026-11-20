@@ -1,7 +1,7 @@
 // The call tools' routes, called by the agents server on a bot's turn, and the app's call history routes.
 import type { ServerResponse } from "node:http";
 import { z } from "zod";
-import { CALL_END_TEXT, e164, numberRefusal, type CallsSetup } from "../../shared/phone-calls.ts";
+import { CALL_END_TEXT, e164, numberRefusal, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
 import type { json } from "../harness/http.ts";
 import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
 import { recordsText } from "../records-block.ts";
@@ -28,6 +28,8 @@ export interface CallRouteDeps {
   calls: () => Calls;
   settings(): ReadyCalls | { refusal: string };
   personName(threadId: string): string | undefined;
+  /** The owner's profile name, when one is set. */
+  ownerName(): string | undefined;
   outbound: () => Pick<OutboundHold, "hold" | "beforeDispatch">;
   /** Text written by people outside reaches this conversation. */
   markOutside(threadId: string): void;
@@ -46,6 +48,16 @@ const PER_PAGE = 200;
 
 /** Every call asks the person, whatever the bot's sending rule or access level: a phone call rings a real person. */
 const ALWAYS_ASK = { policy: "ask" } as const;
+
+/** What a call sent to the voice and had Twilio say, as get_call_transcript shows it. */
+export function sentText(sent: CallSent): string {
+  return [
+    `Sent for this call (model ${sent.model}, voice ${sent.voice}, transcription ${sent.transcriptionModel}, turn detection ${JSON.stringify(sent.turnDetection)}, noise reduction ${sent.noiseReduction}, up to ${sent.maxMinutes} min, goodbye after ${sent.maxTurnsWithoutReply} turns without a reply):`,
+    `Disclosure (spoken by Twilio): ${sent.disclosure}`,
+    `Opening: ${sent.opening}`,
+    `Instructions:\n${sent.instructions}`,
+  ].join("\n");
+}
 
 function minutesText(seconds: number): string {
   return seconds < 60 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
@@ -78,7 +90,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
         if (!ctx.active()) return { status: 409, error: "This turn ended before the call was approved, so I didn't call." };
         const record = await calls.place({
           botId, botName: ctx.bot.name, threadId: ctx.threadId, to, ...(input.callee_name ? { calleeName: input.callee_name } : {}),
-          brief: input.brief, onBehalfOf: deps.personName(ctx.threadId) || "the person I work for",
+          brief: input.brief, onBehalfOf: deps.personName(ctx.threadId)?.trim() || deps.ownerName()?.trim() || "the person I work for",
         });
         return {
           status: 200,
@@ -109,10 +121,11 @@ export function createCallRoutes(deps: CallRouteDeps) {
         const pages = Math.max(1, Math.ceil(all.length / PER_PAGE));
         const page = Math.min(input.page ?? 1, pages);
         const head = `call_id ${record.id} to ${record.to} (${record.phase === "ended" ? "ended" : record.phase.replace("_", " ")}). Brief: ${record.brief.replace(/\s+/g, " ").slice(0, 300)}`;
-        if (!all.length) return { status: 200, text: `${head}\nNo transcript.` };
+        const sent = page === 1 && record.sent ? `\n${sentText(record.sent)}` : "";
+        if (!all.length) return { status: 200, text: `${head}${sent}\nNo transcript.` };
         deps.markOutside(ctx.threadId);
         const text = transcriptText(all.slice((page - 1) * PER_PAGE, page * PER_PAGE), record.answeredAt ?? record.createdAt, speakerNames(record));
-        return { status: 200, text: `${head}\nTranscript page ${page} of ${pages} (${all.length} lines):\n${recordsText("the phone call transcript, spoken by the callee and the AI voice", text, 60_000)}` };
+        return { status: 200, text: `${head}${sent}\nTranscript page ${page} of ${pages} (${all.length} lines):\n${recordsText("the phone call transcript, spoken by the callee and the AI voice", text, 60_000)}` };
       }
     }
   }

@@ -42,6 +42,35 @@ exactly what is missing.
 | Denylist (wins over the allowlist) | Settings → Phone calls | `calls.deny` | `OMB_CALLS_DENY` (comma separated) |
 | Name the voice calls for (default: your profile name) | Settings → Phone calls | `calls.onBehalfOf` | `OMB_CALLS_ON_BEHALF_OF` |
 | Call listener port (default 8805) | Settings → Phone calls | `calls.port` | `OMB_CALLS_PORT` |
+| Transcription model (default `gpt-transcribe`) | Settings → Phone calls | `calls.transcriptionModel` | |
+| Turn detection (default server VAD, threshold 0.6, 300 ms padding, 700 ms silence) | Settings → Phone calls | `calls.turnDetection` | |
+| Noise reduction (default `near_field`) | Settings → Phone calls | `calls.noiseReduction` | |
+| Voice turns without a reply before it says goodbye and hangs up (default 3) | Settings → Phone calls | `calls.maxTurnsWithoutReply` | |
+
+## What a call says
+
+Every text a call sends is shown and editable in Settings → Phone calls → What
+the call says, with a Reset to default button each. A saved text is used exactly
+as written, with nothing added before or after; only its `{placeholders}` are
+filled: `{onBehalfOf}`, `{callee}` (the name, or "the person you called"),
+`{calleeName}`, `{to}`, `{botName}`, `{brief}`, `{disclosure}` and
+`{maxMinutes}`.
+
+| Text | `config.json` | Sent |
+| --- | --- | --- |
+| Disclosure | `calls.disclosure` | Spoken by Twilio's `<Say>` when the callee answers |
+| Instructions | `calls.instructions` | OpenAI Realtime session instructions |
+| Opening | `calls.opening` | The first response's instructions, sent once |
+| Wrap-up | `calls.wrapUp` | A system message 45 seconds before the time limit |
+| Goodbye | `calls.goodbye` | After that many voice turns with nothing from the callee; the call then hangs up |
+| Default brief | `calls.defaultBrief` | `{brief}` when a bot gave none |
+| end_call description | `calls.endCallDescription` | The description of the tool the voice hangs up with |
+
+The rest of the Realtime session (audio format, turn detection, the end_call
+tool's definition) is shown read-only on the same screen. Each call keeps exactly
+what it sent; it is in the call's details and in `get_call_transcript`. A call's
+voice events (turns, interruptions, empty transcriptions) are logged to
+`~/.openmausbot/calls/<call id>.events.jsonl`, never with audio.
 
 On the desktop app the Account SID and auth token are stored encrypted like
 every other API key. With no settings at all the server starts normally and

@@ -4,12 +4,12 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type WebSocket from "ws";
-import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallSummary } from "../../shared/phone-calls.ts";
+import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallSent, type CallSummary } from "../../shared/phone-calls.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import type { ReadyCalls } from "./config.ts";
-import { disclosureLine, openingInstruction, summaryPrompt, voiceInstructions, WRAP_UP_INSTRUCTION } from "./prompt.ts";
+import { callTexts, summaryPrompt } from "./prompt.ts";
 import type { CallProvider, ProviderProgress } from "./provider.ts";
-import { bridgeCall, type CallBridge } from "./realtime.ts";
+import { bridgeCall, realtimeSession, type CallBridge } from "./realtime.ts";
 import { connectStreamTwiml, hangUpTwiml } from "./twilio.ts";
 
 export interface CallRecord {
@@ -35,6 +35,8 @@ export interface CallRecord {
   lines: number;
   cardMessageId?: string;
   summary?: "asked" | "failed";
+  /** Everything this call sends to OpenAI Realtime and has Twilio say, fixed when it is placed. */
+  sent?: CallSent;
 }
 
 export interface CallDeps {
@@ -78,6 +80,7 @@ interface Live {
   bridge?: CallBridge;
   timers: NodeJS.Timeout[];
   watchdog?: NodeJS.Timeout;
+  counts: Record<string, number>;
 }
 
 export function createCalls(deps: CallDeps) {
@@ -101,6 +104,13 @@ export function createCalls(deps: CallDeps) {
   }
 
   const transcriptFile = (id: string) => join(folder, `${id}.jsonl`);
+  const eventsFile = (id: string) => join(folder, `${id}.events.jsonl`);
+
+  function debug(id: string, type: string, detail: Record<string, string | number | boolean> = {}): void {
+    const running = live.get(id);
+    if (running) running.counts[type] = (running.counts[type] ?? 0) + 1;
+    appendFileSync(eventsFile(id), JSON.stringify({ at: now(), type, ...detail }) + "\n");
+  }
 
   function lines(id: string): CallLine[] {
     const file = transcriptFile(id);
@@ -111,7 +121,7 @@ export function createCalls(deps: CallDeps) {
   }
 
   function addLine(record: CallRecord, line: CallLine): void {
-    appendFileSync(transcriptFile(record.id), JSON.stringify({ speaker: line.speaker, text: line.text.slice(0, 4_000), at: line.at }) + "\n");
+    appendFileSync(transcriptFile(record.id), JSON.stringify({ speaker: line.speaker, text: line.text.slice(0, 4_000), at: line.at, ...(line.cut ? { cut: true } : {}) }) + "\n");
     record.lines += 1;
     save();
   }
@@ -123,6 +133,7 @@ export function createCalls(deps: CallDeps) {
   function stopLive(id: string): void {
     const running = live.get(id);
     if (!running) return;
+    if (Object.keys(running.counts).length) deps.log(`call ${id}: voice events ${JSON.stringify(running.counts)}`);
     for (const timer of running.timers) clearTimeout(timer);
     if (running.watchdog) clearInterval(running.watchdog);
     running.bridge?.close();
@@ -131,12 +142,12 @@ export function createCalls(deps: CallDeps) {
 
   function end(record: CallRecord, reason: CallEndReason, detail?: string, opts: { quiet?: boolean } = {}): void {
     if (isEnded(record)) return;
+    stopLive(record.id);
     record.phase = "ended";
     record.endedAt = now();
     record.endReason = record.hangingUp ?? reason;
     if (detail) record.endDetail = detail.slice(0, 500);
     delete record.hangingUp;
-    stopLive(record.id);
     if (opts.quiet) {
       save();
       deps.card.update(record);
@@ -161,7 +172,8 @@ export function createCalls(deps: CallDeps) {
     const running = live.get(record.id);
     if (!running) return;
     const limitMs = record.maxMinutes * 60_000;
-    if (limitMs > WRAP_UP_BEFORE_MS * 2) running.timers.push(setTimeout(() => running.bridge?.wrapUp(WRAP_UP_INSTRUCTION), limitMs - WRAP_UP_BEFORE_MS));
+    const wrapUp = record.sent?.wrapUp;
+    if (wrapUp && limitMs > WRAP_UP_BEFORE_MS * 2) running.timers.push(setTimeout(() => running.bridge?.wrapUp(wrapUp), limitMs - WRAP_UP_BEFORE_MS));
     running.timers.push(setTimeout(() => void hangUp(record.id, "max_length"), limitMs));
     const minuteTick = setInterval(() => deps.card.update(record), 60_000);
     running.timers.push(minuteTick as unknown as NodeJS.Timeout);
@@ -263,12 +275,19 @@ export function createCalls(deps: CallDeps) {
       const record: CallRecord = {
         id: `c-${randomUUID()}`, botId: input.botId, botName: input.botName, threadId: input.threadId, to: input.to,
         ...(input.calleeName?.trim() ? { calleeName: input.calleeName.trim().slice(0, 80) } : {}), brief: input.brief.trim().slice(0, 4_000),
-        onBehalfOf: (settings.onBehalfOf || input.onBehalfOf).slice(0, 80), provider: "twilio", maxMinutes: settings.maxMinutes,
+        onBehalfOf: (settings.onBehalfOf?.trim() || input.onBehalfOf).slice(0, 80), provider: "twilio", maxMinutes: settings.maxMinutes,
         phase: "dialing", createdAt: now(), lines: 0,
+      };
+      const texts = callTexts(settings.prompts, record);
+      record.sent = {
+        disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
+        model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel, turnDetection: settings.turnDetection,
+        noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes,
+        session: realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription }),
       };
       records.set(record.id, record);
       const token = randomBytes(24).toString("hex");
-      live.set(record.id, { token, timers: [] });
+      live.set(record.id, { token, timers: [], counts: {} });
       record.cardMessageId = deps.card.show(record) ?? undefined;
       save();
       const at = urls(settings, record, token);
@@ -294,8 +313,8 @@ export function createCalls(deps: CallDeps) {
       const record = records.get(id);
       const settings = deps.settings();
       const running = live.get(id);
-      if (!record || isEnded(record) || !running || "refusal" in settings) return hangUpTwiml();
-      const disclosure = disclosureLine(record.onBehalfOf);
+      if (!record?.sent || isEnded(record) || !running || "refusal" in settings) return hangUpTwiml();
+      const { disclosure } = record.sent;
       answered(record);
       running.timers.push(setTimeout(() => {
         if (running.bridge || isEnded(record)) return;
@@ -321,17 +340,21 @@ export function createCalls(deps: CallDeps) {
       const record = records.get(id);
       const running = live.get(id);
       const settings = deps.settings();
-      if (!record || isEnded(record) || !running || running.bridge || "refusal" in settings) return false;
+      if (!record?.sent || isEnded(record) || !running || running.bridge || "refusal" in settings) return false;
       const given = Buffer.from(token);
       const expected = Buffer.from(running.token);
       if (given.length !== expected.length || !timingSafeEqual(given, expected)) return false;
+      const { sent } = record;
       running.bridge = bridgeCall(socket, () => deps.openRealtime(settings), {
-        model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel,
-        instructions: voiceInstructions(record, disclosureLine(record.onBehalfOf)), opening: openingInstruction(record),
+        session: sent.session, opening: sent.opening, goodbye: sent.goodbye, maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
       }, {
         started: () => answered(record),
         line: (line) => { if (!isEnded(record)) addLine(record, line); },
-        hangUp: () => void hangUp(id, "completed"),
+        hangUp: (reason, why) => {
+          if (why) debug(id, "hang_up_reason", { reason, why: why.slice(0, 200) });
+          void hangUp(id, reason);
+        },
+        debug: (type, detail) => debug(id, type, detail),
         failed: (detail) => {
           deps.log(`call ${id}: voice failed: ${detail}`);
           record.endDetail = detail.slice(0, 300);
@@ -355,7 +378,7 @@ export function createCalls(deps: CallDeps) {
     },
     detail(id: string): CallDetail | null {
       const record = records.get(id);
-      return record ? { ...summary(record), brief: record.brief, transcript: lines(id) } : null;
+      return record ? { ...summary(record), brief: record.brief, transcript: lines(id), ...(record.sent ? { sent: record.sent } : {}) } : null;
     },
     active: () => [...records.values()].some((record) => !isEnded(record)),
     /** After a restart: a call still running lost its voice, so it is hung up; one that ended meanwhile is closed. */

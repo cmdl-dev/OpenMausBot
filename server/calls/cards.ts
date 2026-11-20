@@ -12,7 +12,7 @@ export const HANG_UP_ACTION = "call_hang_up";
 export const CALL_END_LINE = {
   completed: "server.calls.end.completed", hung_up: "server.calls.end.hung_up", no_answer: "server.calls.end.no_answer", busy: "server.calls.end.busy",
   failed: "server.calls.end.failed", voicemail: "server.calls.end.voicemail", max_length: "server.calls.end.max_length",
-  canceled: "server.calls.end.canceled", lost: "server.calls.end.lost", error: "server.calls.end.error",
+  canceled: "server.calls.end.canceled", lost: "server.calls.end.lost", error: "server.calls.end.error", no_reply: "server.calls.end.no_reply",
 } as const satisfies Record<CallEndReason, ServerLineKey>;
 
 const words = (key: ServerLineKey, params?: WidgetText["params"]): WidgetText => ({ key, ...(params ? { params } : {}) });

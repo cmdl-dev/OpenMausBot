@@ -26,6 +26,8 @@ export default function DrawerLayout() {
       <Drawer.Screen name="bot/[id]" options={{ title: "Bot" }} />
       <Drawer.Screen name="memory/[bot]/index" options={{ title: "Memory" }} />
       <Drawer.Screen name="memory/[bot]/file" options={{ title: "Memory note" }} />
+      <Drawer.Screen name="calls/index" options={{ title: "Phone calls" }} />
+      <Drawer.Screen name="calls/[id]" options={{ title: "Phone call" }} />
       <Drawer.Screen name="inbox" options={{ title: "Inbox" }} />
       <Drawer.Screen name="automations/index" options={{ title: "Automations" }} />
       <Drawer.Screen name="automations/[id]" options={{ title: "Automation" }} />

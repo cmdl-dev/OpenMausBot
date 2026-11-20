@@ -16,6 +16,7 @@ import {
   type WireTask,
 } from "@openmausbot/phone-protocol/wire.ts";
 import { readMessageAttachments, type SentAttachment } from "@/api/attachments";
+import type { CallEndReason, CallSummary } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
 import { settledMarkdown } from "@/state/settled-markdown";
 import { tintForIndex, type BotTint, type Status } from "@/theme";
@@ -536,6 +537,50 @@ export function duration(ms: number): string {
   const minutes = Math.round(seconds / 60);
   return minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
 }
+
+/** "0:42", "12:05": how long a call talked. */
+export function talkTime(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+const CALL_UNDERWAY: Record<Exclude<CallSummary["phase"], "ended">, string> = {
+  dialing: "Dialing…",
+  ringing: "Ringing…",
+  in_progress: "On the call now",
+};
+
+const CALL_UNANSWERED: Record<CallEndReason, string> = {
+  completed: "Ended",
+  hung_up: "Hung up",
+  no_answer: "No answer",
+  busy: "Busy",
+  failed: "Couldn't connect",
+  voicemail: "Voicemail",
+  max_length: "Time limit",
+  canceled: "Canceled",
+  lost: "Connection lost",
+  error: "Voice stopped",
+};
+
+/** "Ringing…", "1:34", "No answer": a call's state in a list row. */
+export function callState(call: Pick<CallSummary, "phase" | "seconds" | "endReason">): string {
+  if (call.phase !== "ended") return CALL_UNDERWAY[call.phase];
+  if (call.seconds > 0) return talkTime(call.seconds);
+  return CALL_UNANSWERED[call.endReason ?? "completed"];
+}
+
+export const CALL_END_TEXT: Record<CallEndReason, string> = {
+  completed: "The call ended.",
+  hung_up: "The call was hung up from the computer.",
+  no_answer: "Nobody answered.",
+  busy: "The line was busy.",
+  failed: "The call couldn't be connected.",
+  voicemail: "Voicemail answered, so the bot hung up without leaving a message.",
+  max_length: "The call reached its time limit, so the bot hung up.",
+  canceled: "The call was canceled before it connected.",
+  lost: "The computer lost the call's connection. What was said until then is kept.",
+  error: "The voice stopped working during the call.",
+};
 
 function runView(run: RoutineRun, now: number): RunView {
   const at = run.startedAt ?? run.scheduledFor;

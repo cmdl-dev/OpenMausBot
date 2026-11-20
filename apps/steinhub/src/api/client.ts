@@ -1,3 +1,4 @@
+import type { CallDetail, CallLine, CallSummary } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type {
   BotsResponse,
   BotUpdateResponse,
@@ -141,6 +142,8 @@ export interface MemoryDocReply {
   exists: boolean;
 }
 
+export type { CallDetail, CallLine, CallSummary };
+
 export interface StreamFrame {
   frame: ServerFrame;
   /** The SSE `id`, the cursor a reconnect resumes from. */
@@ -225,6 +228,8 @@ export function desktopClient(transport: Transport) {
     memory: (botId: string) => transport.request<MemoryReply>("GET", `/api/bots/${id(botId)}/memory`),
     memoryFile: (botId: string, path: string) =>
       transport.request<MemoryDocReply>("GET", `/api/bots/${id(botId)}/memory/file?path=${id(path)}`),
+    calls: () => transport.request<{ calls: CallSummary[] }>("GET", "/api/calls"),
+    call: (callId: string) => transport.request<CallDetail>("GET", `/api/calls/${id(callId)}`),
     inbox: () => transport.request<InboxView>("GET", "/api/inbox"),
     /** Done or Cancel on a bot's sign-in card: either hands its browser back and lets the bot carry on. */
     answerSignIn: (botId: string, messageId: string, threadId: string, outcome: "done" | "cancel") =>

@@ -1,11 +1,12 @@
 import type { InboxRow, InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { BotsResponse } from "@openmausbot/phone-protocol/responses.ts";
-import type { RoutinesReply } from "@/api/client";
+import type { CallDetail, RoutinesReply } from "@/api/client";
 import { router, Stack } from "expo-router";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import type { Session } from "@/api/session";
 import { fakeFetch, jsonResponse, pushStream, streamResponse, type Call } from "@/testing/fake-desktop";
 import { network, secureValues } from "@/testing/native-mocks";
+import { clock } from "@/state/views";
 
 jest.mock("expo-secure-store", () => jest.requireActual("@/testing/native-mocks").secureStore);
 jest.mock("expo-crypto", () => jest.requireActual("@/testing/native-mocks").crypto);
@@ -143,6 +144,64 @@ describe("a bot's memory", () => {
   test("a computer that won't share memory says what to do instead", async () => {
     await launch("/memory/b2", { "GET /api/bots/b2/memory": jsonResponse(404, { error: "no route: GET /api/bots/b2/memory" }) });
     expect(await screen.findByText(/doesn't let phones do that/)).toBeTruthy();
+  });
+});
+
+describe("phone calls", () => {
+  const CALL: CallDetail = {
+    id: "call_1",
+    botId: "b2",
+    botName: "Scout",
+    threadId: "t3",
+    to: "+14155550123",
+    calleeName: "Bright Smile Dental",
+    goal: "Move the cleaning to next week.",
+    brief: "Move the cleaning to next week. Any morning but Monday.",
+    phase: "ended",
+    createdAt: AT,
+    answeredAt: AT + 5_000,
+    endedAt: AT + 99_000,
+    endReason: "completed",
+    seconds: 94,
+    lines: 3,
+    transcript: [
+      { speaker: "note", text: "Scout said it is an AI assistant.", at: AT + 5_000 },
+      { speaker: "callee", text: "Bright Smile, this is Dana.", at: AT + 6_000 },
+      { speaker: "bot", text: "Hi Dana, I'd like to move a cleaning.", at: AT + 70_000 },
+    ],
+  };
+  const { brief: _brief, transcript: _transcript, ...summary } = CALL;
+  const OTHER = { ...summary, id: "call_2", botId: "b1", botName: "MausBot", calleeName: "Pizza Place", seconds: 0, endReason: "no_answer" as const };
+
+  test("Phone calls on the bot's profile lists its calls, and one opens to its transcript", async () => {
+    const desktop = await launch("/bot/b2", {
+      "GET /api/calls": jsonResponse(200, { calls: [summary, OTHER] }),
+      "GET /api/calls/call_1": jsonResponse(200, CALL),
+    });
+    await fireEvent.press(await screen.findByText("Phone calls"));
+    expect(screen).toHavePathname("/calls");
+    expect(await screen.findByText(/1:34$/)).toBeTruthy();
+    expect(screen.queryByText("Pizza Place")).toBeNull();
+
+    await fireEvent.press(screen.getByText("Bright Smile Dental"));
+    expect(screen).toHavePathname("/calls/call_1");
+    expect(await screen.findByText("Hi Dana, I'd like to move a cleaning.")).toBeTruthy();
+    expect(screen.getByText("Move the cleaning to next week. Any morning but Monday.")).toBeTruthy();
+    expect(screen.getByText("The call ended.")).toBeTruthy();
+    expect(screen.getByText("Note")).toBeTruthy();
+    expect(screen.getAllByText("Bright Smile Dental").length).toBeGreaterThan(1);
+    expect(screen.getByText(clock(AT + 70_000))).toBeTruthy();
+    expect(desktop.calls.filter((call) => call.path.startsWith("/api/calls")).every((call) => call.method === "GET")).toBe(true);
+  });
+
+  test("an unanswered call says so in the list", async () => {
+    await launch("/calls", { "GET /api/calls": jsonResponse(200, { calls: [OTHER] }) });
+    expect(await screen.findByText(/No answer · MausBot$/)).toBeTruthy();
+  });
+
+  test("a call the computer no longer has says so", async () => {
+    await launch("/calls/gone", { "GET /api/calls/gone": jsonResponse(404, { error: "no such call" }) });
+    expect(await screen.findByText("This call isn't on the computer any more.")).toBeTruthy();
   });
 });
 

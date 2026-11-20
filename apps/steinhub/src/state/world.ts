@@ -92,7 +92,7 @@ function demoWorld(): World {
       return {
         thread,
         bot: sample.botById(thread.botId),
-        messages: thread.id === "lease" ? sample.leaseMessages : [],
+        messages: thread.id === "lease" ? sample.leaseMessages : thread.id === "downloads" ? sample.downloadsMessages : [],
         loaded: true,
         hasMore: false,
       };

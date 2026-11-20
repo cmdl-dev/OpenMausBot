@@ -12,6 +12,7 @@ import { Composer } from "@/components/composer";
 import { WidgetCard } from "@/components/widget";
 import { Markdown } from "@/components/markdown";
 import { Screen } from "@/components/screen";
+import { SignInCard } from "@/components/sign-in-card";
 import { Badge, StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { ChatTopBar } from "@/components/top-bar";
@@ -193,7 +194,7 @@ function Thread({ id, target }: { id: string; target?: string }) {
                 style={highlighted === message.id ? styles.highlight : undefined}
                 accessibilityState={highlighted === message.id ? { selected: true } : undefined}
               >
-                <Message message={message} bot={bot} onAnswer={answer} onPress={press} hostName={world.host.name} findBot={world.bot} />
+                <Message message={message} bot={bot} threadId={thread.id} onAnswer={answer} onPress={press} hostName={world.host.name} findBot={world.bot} />
               </View>
             ))
           )}
@@ -306,6 +307,7 @@ function Handoff({ handoff, teammate }: { handoff: HandoffView; teammate: BotVie
 function Message({
   message,
   bot,
+  threadId,
   onAnswer,
   onPress,
   hostName,
@@ -313,6 +315,7 @@ function Message({
 }: {
   message: MessageView;
   bot: BotView;
+  threadId: string;
   onAnswer: Answer;
   onPress: Press;
   hostName: string;
@@ -344,6 +347,8 @@ function Message({
       );
     case "handoff":
       return <Handoff handoff={message} teammate={findBot(message.botId)} />;
+    case "signin":
+      return <SignInCard card={message} botId={bot.id} botName={(message.botId && findBot(message.botId)?.name) || bot.name} threadId={threadId} hostName={hostName} />;
     case "approval":
       return <ApprovalCard card={message} onAnswer={onAnswer} hostName={hostName} />;
     case "widget":

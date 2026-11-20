@@ -8,6 +8,7 @@ import type {
 } from "@openmausbot/phone-protocol/responses.ts";
 import type { NewCardInput, VaultCard } from "@openmausbot/phone-protocol/payment-card.ts";
 import { PHONE_PUSH_ROUTE, type PhonePushAnswer, type PhonePushRegistration } from "@openmausbot/phone-protocol/phone-push.ts";
+import type { BrowserLiveAction, BrowserLiveEvent } from "@openmausbot/phone-protocol/browser-live.ts";
 import type { InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { WidgetValues } from "@openmausbot/phone-protocol/widget.ts";
@@ -148,6 +149,17 @@ export interface StreamFrame {
 
 const id = encodeURIComponent;
 
+function parseBrowserEvent(type: string | undefined, data: string): BrowserLiveEvent | null {
+  if (!type) return null;
+  try {
+    const parsed: unknown = JSON.parse(data);
+    // SAFETY: the SSE event line names the type; each consumer reads the fields its type promises.
+    return parsed && typeof parsed === "object" ? ({ ...parsed, type } as BrowserLiveEvent) : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseFrame(data: string): ServerFrame | null {
   try {
     const parsed: unknown = JSON.parse(data);
@@ -214,6 +226,23 @@ export function desktopClient(transport: Transport) {
     memoryFile: (botId: string, path: string) =>
       transport.request<MemoryDocReply>("GET", `/api/bots/${id(botId)}/memory/file?path=${id(path)}`),
     inbox: () => transport.request<InboxView>("GET", "/api/inbox"),
+    /** Done or Cancel on a bot's sign-in card: either hands its browser back and lets the bot carry on. */
+    answerSignIn: (botId: string, messageId: string, threadId: string, outcome: "done" | "cancel") =>
+      transport.request<unknown>("POST", `/api/bots/${id(botId)}/sign-in-cards/${id(messageId)}/${outcome}`, { threadId }),
+    /**
+     * The bot's browser as `threadId` sees it, at the page size it already has. A phone asks for no size of its own: one
+     * taller than the computer's screen is emulated, and a navigation then stops the view's frames.
+     */
+    browserLive: (botId: string, threadId: string, onEvent: (event: BrowserLiveEvent) => void, signal: AbortSignal) => {
+      const query = new URLSearchParams({ threadId });
+      const parser = createSseParser((event) => {
+        const parsed = parseBrowserEvent(event.event, event.data);
+        if (parsed) onEvent(parsed);
+      });
+      return transport.stream(`/api/bots/${id(botId)}/browser/live?${query}`, (text) => parser.push(text), signal);
+    },
+    browserAction: (botId: string, threadId: string, viewerId: string, action: BrowserLiveAction) =>
+      transport.request<{ ok: boolean }>("POST", `/api/bots/${id(botId)}/browser/action?threadId=${id(threadId)}`, { ...action, viewerId }),
     inboxReadAll: () => transport.request<InboxView>("POST", "/api/inbox/read-all", {}),
     /** The live stream, without screen frames: a phone draws no live desktop yet. */
     events: (since: string | null, onFrame: (frame: StreamFrame) => void, signal: AbortSignal) => {

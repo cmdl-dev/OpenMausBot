@@ -4,6 +4,7 @@ import { File } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
+import type { BrowserLiveAction, BrowserLiveEvent } from "@openmausbot/phone-protocol/browser-live.ts";
 import type { PhonePushAnswer, PhonePushRegistration } from "@openmausbot/phone-protocol/phone-push.ts";
 import {
   desktopClient,
@@ -27,6 +28,13 @@ import { emptyWorld, worldReducer, type LiveWorld } from "@/state/live-world";
 
 export type Mode = "loading" | "demo" | "live" | "unpaired";
 
+/** One bot's browser, as one conversation sees it. */
+export interface BrowserLink {
+  /** Streams the browser; resolves when the computer ends the view. */
+  open(onEvent: (event: BrowserLiveEvent) => void, signal: AbortSignal): Promise<void>;
+  act(viewerId: string, action: BrowserLiveAction): Promise<void>;
+}
+
 export interface Connection {
   mode: Mode;
   /** Demo mode exists only in development builds. */
@@ -46,6 +54,10 @@ export interface Connection {
   /** Presses a button on a widget in `threadId`; the computer sends it on as the person's answer. */
   pressWidget(botId: string, threadId: string, press: WidgetPress): Promise<void>;
   respond(threadId: string, requestId: string, answer: { behavior: "allow" | "deny" | "answer"; message?: string }): Promise<void>;
+  /** Done or Cancel on a sign-in card: the browser goes back to the bot, which carries on. */
+  answerSignIn(botId: string, threadId: string, messageId: string, outcome: "done" | "cancel"): Promise<void>;
+  /** The bot's live browser; null without a paired computer. */
+  browser(botId: string, threadId: string): BrowserLink | null;
   setRoutineEnabled(routineId: string, enabled: boolean): Promise<void>;
   /** Stores a picked photo or file on the computer, ready to send with a message. */
   upload(pick: { uri: string; name: string; mime: string; kind: "image" | "file" }): Promise<SentAttachment>;
@@ -317,6 +329,28 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [client, refreshInbox],
   );
 
+  const answerSignIn = useCallback<Connection["answerSignIn"]>(
+    async (botId, threadId, messageId, outcome) => {
+      if (mode !== "live") return;
+      await client().answerSignIn(botId, messageId, threadId, outcome);
+      await refreshInbox();
+    },
+    [mode, client, refreshInbox],
+  );
+
+  const browser = useCallback<Connection["browser"]>(
+    (botId, threadId) =>
+      mode === "live"
+        ? {
+            open: (onEvent, signal) => client().browserLive(botId, threadId, onEvent, signal),
+            act: async (viewerId, action) => {
+              await client().browserAction(botId, threadId, viewerId, action);
+            },
+          }
+        : null,
+    [mode, client],
+  );
+
   const markInboxRead = useCallback(async () => {
     dispatch({ type: "inbox", view: await client().inboxReadAll() });
   }, [client]);
@@ -496,6 +530,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       stop,
       pressWidget,
       respond,
+      answerSignIn,
+      browser,
       setRoutineEnabled,
       runRoutine,
       apps,
@@ -533,6 +569,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       stop,
       pressWidget,
       respond,
+      answerSignIn,
+      browser,
       setRoutineEnabled,
       runRoutine,
       apps,

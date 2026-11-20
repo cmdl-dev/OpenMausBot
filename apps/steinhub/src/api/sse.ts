@@ -1,5 +1,7 @@
 export interface SseEvent {
   id?: string;
+  /** The `event:` line; absent for the default `message` type. */
+  event?: string;
   data: string;
 }
 
@@ -8,12 +10,14 @@ export function createSseParser(onEvent: (event: SseEvent) => void) {
   let buffer = "";
   let data: string[] = [];
   let id: string | undefined;
+  let event: string | undefined;
 
   function line(text: string) {
     if (text === "") {
-      if (data.length) onEvent({ id, data: data.join("\n") });
+      if (data.length) onEvent({ id, ...(event ? { event } : {}), data: data.join("\n") });
       data = [];
       id = undefined;
+      event = undefined;
       return;
     }
     if (text.startsWith(":")) return;
@@ -22,6 +26,7 @@ export function createSseParser(onEvent: (event: SseEvent) => void) {
     const value = colon === -1 ? "" : text.slice(colon + 1).replace(/^ /, "");
     if (field === "data") data.push(value);
     else if (field === "id") id = value;
+    else if (field === "event") event = value;
   }
 
   return {

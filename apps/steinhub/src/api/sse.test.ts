@@ -22,3 +22,10 @@ test("accepts CRLF, including a CR split from its LF", () => {
 test("holds an event until its blank line arrives", () => {
   expect(parse(["data: unfinished\n"])).toEqual([]);
 });
+
+test("names the event type when the stream gives one", () => {
+  expect(parse(['event: frame\ndata: {"seq":1}\n\n', "data: plain\n\n"])).toEqual([
+    { id: undefined, event: "frame", data: '{"seq":1}' },
+    { id: undefined, data: "plain" },
+  ]);
+});

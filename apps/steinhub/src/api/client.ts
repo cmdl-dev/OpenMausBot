@@ -10,6 +10,7 @@ import type { NewCardInput, VaultCard } from "@openmausbot/phone-protocol/paymen
 import { PHONE_PUSH_ROUTE, type PhonePushAnswer, type PhonePushRegistration } from "@openmausbot/phone-protocol/phone-push.ts";
 import type { InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
+import type { WidgetValues } from "@openmausbot/phone-protocol/widget.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
 import { createSseParser } from "@/api/sse";
 import type { Transport } from "@/api/transport";
@@ -20,6 +21,16 @@ export interface SendReply {
   message?: WireMessage;
   queued?: boolean;
   queueId?: string;
+  /** The computer answered a widget press itself (Dismiss, for one) and started no turn. */
+  handled?: boolean;
+}
+
+/** A press on a widget button: `ref` names the button in revision `rev` of the widget in message `messageId`. */
+export interface WidgetPress {
+  messageId: string;
+  ref: string;
+  rev: number;
+  values?: WidgetValues;
 }
 
 /** GET /api/routines. phone-protocol has no type for this reply yet. */
@@ -173,6 +184,8 @@ export function desktopClient(transport: Transport) {
     deleteBot: (botId: string) => transport.request<unknown>("DELETE", `/api/bots/${id(botId)}`),
     send: (botId: string, message: { text: string; threadId: string; sendId: string }) =>
       transport.request<SendReply>("POST", `/api/bots/${id(botId)}/messages`, message),
+    pressWidget: (botId: string, press: { threadId: string; sendId: string; widgetAction: WidgetPress }) =>
+      transport.request<SendReply>("POST", `/api/bots/${id(botId)}/messages`, press),
     interrupt: (botId: string, threadId: string) =>
       transport.request<unknown>("POST", `/api/bots/${id(botId)}/interrupt`, { threadId }),
     respond: (threadId: string, answer: { requestId: string; behavior: "allow" | "deny" | "answer"; message?: string }) =>

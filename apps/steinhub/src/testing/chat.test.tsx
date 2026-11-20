@@ -1,6 +1,8 @@
 import type { BotsResponse, WireMessagePage } from "@openmausbot/phone-protocol/responses.ts";
 import type { WireMessage } from "@openmausbot/phone-protocol/wire.ts";
+import type { WidgetNode } from "@openmausbot/phone-protocol/widget.ts";
 import { router, Stack } from "expo-router";
+import { Linking } from "react-native";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
 import type { Session } from "@/api/session";
 import { fakeFetch, jsonResponse, pushStream, streamResponse, type Call } from "@/testing/fake-desktop";
@@ -65,6 +67,59 @@ const CARD: WireMessage = {
   },
 };
 
+const BRIEF: WidgetNode = {
+  type: "Card",
+  id: "root",
+  title: "Your brief",
+  caption: "Thursday, November 19",
+  children: [
+    { type: "Title", id: "n1", value: "Needs you", size: "sm" },
+    { type: "Text", id: "n2", value: "Nothing needs you right now." },
+    { type: "Title", id: "n3", value: "Important emails", size: "sm" },
+    {
+      type: "Col",
+      id: "n4",
+      gap: 1,
+      children: [
+        { type: "Text", id: "n5", value: "McKnight, Riley M: Final Approval for FEINBERG ENTERPRISE LLC", weight: "medium" },
+        { type: "Caption", id: "n6", value: "Asks you to define." },
+        {
+          type: "Row",
+          id: "n7",
+          gap: 2,
+          wrap: true,
+          children: [
+            { type: "Button", id: "n8", label: "Draft a reply to McKnight, Riley M", style: "primary", onClickAction: { type: "draft_reply", payload: { messageId: "g1" } } },
+            { type: "Button", id: "n9", label: "Open in Gmail", style: "secondary", onClickAction: { type: "open_url", payload: { url: "https://mail.google.com/mail/#all/g1" } } },
+            { type: "Button", id: "n10", label: "Dismiss McKnight, Riley M's email", style: "secondary", onClickAction: { type: "dismiss_row", payload: { messageId: "g1" } } },
+          ],
+        },
+      ],
+    },
+    { type: "Title", id: "n11", value: "Routines", size: "sm" },
+    {
+      type: "Row",
+      id: "n12",
+      gap: 3,
+      align: "center",
+      children: [
+        { type: "Col", id: "n13", flex: 1, children: [{ type: "Text", id: "n14", value: "Update the cat's feeding schedule", weight: "medium" }] },
+        { type: "Button", id: "n15", label: "Open", style: "secondary", onClickAction: { type: "open_thread", payload: { botId: "b1", threadId: "t2" } } },
+      ],
+    },
+  ],
+};
+
+const BRIEF_MESSAGE: WireMessage = {
+  id: "w1",
+  role: "bot",
+  kind: "widget",
+  at: AT + 3,
+  serverCard: true,
+  text: "**Your brief** · Thursday, November 19\nNeeds you\n[Draft a reply to McKnight, Riley M] · [Open in Gmail]",
+  widget: { v: 1, root: BRIEF, rev: 2 },
+};
+
 const PAGE: WireMessagePage = {
   messages: [
     { id: "m0", role: "user", kind: "text", text: 'The lease\n\n<attached-image path="/api/attachments/lease.jpg" name="lease.jpg" />', at: AT - 3 },
@@ -86,7 +141,7 @@ const PAGE: WireMessagePage = {
   activeLeafId: "m3",
 };
 
-async function openChat() {
+async function openChat(page: WireMessagePage = PAGE) {
   const events = pushStream();
   const desktop = fakeFetch({
     "GET /api/events": streamResponse(events),
@@ -94,9 +149,10 @@ async function openChat() {
     "GET /api/instances": jsonResponse(200, { instances: [] }),
     "GET /api/routines": jsonResponse(200, { routines: [], runs: [] }),
     "GET /api/companion/endpoints": jsonResponse(200, { serverName: "Ada's Mac", endpoints: [] }),
-    "GET /api/threads/t1/messages": jsonResponse(200, PAGE),
+    "GET /api/threads/t1/messages": jsonResponse(200, page),
     "POST /api/bots/b1/messages": (call: Call) => {
-      const body = call.body as { text: string; sendId: string };
+      const body = call.body as { text: string; sendId: string; widgetAction?: unknown };
+      if (body.widgetAction) return jsonResponse(202, { ok: true, threadId: "t1", handled: true });
       return jsonResponse(200, { threadId: "t1", message: { id: "m4", role: "user", kind: "text", text: body.text, sendId: body.sendId, at: AT + 3 } });
     },
     "POST /api/threads/t1/respond": jsonResponse(200, { ok: true }),
@@ -251,4 +307,64 @@ test("a tap on an image in the chat opens it full screen from the computer, and 
 
   await fireEvent.press(screen.getByLabelText("Close image"));
   expect(screen).toHavePathname("/chat/t1");
+});
+
+describe("a widget the computer drew, like the daily brief", () => {
+  const withBrief: WireMessagePage = { ...PAGE, messages: [...PAGE.messages, BRIEF_MESSAGE], activeLeafId: "w1" };
+  const opened = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+  beforeEach(() => opened.mockClear());
+
+  test("shows as a card with its sections and buttons, not its text fallback", async () => {
+    await openChat(withBrief);
+    expect(screen.getByText("Your brief")).toBeTruthy();
+    expect(screen.getByText("Thursday, November 19")).toBeTruthy();
+    expect(screen.getByText("Important emails")).toBeTruthy();
+    expect(screen.getByText("Asks you to define.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Draft a reply to McKnight, Riley M" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Dismiss McKnight, Riley M's email" })).toBeTruthy();
+    expect(screen.queryByText(/\[Draft a reply/)).toBeNull();
+  });
+
+  test("a button the computer answers is sent as a press on that widget", async () => {
+    const { desktop } = await openChat(withBrief);
+    await fireEvent.press(screen.getByText("Draft a reply to McKnight, Riley M"));
+    await waitFor(() => expect(desktop.calls.some((call) => call.path === "/api/bots/b1/messages")).toBe(true));
+    expect(desktop.calls.find((call) => call.path === "/api/bots/b1/messages")?.body).toEqual({
+      threadId: "t1",
+      sendId: expect.stringMatching(/^uuid-/),
+      widgetAction: { messageId: "w1", ref: "n8", rev: 2 },
+    });
+  });
+
+  test("Open in Gmail opens the link on the phone and sends nothing", async () => {
+    const { desktop } = await openChat(withBrief);
+    await fireEvent.press(screen.getByText("Open in Gmail"));
+    expect(opened).toHaveBeenCalledWith("https://mail.google.com/mail/#all/g1");
+    expect(desktop.calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  test("Open on a routine opens its chat", async () => {
+    await openChat(withBrief);
+    await fireEvent.press(screen.getByText("Open"));
+    expect(screen).toHavePathname("/chat/t2");
+  });
+
+  test("a press the computer refuses shows its reason on the card", async () => {
+    const events = pushStream();
+    const desktop = fakeFetch({
+      "GET /api/events": streamResponse(events),
+      "GET /api/bots": jsonResponse(200, BOTS),
+      "GET /api/instances": jsonResponse(200, { instances: [] }),
+      "GET /api/routines": jsonResponse(200, { routines: [], runs: [] }),
+      "GET /api/companion/endpoints": jsonResponse(200, { serverName: "Ada's Mac", endpoints: [] }),
+      "GET /api/threads/t1/messages": jsonResponse(200, withBrief),
+      "POST /api/bots/b1/messages": jsonResponse(409, { error: "This was already answered." }),
+    });
+    network.fetch = desktop.fetch;
+    await renderRouter({ appDir: "src/app", overrides: { "(drawer)/_layout": DrawerWithoutAnimation } }, { initialUrl: "/chat/t1" });
+    await waitFor(() => expect(desktop.calls.some((call) => call.path === "/api/events")).toBe(true));
+    await act(async () => events.frame({ kind: "hello", cursor: "s:1", resumed: false }));
+    await fireEvent.press(await screen.findByText("Dismiss McKnight, Riley M's email"));
+    expect(await screen.findByText("This was already answered.")).toBeTruthy();
+  });
 });

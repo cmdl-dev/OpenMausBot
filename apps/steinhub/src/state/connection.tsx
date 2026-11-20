@@ -14,6 +14,7 @@ import {
   type NewVaultItem,
   type VaultKind,
   type VaultReply,
+  type WidgetPress,
   type MemoryDocReply,
   type MemoryReply,
 } from "@/api/client";
@@ -42,6 +43,8 @@ export interface Connection {
   /** Sends into `threadId`, or into a new conversation with the bot when null. Resolves to the thread it went to. */
   send(botId: string, threadId: string | null, text: string): Promise<string>;
   stop(botId: string, threadId: string): Promise<void>;
+  /** Presses a button on a widget in `threadId`; the computer sends it on as the person's answer. */
+  pressWidget(botId: string, threadId: string, press: WidgetPress): Promise<void>;
   respond(threadId: string, requestId: string, answer: { behavior: "allow" | "deny" | "answer"; message?: string }): Promise<void>;
   setRoutineEnabled(routineId: string, enabled: boolean): Promise<void>;
   /** Stores a picked photo or file on the computer, ready to send with a message. */
@@ -287,6 +290,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [client],
   );
 
+  const pressWidget = useCallback(
+    async (botId: string, threadId: string, press: WidgetPress) => {
+      try {
+        const reply = await client().pressWidget(botId, { threadId, sendId: Crypto.randomUUID(), widgetAction: press });
+        if (reply.message) dispatch({ type: "message", threadId: reply.threadId ?? threadId, message: reply.message });
+      } catch (error) {
+        throw asDesktopError(error);
+      }
+    },
+    [client],
+  );
+
   const stop = useCallback(
     async (botId: string, threadId: string) => {
       await client().interrupt(botId, threadId);
@@ -479,6 +494,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       loadThread,
       send,
       stop,
+      pressWidget,
       respond,
       setRoutineEnabled,
       runRoutine,
@@ -515,6 +531,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       loadThread,
       send,
       stop,
+      pressWidget,
       respond,
       setRoutineEnabled,
       runRoutine,

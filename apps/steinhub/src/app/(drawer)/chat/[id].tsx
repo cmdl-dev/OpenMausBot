@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowDown, Bell, Check, ChevronDown, ChevronRight, CornerDownLeft, FileText, Send, ShieldAlert, X } from "lucide-react-native";
+import type { WidgetValues } from "@openmausbot/phone-protocol/widget.ts";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance } from "react-native";
 import { attachmentUrlPath, type SentAttachment } from "@/api/attachments";
@@ -8,17 +9,19 @@ import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { IconButton } from "@/components/icon-button";
 import { Composer } from "@/components/composer";
+import { WidgetCard } from "@/components/widget";
 import { Markdown } from "@/components/markdown";
 import { Screen } from "@/components/screen";
 import { Badge, StatusDot } from "@/components/status";
 import { Txt } from "@/components/text";
 import { ChatTopBar } from "@/components/top-bar";
 import { useConnection } from "@/state/connection";
-import { clock, type ApprovalView, type BotView, type HandoffView, type MessageView } from "@/state/views";
+import { clock, type ApprovalView, type BotView, type HandoffView, type MessageView, type WidgetView } from "@/state/views";
 import { useWorld } from "@/state/world";
 import { colors, radius, size, space } from "@/theme";
 
 type Answer = (card: ApprovalView, option: string) => Promise<void>;
+type Press = (widget: WidgetView, press: { ref: string; values?: WidgetValues }) => Promise<void>;
 
 export default function ChatScreen() {
   const { id, message: target } = useLocalSearchParams<{ id: string; message?: string }>();
@@ -103,6 +106,11 @@ function Thread({ id, target }: { id: string; target?: string }) {
     await connection.respond(thread.id, card.requestId, behavior === "answer" ? { behavior, message: option } : { behavior });
   };
 
+  const press: Press = async (widget, { ref, values }) => {
+    if (!live || !bot || !thread) return;
+    await connection.pressWidget(bot.id, thread.id, { messageId: widget.messageId, ref, rev: widget.widget.rev ?? 0, ...(values ? { values } : {}) });
+  };
+
   if (!thread || !bot) {
     return (
       <Screen header={<ChatTopBar botName={bot?.name ?? world.host.name} right="new-chat" />}>
@@ -185,7 +193,7 @@ function Thread({ id, target }: { id: string; target?: string }) {
                 style={highlighted === message.id ? styles.highlight : undefined}
                 accessibilityState={highlighted === message.id ? { selected: true } : undefined}
               >
-                <Message message={message} bot={bot} onAnswer={answer} hostName={world.host.name} findBot={world.bot} />
+                <Message message={message} bot={bot} onAnswer={answer} onPress={press} hostName={world.host.name} findBot={world.bot} />
               </View>
             ))
           )}
@@ -299,12 +307,14 @@ function Message({
   message,
   bot,
   onAnswer,
+  onPress,
   hostName,
   findBot,
 }: {
   message: MessageView;
   bot: BotView;
   onAnswer: Answer;
+  onPress: Press;
   hostName: string;
   findBot: (botId: string | undefined) => BotView | null;
 }) {
@@ -336,6 +346,18 @@ function Message({
       return <Handoff handoff={message} teammate={findBot(message.botId)} />;
     case "approval":
       return <ApprovalCard card={message} onAnswer={onAnswer} hostName={hostName} />;
+    case "widget":
+      return (
+        <View style={styles.reply}>
+          <ReplyHeader bot={bot} note={message.at ? clock(message.at) : undefined} />
+          <WidgetCard
+            key={`${message.messageId}:${message.widget.rev ?? 0}`}
+            payload={message.widget}
+            hostName={hostName}
+            onPress={(widgetPress) => onPress(message, widgetPress)}
+          />
+        </View>
+      );
   }
 }
 

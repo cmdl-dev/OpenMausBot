@@ -6,6 +6,7 @@ import { Switch } from "../SettingsPrimitives";
 
 const GROUP_WORDS: Record<ToolGroup, [LocaleKey, LocaleKey]> = {
   meetings: ["botAccess.toolGroups.meetings", "botAccess.toolGroups.meetingsHint"],
+  calls: ["botAccess.toolGroups.calls", "botAccess.toolGroups.callsHint"],
   data: ["botAccess.toolGroups.data", "botAccess.toolGroups.dataHint"],
   pages: ["botAccess.toolGroups.pages", "botAccess.toolGroups.pagesHint"],
   images: ["botAccess.toolGroups.images", "botAccess.toolGroups.imagesHint"],

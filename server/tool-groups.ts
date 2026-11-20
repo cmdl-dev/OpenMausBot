@@ -9,6 +9,6 @@ export function toolsOffPart(bot: { toolsOff?: readonly string[] } | null | unde
 }
 
 /** The groups this workspace has, the ones its bots' Settings offer to turn off. */
-export function availableToolGroups(has: { meetings: boolean; data: boolean; images: boolean; email: boolean }): ToolGroup[] {
+export function availableToolGroups(has: { meetings: boolean; calls: boolean; data: boolean; images: boolean; email: boolean }): ToolGroup[] {
   return TOOL_GROUPS.filter((group) => group === "pages" || has[group]);
 }

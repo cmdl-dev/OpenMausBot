@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { connectorCallsIn, isOutboundTool, isReadOnlyTool, normalizeOutboundPolicy, outboundCallsIn, trimOutboundPolicy } from "./outbound.ts";
 
 describe("isOutboundTool", () => {
+  it("holds the built-in place_call under every engine's spelling, and leaves its reads and hang-up alone", () => {
+    for (const name of ["place_call", "mcp__agents__place_call", "agents__place_call", "agents_place_call"]) expect(isOutboundTool(name), name).toBe(true);
+    for (const name of ["call_status", "get_call_transcript", "hang_up", "mcp__agents__get_call_transcript", "PLACES_SEARCH_NEARBY", "GOOGLEMAPS_PLACE_DETAILS"]) {
+      expect(isOutboundTool(name), name).toBe(false);
+    }
+  });
+
   it("flags tools that send, reply, post, publish, invite, share, or move money", () => {
     for (const name of [
       "GMAIL_SEND_EMAIL",

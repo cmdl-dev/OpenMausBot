@@ -1,5 +1,8 @@
 import { useLocalSearchParams } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import type { CallSent } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type { CallDetail, CallLine } from "@/api/client";
 import { SectionLabel } from "@/components/list";
 import { Screen } from "@/components/screen";
@@ -9,7 +12,7 @@ import { useConnection } from "@/state/connection";
 import { useLoaded } from "@/state/use-loaded";
 import { CALL_END_TEXT, callState, clock, formatWhen } from "@/state/views";
 import { useWorld } from "@/state/world";
-import { colors, radius, space } from "@/theme";
+import { colors, radius, size, space } from "@/theme";
 
 function speakerName(call: CallDetail, line: CallLine): string {
   if (line.speaker === "bot") return call.botName;
@@ -78,13 +81,79 @@ function CallBody({ call }: { call: CallDetail }) {
                   {clock(line.at)}
                 </Txt>
               </View>
-              <Txt variant="callout" tone={line.speaker === "note" ? "tertiary" : "primary"}>
-                {line.text}
+              <Txt variant="callout" tone={line.speaker === "note" ? "tertiary" : "primary"} accessibilityLabel={line.cut ? `${line.text} (cut off)` : undefined}>
+                {line.cut ? `${line.text}…` : line.text}
               </Txt>
             </View>
           ))}
         </View>
       )}
+
+      {call.sent ? <SentSection sent={call.sent} /> : null}
+    </>
+  );
+}
+
+const SENT_TEXTS = [
+  ["disclosure", "Disclosure"],
+  ["instructions", "Voice instructions"],
+  ["opening", "Opening"],
+  ["wrapUp", "Wrap-up"],
+  ["goodbye", "Goodbye"],
+] as const satisfies ReadonlyArray<readonly [keyof CallSent, string]>;
+
+function SentSection({ sent }: { sent: CallSent }) {
+  const [open, setOpen] = useState(false);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  const values: Array<[string, string]> = [
+    ["Realtime model", sent.model],
+    ["Voice", sent.voice],
+    ["Transcription model", sent.transcriptionModel],
+    ["Turn detection", Object.entries(sent.turnDetection).map(([name, value]) => (name === "type" ? String(value) : `${name} ${value}`)).join(" · ")],
+    ["Noise reduction", sent.noiseReduction],
+    ["Turns without a reply before hanging up", String(sent.maxTurnsWithoutReply)],
+    ["Max call minutes", String(sent.maxMinutes)],
+  ];
+  return (
+    <>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((value) => !value)} style={styles.sentToggle}>
+        <Txt variant="overline" tone="secondary" style={styles.fill}>
+          What was sent
+        </Txt>
+        <Chevron size={14} color={colors.text3} strokeWidth={size.iconStroke} />
+      </Pressable>
+      {open ? (
+        <View style={styles.card}>
+          {SENT_TEXTS.map(([key, label]) => (
+            <View key={key} style={styles.line}>
+              <Txt variant="caption" tone="secondary">
+                {label}
+              </Txt>
+              <Txt variant="footnote" mono selectable>
+                {sent[key]}
+              </Txt>
+            </View>
+          ))}
+          {values.map(([label, value]) => (
+            <View key={label} style={styles.line}>
+              <Txt variant="caption" tone="secondary">
+                {label}
+              </Txt>
+              <Txt variant="footnote" selectable>
+                {value}
+              </Txt>
+            </View>
+          ))}
+          <View style={styles.line}>
+            <Txt variant="caption" tone="secondary">
+              Realtime session, as sent
+            </Txt>
+            <Txt variant="footnote" mono selectable>
+              {JSON.stringify(sent.session, null, 2)}
+            </Txt>
+          </View>
+        </View>
+      ) : null}
     </>
   );
 }
@@ -105,4 +174,5 @@ const styles = StyleSheet.create({
   },
   line: { gap: space[1] },
   lineHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  sentToggle: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingTop: space[6], paddingBottom: space[2] },
 });

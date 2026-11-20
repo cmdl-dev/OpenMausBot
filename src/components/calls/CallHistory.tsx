@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { api } from "@/state/store";
 import { intlLocale, t } from "@/lib/i18n";
 import { localizedRelativeTime } from "@/lib/relative-time";
 import { SettingsEmptyRow, SettingsFoldRow, SettingsGroup, SettingsRows } from "../SettingsPrimitives";
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
-import { CALLS_PATH, END_TEXT, callOngoing, clockLength, lineOffset, type CallDetail, type CallLine, type CallSummary } from "./calls-settings";
+import { PRE } from "./CallPrompts";
+import {
+  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, type CallDetail, type CallLine,
+  type CallSent, type CallSummary, type CallTurnDetection,
+} from "./calls-settings";
 
 const LIVE_POLL_MS = 4_000;
 
@@ -104,6 +110,7 @@ function CallDetailRows({ id, onChanged }: { id: string; onChanged: () => void }
             {call.transcript.map((line, index) => <TranscriptLine key={index} call={call} line={line} callee={callee} />)}
           </ol>}
       </section>
+      {call.sent && <SentSection sent={call.sent} />}
       {(ongoing || error) && (
         <div className="flex items-center justify-end gap-3">
           {error && <span role="alert" className="me-auto min-w-0 text-[12px] leading-4 text-danger">{error}</span>}
@@ -134,7 +141,60 @@ function TranscriptLine({ call, line, callee }: { call: CallDetail; line: CallLi
       <span className="min-w-0 text-[13px] leading-[18px]">
         <span className="font-semibold text-ink-secondary">{line.speaker === "bot" ? call.botName : callee}</span>{" "}
         <span dir="auto" className="text-ink">{line.text}</span>
+        {line.cut && <span data-call-cut="" role="img" aria-label={t("settings.calls.cut")} title={t("settings.calls.cut")} className="text-ink-tertiary">…</span>}
       </span>
     </li>
+  );
+}
+
+const SENT_TEXTS = ["disclosure", "instructions", "opening", "wrapUp", "goodbye"] as const;
+
+function turnDetectionText(detection: CallTurnDetection): string {
+  const parts = [t(TURN_TYPE_LABEL[detection.type])];
+  if (detection.threshold !== undefined) parts.push(`${t("settings.calls.threshold")} ${detection.threshold}`);
+  if (detection.prefixPaddingMs !== undefined) parts.push(`${t("settings.calls.prefixPadding")} ${detection.prefixPaddingMs}`);
+  if (detection.silenceDurationMs !== undefined) parts.push(`${t("settings.calls.silence")} ${detection.silenceDurationMs}`);
+  if (detection.eagerness) parts.push(`${t("settings.calls.eagerness")} ${t(EAGERNESS_LABEL[detection.eagerness])}`);
+  return parts.join(" · ");
+}
+
+function SentSection({ sent }: { sent: CallSent }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const values: Array<[string, string]> = [
+    [t("settings.calls.model"), sent.model],
+    [t("settings.calls.voice"), sent.voice],
+    [t("settings.calls.transcriptionModel"), sent.transcriptionModel],
+    [t("settings.calls.turnDetection"), turnDetectionText(sent.turnDetection)],
+    [t("settings.calls.noiseReduction"), t(NOISE_REDUCTION_LABEL[sent.noiseReduction])],
+    [t("settings.calls.maxTurns"), String(sent.maxTurnsWithoutReply)],
+    [t("settings.calls.maxMinutes"), String(sent.maxMinutes)],
+  ];
+  return (
+    <section data-call-sent="" className="flex flex-col gap-2">
+      <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}
+        className="-mx-1 flex cursor-pointer items-center gap-1 self-start rounded-md px-1 text-[12px] font-medium leading-4 text-ink-tertiary hover:text-ink-secondary">
+        <ChevronRight size={14} aria-hidden="true" className={cn("transition-transform duration-150 motion-reduce:transition-none rtl:-scale-x-100", open && "rotate-90")} />
+        {t("settings.calls.sent")}
+      </button>
+      <div id={bodyId} hidden={!open} className="flex flex-col gap-3">
+        {SENT_TEXTS.map((key) => (
+          <div key={key} data-call-sent-text={key} className="flex flex-col gap-1">
+            <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t(PROMPT_LABEL[key])}</h5>
+            <pre tabIndex={0} aria-label={t(PROMPT_LABEL[key])} dir="auto" className={PRE}>{sent[key]}</pre>
+          </div>
+        ))}
+        <dl data-call-sent-values="" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px] leading-[18px]">
+          {values.map(([label, value]) => <div key={label} className="contents">
+            <dt className="text-ink-tertiary">{label}</dt>
+            <dd className="min-w-0 break-words text-ink">{value}</dd>
+          </div>)}
+        </dl>
+        <div className="flex flex-col gap-1">
+          <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t("settings.calls.session")}</h5>
+          <pre data-call-sent-session="" tabIndex={0} aria-label={t("settings.calls.session")} dir="ltr" className={PRE}>{JSON.stringify(sent.session, null, 2)}</pre>
+        </div>
+      </div>
+    </section>
   );
 }

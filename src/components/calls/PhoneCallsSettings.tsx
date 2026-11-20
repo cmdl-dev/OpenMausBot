@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -7,8 +7,14 @@ import { SETTINGS_INPUT, SettingRow, SettingsField, SettingsFormFoot, SettingsGr
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { keyEntry, savedState, type KeyId } from "../keys/key-catalog";
 import { openKeySettings } from "../keys/key-focus";
+import { Select } from "../Select";
 import { CallHistory } from "./CallHistory";
-import { CALLS_PATH, SETTING_LABEL, callsPatch, draftFrom, type CallsDraft, type CallsSetupStatus, type DraftField } from "./calls-settings";
+import { CallPrompts } from "./CallPrompts";
+import { useSavedDraft } from "./use-saved-draft";
+import {
+  CALLS_PATH, EAGERNESS, EAGERNESS_LABEL, NOISE_REDUCTION, NOISE_REDUCTION_LABEL, NUMBER_RANGES, SETTING_LABEL, TURN_TYPES, TURN_TYPE_LABEL, callsPatch, draftFrom,
+  turnFieldShown, type CallsDraft, type CallsSetupStatus, type DraftField,
+} from "./calls-settings";
 
 const KEYS: readonly KeyId[] = ["twilioSid", "twilioToken", "openai"];
 
@@ -42,7 +48,11 @@ export function PhoneCallsSettings() {
         <KeyRows />
       </SettingsRows>
     </SettingsGroup>
-    {setup && <CallsForm setup={setup} onSaved={() => void load()} />}
+    {setup && <>
+      <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.settings")} block="calls-settings" fields={CALLING_FIELDS} />
+      <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.voiceGroup")} block="calls-voice" fields={VOICE_FIELDS} />
+      <CallPrompts setup={setup} onSaved={() => void load()} />
+    </>}
     <CallHistory />
   </>;
 }
@@ -83,32 +93,49 @@ function KeyRows() {
   </>;
 }
 
-const FIELDS: ReadonlyArray<{ field: DraftField; label: LocaleKey; hint?: LocaleKey; placeholder?: string; lines?: boolean; type?: string }> = [
+interface FieldSpec {
+  field: DraftField;
+  label: LocaleKey;
+  hint?: LocaleKey;
+  placeholder?: string;
+  lines?: boolean;
+  type?: "tel" | "url" | "number";
+  options?: ReadonlyArray<{ value: string; label: LocaleKey }>;
+}
+
+const CALLING_FIELDS: readonly FieldSpec[] = [
   { field: "callerId", label: "settings.calls.callerId", hint: "settings.calls.callerIdHint", placeholder: "+14155550123", type: "tel" },
   { field: "publicUrl", label: "settings.calls.publicUrl", hint: "settings.calls.publicUrlHint", placeholder: "https://calls.example.com", type: "url" },
   { field: "maxMinutes", label: "settings.calls.maxMinutes", type: "number" },
-  { field: "model", label: "settings.calls.model" },
-  { field: "voice", label: "settings.calls.voice" },
   { field: "onBehalfOf", label: "settings.calls.onBehalfOf", hint: "settings.calls.onBehalfOfHint" },
   { field: "allow", label: "settings.calls.allow", hint: "settings.calls.allowHint", placeholder: "+1415*", lines: true },
   { field: "deny", label: "settings.calls.deny", hint: "settings.calls.denyHint", placeholder: "+1900*", lines: true },
 ];
 
-function CallsForm({ setup, onSaved }: { setup: CallsSetupStatus; onSaved: () => void }) {
+const VOICE_FIELDS: readonly FieldSpec[] = [
+  { field: "model", label: "settings.calls.model" },
+  { field: "voice", label: "settings.calls.voice" },
+  { field: "transcriptionModel", label: "settings.calls.transcriptionModel", hint: "settings.calls.transcriptionModelHint" },
+  { field: "turnType", label: "settings.calls.turnDetection", options: TURN_TYPES.map((value) => ({ value, label: TURN_TYPE_LABEL[value] })) },
+  { field: "threshold", label: "settings.calls.threshold", hint: "settings.calls.thresholdHint", type: "number" },
+  { field: "prefixPaddingMs", label: "settings.calls.prefixPadding", type: "number" },
+  { field: "silenceDurationMs", label: "settings.calls.silence", type: "number" },
+  { field: "eagerness", label: "settings.calls.eagerness", hint: "settings.calls.eagernessHint", options: EAGERNESS.map((value) => ({ value, label: EAGERNESS_LABEL[value] })) },
+  { field: "noiseReduction", label: "settings.calls.noiseReduction", options: NOISE_REDUCTION.map((value) => ({ value, label: NOISE_REDUCTION_LABEL[value] })) },
+  { field: "maxTurnsWithoutReply", label: "settings.calls.maxTurns", hint: "settings.calls.maxTurnsHint", type: "number" },
+];
+
+function CallsForm({ setup, onSaved, label, block, fields }: {
+  setup: CallsSetupStatus; onSaved: () => void; label: string; block: string; fields: readonly FieldSpec[];
+}) {
   const { dispatch } = useStore();
-  const [saved, setSaved] = useState<CallsDraft>(() => draftFrom(setup));
-  const [draft, setDraft] = useState<CallsDraft>(saved);
+  const latest = useMemo(() => draftFrom(setup), [setup]);
+  const { saved, draft, edit, markSaved } = useSavedDraft<CallsDraft>(latest);
   const [invalid, setInvalid] = useState<Partial<Record<DraftField, LocaleKey>>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const formId = useId();
-
-  useEffect(() => {
-    const next = draftFrom(setup);
-    setSaved(next);
-    setDraft(next);
-  }, [setup]);
 
   const dirty = (Object.keys(draft) as DraftField[]).some((field) => draft[field].trim() !== saved[field].trim());
 
@@ -123,7 +150,7 @@ function CallsForm({ setup, onSaved }: { setup: CallsSetupStatus; onSaved: () =>
     try {
       const config: ConfigStatus = await api("/api/config", { method: "PUT", body: JSON.stringify({ calls: patch.calls }) });
       dispatch({ type: "configStatus", config });
-      setSaved(draft);
+      markSaved(draft);
       setNotice(t("settings.calls.saved"));
       onSaved();
     } catch (cause) {
@@ -132,28 +159,33 @@ function CallsForm({ setup, onSaved }: { setup: CallsSetupStatus; onSaved: () =>
   };
 
   return (
-    <SettingsGroup label={t("settings.calls.settings")} block="calls-settings">
+    <SettingsGroup label={label} block={block}>
       <SettingsRows>
-        <form id={formId} noValidate data-calls-form="" className="flex flex-col gap-4 px-4 pb-1 pt-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void save(); }}>
-          {FIELDS.map(({ field, label, hint, placeholder, lines, type }) => {
+        <form id={formId} noValidate data-calls-form={block} className="flex flex-col gap-4 px-4 pb-1 pt-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void save(); }}>
+          {fields.filter(({ field }) => turnFieldShown(field, draft.turnType)).map(({ field, label: fieldLabel, hint, placeholder, lines, type, options }) => {
             const wrong = invalid[field];
+            const onChange = (event: { target: { value: string } }) => { edit({ [field]: event.target.value }); setNotice(null); };
             const shared = {
-              name: field, value: draft[field], disabled: saving, placeholder, "aria-invalid": Boolean(wrong) || undefined, autoComplete: "off", spellCheck: false, dir: "auto",
-              onChange: (event: { target: { value: string } }) => { setDraft({ ...draft, [field]: event.target.value }); setNotice(null); },
+              name: field, value: draft[field], disabled: saving, placeholder, "aria-invalid": Boolean(wrong) || undefined, autoComplete: "off", spellCheck: false, dir: "auto", onChange,
             };
+            const range = type === "number" ? NUMBER_RANGES[field as keyof typeof NUMBER_RANGES] : undefined;
             return (
-              <SettingsField key={field} label={t(label)}
+              <SettingsField key={field} label={t(fieldLabel)}
                 hint={wrong ? <span role="alert" className="text-danger">{t(wrong)}</span> : hint ? t(hint) : undefined}>
-                {lines
-                  ? <textarea {...shared} rows={3} className={cn(SETTINGS_INPUT, "h-auto min-h-16 resize-y py-1.5", wrong && "border-danger/60")} />
-                  : <input {...shared} type={type ?? "text"} {...(type === "number" ? { min: 1, max: 60, step: 1, inputMode: "numeric" as const } : {})}
-                      className={cn(SETTINGS_INPUT, wrong && "border-danger/60")} />}
+                {options
+                  ? <Select name={field} value={draft[field]} disabled={saving} onChange={onChange}>
+                    {options.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
+                  </Select>
+                  : lines
+                    ? <textarea {...shared} rows={3} className={cn(SETTINGS_INPUT, "h-auto min-h-16 resize-y py-1.5", wrong && "border-danger/60")} />
+                    : <input {...shared} type={type ?? "text"} {...(range ? { min: range.min, max: range.max, step: range.step, inputMode: range.whole ? "numeric" as const : "decimal" as const } : {})}
+                        className={cn(SETTINGS_INPUT, wrong && "border-danger/60")} />}
               </SettingsField>
             );
           })}
         </form>
         <SettingsFormFoot status={error ? <span role="alert" className="text-danger">{error}</span> : notice ? <span role="status">{notice}</span> : undefined}>
-          <button type="submit" form={formId} data-calls-save="" disabled={saving || !dirty} className="ui-button ui-button-md ui-button-primary rounded-full">
+          <button type="submit" form={formId} data-calls-save={block} disabled={saving || !dirty} className="ui-button ui-button-md ui-button-primary rounded-full">
             {saving ? t("common.saving") : t("common.save")}
           </button>
         </SettingsFormFoot>

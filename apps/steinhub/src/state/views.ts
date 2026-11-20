@@ -560,6 +560,7 @@ const CALL_UNANSWERED: Record<CallEndReason, string> = {
   canceled: "Canceled",
   lost: "Connection lost",
   error: "Voice stopped",
+  no_reply: "No reply",
 };
 
 /** "Ringing…", "1:34", "No answer": a call's state in a list row. */
@@ -580,6 +581,7 @@ export const CALL_END_TEXT: Record<CallEndReason, string> = {
   canceled: "The call was canceled before it connected.",
   lost: "The computer lost the call's connection. What was said until then is kept.",
   error: "The voice stopped working during the call.",
+  no_reply: "The callee didn't answer the voice, so it said goodbye and hung up.",
 };
 
 function runView(run: RoutineRun, now: number): RunView {

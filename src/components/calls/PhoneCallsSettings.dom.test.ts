@@ -27,7 +27,7 @@ const READY: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: [], deny: ["+1900*"], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3,
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true,
   prompts: {
     ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `Default ${key} for {callee}.`, default: `Default ${key} for {callee}.`, custom: false }])) as CallsSetup["prompts"],
     opening: { value: "Greet {callee} and say why you're calling.", default: "Default opening.", custom: true },
@@ -38,9 +38,11 @@ const READY: CallsSetup = {
 const NOW = Date.now();
 const ENDED: CallSummary = {
   id: "c1", botId: "b1", botName: "Ada", threadId: "t1", to: "+14155550199", calleeName: "Dr. Lee's office", goal: "Book a cleaning",
-  phase: "ended", createdAt: NOW - 3_600_000, answeredAt: NOW - 3_590_000, endedAt: NOW - 3_500_000, endReason: "completed", seconds: 90, lines: 3,
+  phase: "ended", createdAt: NOW - 3_600_000, answeredAt: NOW - 3_590_000, endedAt: NOW - 3_500_000, endReason: "completed", seconds: 90, lines: 3, recorded: true,
 };
-const LIVE: CallSummary = { ...ENDED, id: "c2", calleeName: undefined, to: "+442071234567", phase: "in_progress", endedAt: undefined, endReason: undefined, seconds: 12 };
+const LIVE: CallSummary = {
+  ...ENDED, id: "c2", calleeName: undefined, to: "+442071234567", phase: "in_progress", endedAt: undefined, endReason: undefined, seconds: 12, recorded: undefined,
+};
 const DETAIL: CallDetail = {
   ...ENDED, brief: "Book a cleaning for Tuesday morning.\nName: Sam.",
   transcript: [
@@ -51,9 +53,10 @@ const DETAIL: CallDetail = {
   sent: {
     disclosure: "This call is from an AI assistant.", instructions: "You are calling Dr. Lee's office for Sam.", opening: "Greet Dr. Lee's office.",
     wrapUp: "Wrap up now.", goodbye: "Say goodbye.", model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-4o-mini-transcribe",
-    turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field", maxTurnsWithoutReply: 3, maxMinutes: 10,
+    turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field", maxTurnsWithoutReply: 3, maxMinutes: 10, recorded: true,
     session: { type: "realtime", instructions: "You are calling Dr. Lee's office for Sam." },
   },
+  recording: { path: "/data/calls/c1.wav", bytes: 1_440_044, seconds: 90, url: "/api/calls/c1/recording" },
 };
 
 let host: HTMLDivElement;
@@ -101,8 +104,9 @@ beforeEach(() => {
     if (path === "/api/calls/setup") return setup;
     if (path === "/api/calls") return { calls };
     if (path === "/api/config" && init?.method === "PUT") return { ...fx.config, saved: JSON.parse(init.body!) };
+    if (path === "/api/calls/c1" && init?.method === "DELETE") return { ok: true };
     if (path === "/api/calls/c1") return DETAIL;
-    if (path === "/api/calls/c2") return { ...DETAIL, ...LIVE, transcript: [] };
+    if (path === "/api/calls/c2") return { ...DETAIL, ...LIVE, transcript: [], recording: undefined };
     if (path === "/api/calls/c2/hang-up") return { ok: true };
     throw new Error(`unexpected ${path}`);
   });
@@ -202,6 +206,32 @@ describe("Phone calls fields", () => {
   });
 });
 
+describe("Recording calls", () => {
+  it("shows whether calls are recorded and saves the switch at once", async () => {
+    await render();
+    const toggle = $<HTMLButtonElement>("[data-calls-record]")!;
+    expect(toggle.getAttribute("role")).toBe("switch");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain("Records both sides on this computer, not with Twilio, at no extra cost.");
+    setup = { ...READY, record: false };
+    flushSync(() => toggle.click());
+    await settle();
+    expect(puts()).toHaveLength(1);
+    expect(JSON.parse(puts()[0]![1].body)).toEqual({ calls: { record: false } });
+    expect(fx.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "configStatus" }));
+    expect($("[data-calls-record]")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("shows the switch off when setup says calls aren't recorded, and turns it back on", async () => {
+    setup = { ...READY, record: false };
+    await render();
+    expect($("[data-calls-record]")!.getAttribute("aria-checked")).toBe("false");
+    flushSync(() => $<HTMLButtonElement>("[data-calls-record]")!.click());
+    await settle();
+    expect(JSON.parse(puts()[0]![1].body)).toEqual({ calls: { record: true } });
+  });
+});
+
 describe("Voice settings", () => {
   it("shows the fields of the chosen turn detection, and saves the whole of it", async () => {
     await render();
@@ -255,6 +285,7 @@ describe("What the call says", () => {
     const legend = $("[data-calls-placeholders]")!.textContent!;
     expect(legend).toContain("{onBehalfOf}");
     expect(legend).toContain("{maxMinutes}The call's time limit in minutes.");
+    expect(legend).toContain("{recordingNotice}\"This call is recorded.\" while Record calls is on, else \"This call is transcribed.\"");
   });
 
   it("saves only the text that changed, exactly as typed", async () => {
@@ -347,6 +378,83 @@ describe("Call history", () => {
     flushSync(() => $<HTMLButtonElement>("[data-call-hang-up]")!.click());
     await settle();
     expect(fx.api).toHaveBeenCalledWith("/api/calls/c2/hang-up", { method: "POST" });
+  });
+
+  it("marks the recorded calls in the list", async () => {
+    await render();
+    expect(host.querySelector('[data-settings-disclosure="call-c1"] [data-call-recorded]')?.getAttribute("aria-label")).toBe("Recorded");
+    expect(host.querySelector('[data-settings-disclosure="call-c2"] [data-call-recorded]')).toBeNull();
+  });
+
+  it("plays and downloads a recorded call through the app's own routes", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    const recording = $("[data-call-recording]")!;
+    const audio = recording.querySelector("audio")!;
+    expect(audio.getAttribute("src")).toBe("/api/calls/c1/recording");
+    expect(audio.hasAttribute("controls")).toBe(true);
+    const download = recording.querySelector<HTMLAnchorElement>("[data-call-recording-download]")!;
+    expect(download.getAttribute("href")).toBe("/api/calls/c1/recording?download=1");
+    expect(download.hasAttribute("download")).toBe(true);
+    expect(recording.textContent).toContain("1:30 · 1.4 MB");
+    expect(recording.querySelector("[data-call-recording-unavailable]")).toBeNull();
+  });
+
+  it("says the recording is unavailable when its audio can't be loaded", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    flushSync(() => $("[data-call-recording] audio")!.dispatchEvent(new Event("error")));
+    const recording = $("[data-call-recording]")!;
+    expect(recording.querySelector("[data-call-recording-unavailable]")?.textContent).toBe("Recording unavailable");
+    expect(recording.querySelector("audio")).toBeNull();
+    expect(recording.querySelector("[data-call-recording-download]")).toBeNull();
+  });
+
+  it("shows no recording for a call without one", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c2"] button')!.click());
+    await settle();
+    expect($("[data-call-detail]")).not.toBeNull();
+    expect($("[data-call-recording]")).toBeNull();
+  });
+
+  it("deletes an ended call after asking, and leaves it out of the list", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    flushSync(() => $<HTMLButtonElement>("[data-call-delete]")!.click());
+    const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain("Delete this call?");
+    expect(fx.api.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    calls = [LIVE];
+    const buttons = [...dialog.querySelectorAll<HTMLButtonElement>("button")];
+    flushSync(() => buttons.find((button) => button.textContent === "Delete call")!.click());
+    await settle();
+    expect(fx.api).toHaveBeenCalledWith("/api/calls/c1", { method: "DELETE" });
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(host.querySelector('[data-settings-disclosure="call-c1"]')).toBeNull();
+    expect(host.querySelector("[data-call-detail]")).toBeNull();
+  });
+
+  it("keeps the call when the delete is canceled", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    flushSync(() => $<HTMLButtonElement>("[data-call-delete]")!.click());
+    flushSync(() => [...document.body.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find((button) => button.textContent === "Cancel")!.click());
+    await settle();
+    expect(fx.api.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    expect(host.querySelector("[data-call-detail]")).not.toBeNull();
+  });
+
+  it("offers no delete for a call that is still running", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c2"] button')!.click());
+    await settle();
+    expect($("[data-call-hang-up]")).not.toBeNull();
+    expect($("[data-call-delete]")).toBeNull();
   });
 
   it("says when there are no calls yet", async () => {

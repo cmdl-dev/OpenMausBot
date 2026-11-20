@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CALL_PROMPT_KEYS, type CallsSetup } from "../../../shared/phone-calls";
-import { END_TEXT, callsPatch, draftFrom, keepEdits, lineOffset, promptDraftFrom, promptsPatch, splitRules, turnFieldShown, type CallsDraft } from "./calls-settings";
+import { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, type CallsSetup } from "../../../shared/phone-calls";
+import {
+  END_TEXT, PLACEHOLDER_MEANING, callsPatch, draftFrom, keepEdits, lineOffset, promptDraftFrom, promptsPatch, recordingDownloadUrl, splitRules, turnFieldShown, type CallsDraft,
+} from "./calls-settings";
 
 const prompts = Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `${key} text`, default: `${key} text`, custom: false }])) as CallsSetup["prompts"];
 const setup: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: ["+1415*"], deny: [], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, prompts, tools: [],
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, prompts, tools: [],
 };
 const saved: CallsDraft = draftFrom(setup);
 
@@ -90,4 +92,16 @@ it("keeps unsaved edits when the saved values reload", () => {
 
 it("words the no_reply ending", () => {
   expect(END_TEXT.no_reply).toBe("server.calls.end.no_reply");
+});
+
+describe("call recordings and placeholders", () => {
+  it("asks the recording route for a download", () => {
+    expect(recordingDownloadUrl("/api/calls/c1/recording")).toBe("/api/calls/c1/recording?download=1");
+    expect(recordingDownloadUrl("/api/calls/c1/recording?v=2")).toBe("/api/calls/c1/recording?v=2&download=1");
+  });
+
+  it("names every placeholder in the app's language", () => {
+    expect(CALL_PLACEHOLDERS.filter(({ name }) => !PLACEHOLDER_MEANING[name]).map(({ name }) => name)).toEqual([]);
+    expect(PLACEHOLDER_MEANING.recordingNotice).toBe("settings.calls.placeholder.recordingNotice");
+  });
 });

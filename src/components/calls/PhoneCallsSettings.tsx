@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { SETTINGS_INPUT, SettingRow, SettingsField, SettingsFormFoot, SettingsGroup, SettingsLinkRow, SettingsRows, StatusDot } from "../SettingsPrimitives";
+import { SETTINGS_INPUT, SettingRow, SettingsField, SettingsFormFoot, SettingsGroup, SettingsLinkRow, SettingsRows, StatusDot, Switch } from "../SettingsPrimitives";
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { keyEntry, savedState, type KeyId } from "../keys/key-catalog";
 import { openKeySettings } from "../keys/key-focus";
@@ -49,7 +49,8 @@ export function PhoneCallsSettings() {
       </SettingsRows>
     </SettingsGroup>
     {setup && <>
-      <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.settings")} block="calls-settings" fields={CALLING_FIELDS} />
+      <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.settings")} block="calls-settings" fields={CALLING_FIELDS}
+        lead={<RecordRow record={setup.record !== false} onSaved={load} />} />
       <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.voiceGroup")} block="calls-voice" fields={VOICE_FIELDS} />
       <CallPrompts setup={setup} onSaved={() => void load()} />
     </>}
@@ -93,6 +94,33 @@ function KeyRows() {
   </>;
 }
 
+function RecordRow({ record, onSaved }: { record: boolean; onSaved: () => Promise<unknown> }) {
+  const { dispatch } = useStore();
+  const [pending, setPending] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const on = pending ?? record;
+
+  const toggle = async () => {
+    const next = !on;
+    setPending(next);
+    setError(null);
+    try {
+      const config: ConfigStatus = await api("/api/config", { method: "PUT", body: JSON.stringify({ calls: { record: next } }) });
+      dispatch({ type: "configStatus", config });
+      await onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("settings.calls.saveFailed"));
+    } finally { setPending(null); }
+  };
+
+  return (
+    <SettingRow title={t("settings.calls.record")} subtitle={t("settings.calls.recordLine")}
+      message={error ? <span role="alert" className="text-danger">{error}</span> : undefined}>
+      <Switch checked={on} disabled={pending !== null} data-calls-record="" aria-label={t("settings.calls.record")} onClick={() => void toggle()} />
+    </SettingRow>
+  );
+}
+
 interface FieldSpec {
   field: DraftField;
   label: LocaleKey;
@@ -125,8 +153,8 @@ const VOICE_FIELDS: readonly FieldSpec[] = [
   { field: "maxTurnsWithoutReply", label: "settings.calls.maxTurns", hint: "settings.calls.maxTurnsHint", type: "number" },
 ];
 
-function CallsForm({ setup, onSaved, label, block, fields }: {
-  setup: CallsSetupStatus; onSaved: () => void; label: string; block: string; fields: readonly FieldSpec[];
+function CallsForm({ setup, onSaved, label, block, fields, lead }: {
+  setup: CallsSetupStatus; onSaved: () => void; label: string; block: string; fields: readonly FieldSpec[]; lead?: ReactNode;
 }) {
   const { dispatch } = useStore();
   const latest = useMemo(() => draftFrom(setup), [setup]);
@@ -161,6 +189,7 @@ function CallsForm({ setup, onSaved, label, block, fields }: {
   return (
     <SettingsGroup label={label} block={block}>
       <SettingsRows>
+        {lead}
         <form id={formId} noValidate data-calls-form={block} className="flex flex-col gap-4 px-4 pb-1 pt-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void save(); }}>
           {fields.filter(({ field }) => turnFieldShown(field, draft.turnType)).map(({ field, label: fieldLabel, hint, placeholder, lines, type, options }) => {
             const wrong = invalid[field];

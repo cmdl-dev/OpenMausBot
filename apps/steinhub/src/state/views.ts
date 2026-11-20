@@ -538,6 +538,12 @@ export function duration(ms: number): string {
   return minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
 }
 
+/** "820 KB", "1.4 MB". */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** "0:42", "12:05": how long a call talked. */
 export function talkTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;

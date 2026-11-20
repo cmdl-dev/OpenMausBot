@@ -1,6 +1,6 @@
 import { FILE_MAX_BYTES, limitMegabytes } from "@openmausbot/phone-protocol/upload-limits.ts";
 import * as Crypto from "expo-crypto";
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
@@ -95,6 +95,8 @@ export interface Connection {
   calls(): Promise<CallSummary[]>;
   /** A call with its brief and transcript; null when the computer no longer has it. */
   call(callId: string): Promise<CallDetail | null>;
+  /** A call's recording, saved in this phone's cache. */
+  callRecording(callId: string): Promise<File>;
 }
 
 const ConnectionContext = createContext<Connection | null>(null);
@@ -417,6 +419,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [mode, client],
   );
 
+  const callRecording = useCallback(
+    async (callId: string) => {
+      if (mode !== "live") throw new Error("Recordings open from a paired computer.");
+      return client().callRecording(callId, new File(Paths.cache, `${callId.replace(/[^\w-]/g, "")}.wav`));
+    },
+    [mode, client],
+  );
+
   const setRoutineEnabled = useCallback(
     async (routineId: string, enabled: boolean) => {
       const reply = await client().setRoutineEnabled(routineId, enabled);
@@ -597,6 +607,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       memoryFile,
       calls,
       call,
+      callRecording,
       vault,
       addToVault,
       removeFromVault,
@@ -638,6 +649,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       memoryFile,
       calls,
       call,
+      callRecording,
       vault,
       addToVault,
       removeFromVault,

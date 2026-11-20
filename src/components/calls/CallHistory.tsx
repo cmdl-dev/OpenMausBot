@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { AudioLines, ChevronRight, Download } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/state/store";
 import { intlLocale, t } from "@/lib/i18n";
 import { localizedRelativeTime } from "@/lib/relative-time";
+import { sizeText } from "@/lib/attach-notice";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { SettingsEmptyRow, SettingsFoldRow, SettingsGroup, SettingsRows } from "../SettingsPrimitives";
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { PRE } from "./CallPrompts";
 import {
-  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, type CallDetail, type CallLine,
-  type CallSent, type CallSummary, type CallTurnDetection,
+  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, recordingDownloadUrl,
+  type CallDetail, type CallLine, type CallRecording, type CallSent, type CallSummary, type CallTurnDetection,
 } from "./calls-settings";
 
 const LIVE_POLL_MS = 4_000;
@@ -51,8 +53,15 @@ export function CallHistory() {
           <SettingsFoldRow key={call.id} id={`call-${call.id}`} open={open === call.id} onToggle={() => setOpen(open === call.id ? null : call.id)}
             title={call.calleeName ? `${call.calleeName} · ${call.to}` : call.to}
             subtitle={<span data-call-row={call.id}>{[call.botName, localizedRelativeTime(call.createdAt, intlLocale()), outcome(call)].join(" · ")}</span>}
-            value={<span className="tabular-nums">{clockLength(call.seconds)}</span>}>
-            <CallDetailRows id={call.id} onChanged={() => void load(true)} />
+            value={<span className="flex items-center gap-1.5">
+              {call.recorded && <AudioLines size={14} data-call-recorded="" role="img" aria-label={t("settings.calls.recorded")} className="text-ink-tertiary" />}
+              <span className="tabular-nums">{clockLength(call.seconds)}</span>
+            </span>}>
+            <CallDetailRows id={call.id} onChanged={() => void load(true)} onDeleted={() => {
+              setOpen(null);
+              setCalls((current) => current?.filter((each) => each.id !== call.id) ?? null);
+              void load(true);
+            }} />
           </SettingsFoldRow>
         ))}
       </SettingsRows>
@@ -60,10 +69,12 @@ export function CallHistory() {
   );
 }
 
-function CallDetailRows({ id, onChanged }: { id: string; onChanged: () => void }) {
+function CallDetailRows({ id, onChanged, onDeleted }: { id: string; onChanged: () => void; onDeleted: () => void }) {
   const [call, setCall] = useState<CallDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hangingUp, setHangingUp] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const path = `${CALLS_PATH}/${encodeURIComponent(id)}`;
 
   const load = useCallback((background = false) => api<CallDetail>(path, { background })
@@ -90,6 +101,19 @@ function CallDetailRows({ id, onChanged }: { id: string; onChanged: () => void }
     } finally { setHangingUp(false); }
   };
 
+  const remove = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await api(path, { method: "DELETE" });
+      setConfirming(false);
+      onDeleted();
+    } catch (cause) {
+      setConfirming(false);
+      setError(cause instanceof Error ? cause.message : t("settings.calls.deleteFailed"));
+    } finally { setDeleting(false); }
+  };
+
   if (!call) {
     return error
       ? <p role="alert" className="px-4 py-3 text-[13px] leading-[18px] text-danger">{error}</p>
@@ -110,17 +134,21 @@ function CallDetailRows({ id, onChanged }: { id: string; onChanged: () => void }
             {call.transcript.map((line, index) => <TranscriptLine key={index} call={call} line={line} callee={callee} />)}
           </ol>}
       </section>
+      {call.recording && <RecordingSection key={call.recording.url} recording={call.recording} />}
       {call.sent && <SentSection sent={call.sent} />}
-      {(ongoing || error) && (
-        <div className="flex items-center justify-end gap-3">
-          {error && <span role="alert" className="me-auto min-w-0 text-[12px] leading-4 text-danger">{error}</span>}
-          {ongoing && (
-            <button type="button" data-call-hang-up="" disabled={hangingUp} onClick={() => void hangUp()} className="ui-button ui-button-md rounded-full">
-              {hangingUp ? t("server.calls.card.hangingUp") : t("server.calls.card.hangUp")}
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex items-center justify-end gap-3">
+        {error && <span role="alert" className="me-auto min-w-0 text-[12px] leading-4 text-danger">{error}</span>}
+        {ongoing
+          ? <button type="button" data-call-hang-up="" disabled={hangingUp} onClick={() => void hangUp()} className="ui-button ui-button-md rounded-full">
+            {hangingUp ? t("server.calls.card.hangingUp") : t("server.calls.card.hangUp")}
+          </button>
+          : <button type="button" data-call-delete="" disabled={deleting} onClick={() => setConfirming(true)} className="ui-button ui-button-md rounded-full text-danger">
+            {t("settings.calls.delete")}
+          </button>}
+      </div>
+      <ConfirmDialog open={confirming} title={t("settings.calls.deleteTitle")} body={t("settings.calls.deleteBody")}
+        confirmLabel={deleting ? t("settings.calls.deleting") : t("settings.calls.delete")} pending={deleting}
+        onCancel={() => setConfirming(false)} onConfirm={() => void remove()} />
     </div>
   );
 }
@@ -144,6 +172,27 @@ function TranscriptLine({ call, line, callee }: { call: CallDetail; line: CallLi
         {line.cut && <span data-call-cut="" role="img" aria-label={t("settings.calls.cut")} title={t("settings.calls.cut")} className="text-ink-tertiary">…</span>}
       </span>
     </li>
+  );
+}
+
+function RecordingSection({ recording }: { recording: CallRecording }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <section data-call-recording="" className="flex flex-col gap-1">
+      <h4 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t("settings.calls.recording")}</h4>
+      {broken
+        ? <p data-call-recording-unavailable="" className="text-[13px] leading-[18px] text-ink-secondary">{t("settings.calls.recordingUnavailable")}</p>
+        : <>
+          <audio src={recording.url} controls preload="metadata" aria-label={t("settings.calls.recording")} onError={() => setBroken(true)} className="h-9 w-full" />
+          <div className="flex items-center gap-3 text-[12px] leading-4 text-ink-tertiary">
+            <span className="tabular-nums">{clockLength(recording.seconds)} · {sizeText(recording.bytes)}</span>
+            <a href={recordingDownloadUrl(recording.url)} download data-call-recording-download=""
+              className="ms-auto inline-flex items-center gap-1 rounded-md text-accent-text hover:underline">
+              <Download size={14} aria-hidden="true" />{t("attach.download")}
+            </a>
+          </div>
+        </>}
+    </section>
   );
 }
 

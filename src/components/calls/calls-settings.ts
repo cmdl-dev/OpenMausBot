@@ -4,7 +4,7 @@ import {
   type CallSummary, type CallTurnDetection,
 } from "../../../shared/phone-calls";
 
-export type { CallDetail, CallLine, CallPromptKey, CallSent, CallSummary, CallTurnDetection } from "../../../shared/phone-calls";
+export type { CallDetail, CallLine, CallPromptKey, CallRecording, CallSent, CallSummary, CallTurnDetection } from "../../../shared/phone-calls";
 export { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS } from "../../../shared/phone-calls";
 
 /** `GET /api/calls/setup`, with the name the voice says it calls for. */
@@ -240,6 +240,7 @@ export const PLACEHOLDER_MEANING: Partial<Record<string, LocaleKey>> = {
   brief: "settings.calls.placeholder.brief",
   disclosure: "settings.calls.placeholder.disclosure",
   maxMinutes: "settings.calls.placeholder.maxMinutes",
+  recordingNotice: "settings.calls.placeholder.recordingNotice",
 };
 
 export function promptDraftFrom(setup: Pick<CallsSetup, "prompts">): PromptDraft {
@@ -261,6 +262,10 @@ export function promptsPatch(draft: PromptDraft, saved: PromptDraft):
 
 export function callOngoing(call: Pick<CallSummary, "phase">): boolean {
   return call.phase !== "ended";
+}
+
+export function recordingDownloadUrl(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}download=1`;
 }
 
 export function clockLength(seconds: number): string {

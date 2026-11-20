@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from "expo/fetch";
+import { File } from "expo-file-system";
 import { DesktopError } from "@/api/errors";
 
 export interface StreamReader {
@@ -25,6 +26,8 @@ export interface Transport {
   upload<T>(path: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<T>;
   /** Resolves when the server ends the stream; rejects with a DesktopError when it can't open or breaks. */
   stream(path: string, onText: (text: string) => void, signal: AbortSignal): Promise<void>;
+  /** Saves the body to `to` on this phone, replacing what is there; rejects with a DesktopError. */
+  download(path: string, to: File): Promise<File>;
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -52,6 +55,10 @@ export function readJson(text: string, status: number): unknown {
 export function errorField(body: unknown): string {
   return body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "";
 }
+
+/** expo-file-system 58 rejects a download that isn't 2xx with "response has status 404" (iOS) or "response has status: 404"
+ * (Android). */
+const DOWNLOAD_STATUS = /response has status:? (\d{3})/;
 
 export function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
@@ -113,6 +120,15 @@ export function httpTransport({
       if (response.status < 200 || response.status >= 300) throw refusal(response.status, errorField(parsed));
       // SAFETY: the shape is the server's contract for this route, typed at the call site.
       return parsed as T;
+    },
+    async download(path, to) {
+      try {
+        return await File.downloadFileAsync(joinUrl(baseUrl, path), to, { headers: { authorization: headers.authorization }, idempotent: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = DOWNLOAD_STATUS.exec(message);
+        throw status ? refusal(Number(status[1]), "") : new DesktopError("offline", message);
+      }
     },
     async stream(path, onText, signal) {
       const response = await send("GET", path, { signal, accept: "text/event-stream" });

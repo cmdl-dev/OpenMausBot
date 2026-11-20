@@ -1,16 +1,18 @@
 import { useLocalSearchParams } from "expo-router";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Play } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import type { CallSent } from "@openmausbot/phone-protocol/phone-calls.ts";
+import type { CallRecording, CallSent } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type { CallDetail, CallLine } from "@/api/client";
+import { asDesktopError, problemText } from "@/api/errors";
+import { Button } from "@/components/button";
 import { SectionLabel } from "@/components/list";
 import { Screen } from "@/components/screen";
 import { Txt } from "@/components/text";
 import { LargeTitle, PageTopBar } from "@/components/top-bar";
 import { useConnection } from "@/state/connection";
 import { useLoaded } from "@/state/use-loaded";
-import { CALL_END_TEXT, callState, clock, formatWhen } from "@/state/views";
+import { CALL_END_TEXT, callState, clock, fileSize, formatWhen, talkTime } from "@/state/views";
 import { useWorld } from "@/state/world";
 import { colors, radius, size, space } from "@/theme";
 
@@ -89,7 +91,59 @@ function CallBody({ call }: { call: CallDetail }) {
         </View>
       )}
 
+      {call.recording ? <RecordingSection call={call} recording={call.recording} /> : null}
+
       {call.sent ? <SentSection sent={call.sent} /> : null}
+    </>
+  );
+}
+
+function RecordingSection({ call, recording }: { call: CallDetail; recording: CallRecording }) {
+  const { callRecording } = useConnection();
+  const [opening, setOpening] = useState(false);
+  const [gone, setGone] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const open = async () => {
+    setOpening(true);
+    setProblem(null);
+    try {
+      const file = await callRecording(call.id).catch((failure: unknown) => {
+        if (asDesktopError(failure).status === 404) setGone(true);
+        else setProblem(problemText(failure));
+        return null;
+      });
+      if (file) await file.preview({ title: `Call with ${call.calleeName ?? call.to}`, mimeType: "audio/wav" }).catch(() => setProblem("No app on this phone can play the recording."));
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <>
+      <SectionLabel>Recording</SectionLabel>
+      <View style={styles.card}>
+        {gone ? (
+          <Txt variant="callout" tone="secondary">
+            Recording unavailable. It's no longer on the computer.
+          </Txt>
+        ) : (
+          <>
+            <Txt variant="callout">{`${talkTime(Math.round(recording.seconds))} · ${fileSize(recording.bytes)}`}</Txt>
+            <Txt variant="footnote" tone="secondary">
+              Opens in the phone's player, where you can also share or save it.
+            </Txt>
+            <View style={styles.recordingAction}>
+              <Button label={opening ? "Opening…" : "Open recording"} icon={Play} variant="secondary" small disabled={opening} onPress={() => void open()} />
+            </View>
+            {problem ? (
+              <Txt variant="footnote" style={styles.problem}>
+                {problem}
+              </Txt>
+            ) : null}
+          </>
+        )}
+      </View>
     </>
   );
 }
@@ -173,6 +227,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface1,
   },
   line: { gap: space[1] },
+  recordingAction: { flexDirection: "row" },
   lineHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
   sentToggle: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingTop: space[6], paddingBottom: space[2] },
 });

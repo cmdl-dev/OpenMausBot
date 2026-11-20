@@ -11,6 +11,7 @@ import { IconButton } from "@/components/icon-button";
 import { Composer } from "@/components/composer";
 import { WidgetCard } from "@/components/widget";
 import { Markdown } from "@/components/markdown";
+import { MessageText } from "@/components/message-text";
 import { Screen } from "@/components/screen";
 import { SignInCard } from "@/components/sign-in-card";
 import { Badge, StatusDot } from "@/components/status";
@@ -326,7 +327,7 @@ function Message({
       return (
         <View style={[styles.userBubble, message.pending === "sending" && styles.sending]}>
           {message.attachments ? <SentFiles files={message.attachments} /> : null}
-          {message.text ? <Txt>{message.text}</Txt> : null}
+          {message.text ? <MessageText text={message.text} literal /> : null}
           {message.pending === "failed" ? (
             <Txt variant="footnote" style={styles.errorText}>
               Not sent.
@@ -379,7 +380,7 @@ function BotReply({ message, bot }: { message: Extract<MessageView, { from: "bot
           </Txt>
         </View>
       ) : null}
-      {message.text ? <Markdown fadesIn={streamed}>{message.text}</Markdown> : null}
+      {message.text ? <MessageText text={message.text} fadesIn={streamed} /> : null}
       {message.images ? <SentFiles files={message.images} /> : null}
       {message.text || message.images ? null : <ActivityIndicator color={colors.text3} style={styles.spinner} />}
     </View>

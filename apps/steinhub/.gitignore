@@ -11,3 +11,4 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 designs/app-screenshots/
+/modules/*/android/build/

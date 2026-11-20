@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { Linking, Platform, StyleSheet } from "react-native";
-import { EnrichedMarkdownText, type MarkdownStyle } from "react-native-enriched-markdown";
+import { EnrichedMarkdownText, type MarkdownStyle, type TextPressEvent } from "react-native-enriched-markdown";
 import { colors, radius, type } from "@/theme";
 
 const monospace = Platform.select({ ios: "Menlo", default: "monospace" });
@@ -72,20 +72,47 @@ const markdownStyle: MarkdownStyle = {
 /**
  * A bot's words as the desktop draws them: GitHub-flavored Markdown with tables, lists and links.
  * `fadesIn` fades in text appended after the first draw, for a reply that streams.
+ * `literal` draws the text exactly as typed instead, for words a person wrote.
+ * `onTextPress` fires for a tap on plain text, not on a link or image.
  */
-export function Markdown({ children, fadesIn = false }: { children: string; fadesIn?: boolean }) {
+export function Markdown({
+  children,
+  fadesIn = false,
+  literal = false,
+  onTextPress,
+}: {
+  children: string;
+  fadesIn?: boolean;
+  literal?: boolean;
+  onTextPress?: (event: TextPressEvent) => void;
+}) {
   return (
     <EnrichedMarkdownText
-      markdown={children}
+      markdown={literal ? literalMarkdown(children) : children}
       streamingAnimation={fadesIn}
       markdownStyle={markdownStyle}
       flavor="github"
       selectable
+      selectionMenuConfig={literal ? LITERAL_SELECTION_MENU : undefined}
       containerStyle={styles.container}
+      onTextPress={onTextPress}
       onLinkPress={({ url }) => void Linking.openURL(url).catch(() => undefined)}
       onImagePress={({ url, altText }) => router.push({ pathname: "/image", params: { url, name: altText } })}
     />
   );
+}
+
+/** The Markdown behind literal text is escapes, not what the person wrote. */
+const LITERAL_SELECTION_MENU = { copyAsMarkdown: { enabled: false } };
+
+/** Markdown that draws `text` exactly as typed: every symbol literal, every line break kept, leading spaces kept. */
+export function literalMarkdown(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+$/, "")
+    .replace(/[!-/:-@[-`{-~]/g, "\\$&")
+    .replace(/^[ \t]+/gm, (indent) => "\u00a0".repeat(indent.replace(/\t/g, "    ").length))
+    .replace(/\n/g, "\\\n");
 }
 
 const styles = StyleSheet.create({

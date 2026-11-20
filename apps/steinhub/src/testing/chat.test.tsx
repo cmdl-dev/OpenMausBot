@@ -11,6 +11,18 @@ import { network, secureValues } from "@/testing/native-mocks";
 jest.mock("expo-secure-store", () => jest.requireActual("@/testing/native-mocks").secureStore);
 jest.mock("expo-crypto", () => jest.requireActual("@/testing/native-mocks").crypto);
 jest.mock("expo-camera", () => jest.requireActual("@/testing/native-mocks").camera);
+const mockMenu = { choose: "Copy" as string | null, shown: [] as Array<{ point: { x: number; y: number }; titles: string[] }> };
+jest.mock("../../modules/steinhub-menu", () => ({
+  showMenu: async (point: { x: number; y: number }, items: Array<{ title: string }>) => {
+    mockMenu.shown.push({ point, titles: items.map((item) => item.title) });
+    return items.find((item) => item.title === mockMenu.choose) ?? null;
+  },
+}));
+const mockCopied: string[] = [];
+jest.mock("expo-clipboard", () => ({
+  ...jest.requireActual("expo-clipboard"),
+  setStringAsync: async (text: string) => mockCopied.push(text) > 0,
+}));
 jest.mock("expo/fetch", () => ({ fetch: (...args: unknown[]) => jest.requireActual("@/testing/native-mocks").network.fetch(...args) }));
 
 function DrawerWithoutAnimation() {
@@ -366,5 +378,38 @@ describe("a widget the computer drew, like the daily brief", () => {
     await act(async () => events.frame({ kind: "hello", cursor: "s:1", resumed: false }));
     await fireEvent.press(await screen.findByText("Dismiss McKnight, Riley M's email"));
     expect(await screen.findByText("This was already answered.")).toBeTruthy();
+  });
+});
+
+describe("message menu", () => {
+  beforeEach(() => {
+    mockMenu.shown.length = 0;
+    mockCopied.length = 0;
+  });
+
+  test("a tap on a reply pops up Copy and Share where the finger was, and Copy takes the whole reply", async () => {
+    await openChat();
+    const reply = screen.getByText("Here's a draft at $2,450.");
+    await fireEvent(reply, "touchStart", { nativeEvent: { pageX: 120, pageY: 340 } });
+    mockMenu.choose = "Copy";
+    await fireEvent.press(reply);
+
+    await waitFor(() => expect(mockCopied).toEqual(["Here's a draft at $2,450."]));
+    expect(mockMenu.shown).toEqual([{ point: { x: 120, y: 340 }, titles: ["Copy", "Share"] }]);
+  });
+
+  test("a tap on your own message copies it exactly as typed", async () => {
+    await openChat();
+    mockMenu.choose = "Copy";
+    await fireEvent.press(screen.getByText("Draft a counter offer"));
+    await waitFor(() => expect(mockCopied).toEqual(["Draft a counter offer"]));
+  });
+
+  test("dismissing the menu copies nothing", async () => {
+    await openChat();
+    mockMenu.choose = null;
+    await fireEvent.press(screen.getByText("Draft a counter offer"));
+    await waitFor(() => expect(mockMenu.shown).toHaveLength(1));
+    expect(mockCopied).toEqual([]);
   });
 });

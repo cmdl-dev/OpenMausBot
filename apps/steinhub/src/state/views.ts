@@ -3,7 +3,18 @@ import { cronScheduleLabel } from "@openmausbot/phone-protocol/cron-label.ts";
 import { botMascotBody, type MascotBodyId } from "@openmausbot/phone-protocol/mascot-bodies.ts";
 import type { Routine, RoutineRun, RoutineSchedule } from "@openmausbot/phone-protocol/routines.ts";
 import type { WidgetPayload } from "@openmausbot/phone-protocol/widget.ts";
-import { isSnoozed, orderedThreadList, type MausColor, type OptionCardData, type WireBot, type WireMessage, type WireTask } from "@openmausbot/phone-protocol/wire.ts";
+import { signInOutcome, signInWaits } from "@openmausbot/phone-protocol/sign-in-request.ts";
+import {
+  isSnoozed,
+  orderedThreadList,
+  type MausColor,
+  type OptionCardData,
+  type SignInRequestCardData,
+  type Surface,
+  type WireBot,
+  type WireMessage,
+  type WireTask,
+} from "@openmausbot/phone-protocol/wire.ts";
 import { readMessageAttachments, type SentAttachment } from "@/api/attachments";
 import type { PendingSend, StreamingItem } from "@/state/live-world";
 import { settledMarkdown } from "@/state/settled-markdown";
@@ -108,6 +119,53 @@ export interface WidgetView {
   widget: WidgetPayload;
 }
 
+/** A bot asking the person to sign in to a website themselves, in the place it works. */
+export interface SignInView {
+  id: string;
+  from: "signin";
+  messageId: string;
+  /** The asking bot, in a room; the conversation's own bot otherwise. */
+  botId?: string;
+  site: string;
+  url: string;
+  reason?: string;
+  place: Surface;
+  /** `waiting` until the person answers; the rest say how it ended. */
+  state: "waiting" | "done" | "cancelled" | "replaced" | "answered-in-chat" | "stopped";
+  /** The site a login was saved for, when the person answered by saving one. */
+  savedLogin?: string;
+  /** The bot carried on after the answer. */
+  resumed: boolean;
+  error?: string;
+}
+
+export function signInView(message: WireMessage, card: SignInRequestCardData): SignInView {
+  const outcome = signInOutcome(card);
+  const state: SignInView["state"] = outcome
+    ? outcome
+    : card.superseded
+      ? "replaced"
+      : card.answeredInChat
+        ? "answered-in-chat"
+        : card.stopped || !signInWaits(card)
+          ? "stopped"
+          : "waiting";
+  return {
+    id: message.id,
+    from: "signin",
+    messageId: message.id,
+    ...(message.from?.botId ? { botId: message.from.botId } : {}),
+    site: card.site,
+    url: card.url,
+    ...(card.reason ? { reason: card.reason } : {}),
+    place: card.place,
+    state,
+    ...(card.savedLogin ? { savedLogin: card.savedLogin } : {}),
+    resumed: card.resumed === true,
+    ...(card.error ? { error: card.error } : {}),
+  };
+}
+
 export type MessageView =
   | { id: string; from: "user"; text: string; attachments?: SentAttachment[]; pending?: "sending" | "failed" }
   | {
@@ -125,7 +183,8 @@ export type MessageView =
   | { id: string; from: "working" }
   | HandoffView
   | ApprovalView
-  | WidgetView;
+  | WidgetView
+  | SignInView;
 
 export interface RunView {
   id: string;
@@ -374,6 +433,10 @@ export function messageViews(
     }
     if (message.kind === "options" && message.card) {
       views.push(cardView(message, message.card));
+      continue;
+    }
+    if (message.kind === "signin" && message.signIn) {
+      views.push(signInView(message, message.signIn));
       continue;
     }
     if (message.kind === "widget" && message.widget) {

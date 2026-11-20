@@ -125,11 +125,13 @@ don't have it.
 | Chat thread: history (Markdown through `react-native-enriched-markdown`, hand-off chips with their replies), send, streamed reply, Stop | **Live** | `GET /api/threads/:id/messages`, `POST /api/bots/:id/messages`, `POST /api/bots/:id/interrupt`, `message` / `message.patch` / `runtime` (`content.delta`) frames |
 | Chat approval and question cards | **Live** | `POST /api/threads/:id/respond` `{requestId, behavior: allow, deny or answer}` |
 | Chat widget cards (the daily brief, a bot's `show_widget` forms and lists): text, rows, fields and buttons drawn natively | **Live**. A link opens in the phone's browser and Open opens that chat on the phone; every other button is a press the computer answers | `POST /api/bots/:id/messages` `{threadId, sendId, widgetAction: {messageId, ref, rev, values?}}` |
+| Chat sign-in cards: Open (the bot's own browser), Done (a sign-in elsewhere), Cancel, and how each ended | **Live** | `POST /api/bots/:id/sign-in-cards/:message/(done\|cancel)` `{threadId}`, `message.patch` frames |
+| Browser: a bot's live browser, from a sign-in card or the bot profile; watch, Take control, then tap to click, drag to scroll, pinch to zoom, type through the phone's keyboard; Give back (on a sign-in it answers the card, so the bot carries on) | **Live**. The page keeps the size it has: a phone asks for none, since a page taller than the computer's screen is emulated and a navigation then stops the view's frames | `GET /api/bots/:id/browser/live?threadId=` (server-sent events, `phone-protocol/browser-live.ts`), `POST /api/bots/:id/browser/action?threadId=` |
 | Automations list and detail (switch, Run now, Pause/Resume, run history) | **Live** | `GET /api/routines` (routines and runs), `PATCH /api/routines/:id {enabled}`, `POST /api/routines/:id/run`, `routine` / `routine.run` frames |
 | Apps: connected apps with their accounts, then every app that can be added, searchable; Connect, Add account (named) | **Live**. The sign-in itself finishes in the phone's browser, and the row waits for the new account | `GET /api/connectors/catalog`, `GET /api/connectors/connected`, `GET /api/connectors?services=`, `POST /api/connectors/:slug/authorize {alias?}` |
 | Computers | **Partly live**: the paired computer (name, version, bot count, connection state) | `GET /api/companion/endpoints` |
 | Settings, Pairing section | **Live**: computer, app version, pairing date, this phone, re-pair, unpair (forgets locally) | stored session |
-| Bot profile | **Live** header, model and threads; New chat starts one with that bot | `GET /api/bots` |
+| Bot profile | **Live** header, model, Browser and threads; New chat starts one with that bot | `GET /api/bots` |
 | Memory: the bot's MEMORY.md, its topic notes and daily notes, read-only | **Live** from a server the phone paired with directly; the desktop companion refuses it, and the screen says so | `GET /api/bots/:id/memory`, `GET /api/bots/:id/memory/file?path=` |
 | Inbox: lines, Approve and Deny on approval cards, Mark all as read, open a line's conversation | **Live** from a server the phone paired with directly, read again on `notify` frames and when the screen shows. **Sample data**, with a note and nothing to press, from a computer that serves none (the desktop companion) | `GET /api/inbox`, `POST /api/inbox/read-all`, `POST /api/threads/:id/respond` |
 | Drawer search | **Live**: filters the conversations already loaded by title and bot name | none |
@@ -196,7 +198,7 @@ The phone could already use these, but this phase doesn't wire them:
 `GET /api/search` (searching message text, beyond the drawer's titles),
 `GET /api/bots/:id/skills` (bot profile), `POST /api/routines` (an automation
 form), `PUT /api/push/device` (push alerts, which need APNs and FCM
-credentials), and secret, sign-in and connector cards. Settings shows nothing
+credentials), and secret and connector cards. Settings shows nothing
 for notifications, appearance, a default bot or Face ID until one of them is
 built.
 

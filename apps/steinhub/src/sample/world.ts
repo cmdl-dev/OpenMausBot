@@ -78,6 +78,21 @@ export const leaseMessages: MessageView[] = [
   leaseApproval(),
 ];
 
+export const downloadsMessages: MessageView[] = [
+  { id: "d1", from: "user", text: "Clean up my Downloads folder, and push the cleanup script to my dotfiles repo." },
+  {
+    id: "d2",
+    from: "signin",
+    messageId: "d2",
+    site: "github.com",
+    url: "https://github.com/login",
+    reason: "To push the cleanup script to your dotfiles repo.",
+    place: "local",
+    state: "waiting",
+    resumed: false,
+  },
+];
+
 export const SAMPLE_NOW = new Date(2026, 10, 16, 9, 41).getTime();
 
 export const inbox: InboxRow[] = [

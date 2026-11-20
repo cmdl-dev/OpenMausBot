@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Brain, Cpu, MessageSquare } from "lucide-react-native";
+import { Brain, Cpu, Globe, MessageSquare } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -27,6 +27,7 @@ export default function BotProfileScreen() {
     );
   }
   const botThreads = world.threads.filter((thread) => thread.botId === bot.id);
+  const browserThread = bot.threadId ?? botThreads[0]?.id;
 
   return (
     <Screen header={<PageTopBar leading="back" />}>
@@ -55,6 +56,15 @@ export default function BotProfileScreen() {
           chevron
           onPress={() => router.push({ pathname: "/memory/[bot]", params: { bot: bot.id } })}
         />
+        {browserThread ? (
+          <Row
+            title="Browser"
+            subtitle="Watch it work, or take over"
+            leading={<Globe {...iconProps} />}
+            chevron
+            onPress={() => router.push({ pathname: "/browser", params: { bot: bot.id, thread: browserThread } })}
+          />
+        ) : null}
       </Group>
 
       <SectionLabel>Threads</SectionLabel>

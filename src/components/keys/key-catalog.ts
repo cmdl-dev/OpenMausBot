@@ -1,4 +1,4 @@
-import { AudioLines, Blocks, CalendarClock, Fingerprint, Image, LockKeyhole, Monitor, Phone, Search, Server, Zap, type LucideIcon } from "lucide-react";
+import { AudioLines, Blocks, CalendarClock, Fingerprint, Image, LockKeyhole, Monitor, Phone, PhoneOutgoing, Search, Server, Zap, type LucideIcon } from "lucide-react";
 import type { AppSettingsSection, ConfigStatus } from "@/state/store";
 import type { SavedKey } from "@/state/config-status";
 import type { KeyProvider } from "@/lib/analytics-allowlist";
@@ -46,7 +46,7 @@ export interface KeyTarget {
 
 export type KeyId =
   | "openai" | "anthropic" | "xai" | "openrouter" | "mistral" | "cerebras" | "groq" | "greenference" | "modelgo" | "meta" | "deepseek" | "opencodeGo" | "opencodeProviders"
-  | "ollama" | "lmStudio" | "openaiCompat" | "liveCalls" | "liveKey" | "elevenlabs" | "fishAudio" | "geminiTts" | "box" | "vps" | "onePassword" | "composio" | "treg" | "postiz"
+  | "ollama" | "lmStudio" | "openaiCompat" | "liveCalls" | "liveKey" | "elevenlabs" | "fishAudio" | "geminiTts" | "twilioSid" | "twilioToken" | "phoneCalls" | "box" | "vps" | "onePassword" | "composio" | "treg" | "postiz"
   | "jev" | "openrouterHelper" | "workersAi" | "customDecider" | "imageOpenai" | "imageGemini" | "imageCustom";
 
 export type KeyMark = { driverKind: string; preset?: ProviderIconPreset } | { icon: LucideIcon };
@@ -156,6 +156,17 @@ export const KEY_CATALOG: readonly KeyEntry[] = [
     target: { patch: (value) => ({ tts: { fishKey: value } }), slot: "fishAudioKey", verifiedOnSave: true,
       saved: (config) => flag(config.savedKeys?.fishAudioKey ?? { configured: config.tts?.provider === "fish" && config.tts.configured }),
       placeholder: "…", placeholderKey: "voice.fish.keyPlaceholder", href: "https://fish.audio/app/api-keys/", analytics: "fish_audio" } },
+  { id: "twilioSid", section: "voice", labelKey: "keys.label.twilioSid", purposeKey: "keys.purpose.twilioSid", name: "Twilio", env: ["OMB_TWILIO_ACCOUNT_SID"],
+    words: ["twilio", "phone calls", "calls", "account sid", "sid"], mark: { icon: PhoneOutgoing }, kind: "key",
+    target: { patch: (value) => ({ calls: { accountSid: value } }), slot: "twilioAccountSid", saved: (config) => flag(config.savedKeys?.twilioAccountSid),
+      placeholder: "AC…", href: "https://console.twilio.com", analytics: "twilio", shape: /^AC[0-9a-fA-F]{32}$/ } },
+  { id: "twilioToken", section: "voice", labelKey: "keys.label.twilioToken", purposeKey: "keys.purpose.twilioToken", name: "Twilio", env: ["OMB_TWILIO_AUTH_TOKEN"],
+    words: ["twilio", "phone calls", "calls", "auth token", "token"], mark: { icon: PhoneOutgoing }, kind: "key",
+    target: { patch: (value) => ({ calls: { authToken: value } }), slot: "twilioAuthToken", saved: (config) => flag(config.savedKeys?.twilioAuthToken),
+      placeholder: "…", placeholderKey: "keys.twilioToken.placeholder", href: "https://console.twilio.com", analytics: "twilio" } },
+  { id: "phoneCalls", section: "voice", labelKey: "settings.calls.title", purposeKey: "keys.purpose.phoneCalls", name: "Twilio", env: [],
+    words: ["twilio", "phone calls", "calls", "call", "caller id", "call history", "transcript"], mark: { icon: PhoneOutgoing }, kind: "elsewhere",
+    opens: "calls", whereKey: "keys.where.phoneCalls" },
   { id: "box", section: "computers", labelKey: "keys.boat.label", purposeKey: "keys.purpose.box", name: "boat.dev", env: ["BOX_TOKEN"],
     words: ["boat", "box", "cloud desktop", "cloud computer", "computer", "sandbox"], mark: { icon: Monitor }, kind: "key",
     target: { patch: (value) => ({ box: { token: value } }), slot: "boxToken", verifiedOnSave: true,

@@ -466,7 +466,7 @@ export interface InstanceInfo extends InstanceEndpointInfo, InstanceRouterInfo {
 export type AppSettingsSection = SettingsPageId
   | "desktopWorkspaces" | "organization" | "cloudAccount" | "experimental" | "connections" | "decisionModel" | "imageGeneration"
   | "engines" | "companion" | "remote" | "computer" | "logins" | "botAccess" | "activity" | "backups" | "workspaces"
-  | "skills" | "import" | "updates";
+  | "skills" | "import" | "updates" | "calls";
 export type SettingsPageId = "overview" | "phone" | "ai" | "bots" | "desktops" | "vault" | "usage" | "transfer" | "data" | "people"
   | "installations" | "account" | "plan" | "app" | "general" | "appearance";
 

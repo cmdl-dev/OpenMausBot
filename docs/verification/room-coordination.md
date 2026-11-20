@@ -66,7 +66,7 @@ Regression checks (all use disposable fixtures):
 
 ```sh
 pnpm exec vitest run server/runtime/ server/runtime-coordinator.test.ts server/direct-coordination.e2e.test.ts server/room-coordination.e2e.test.ts
-pnpm exec vitest run server/delta-context.e2e.test.ts -t "restart"
+pnpm exec vitest run server/delta-context-restart.e2e.test.ts server/delta-context-replay.e2e.test.ts -t "restart"
 pnpm exec vitest run server/full-access-workflows.e2e.test.ts server/room-recovery.e2e.test.ts
 pnpm exec vitest run server/room-roots.e2e.test.ts
 OMB_UI_E2E=1 pnpm exec vitest run scripts/testing/direct-coordination-ui.e2e.test.ts

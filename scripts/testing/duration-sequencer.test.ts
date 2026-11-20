@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BaseSequencer, type TestSequencerConstructor, type TestSpecification, type Vitest } from "vitest/node";
 import viteConfig from "../../vite.config.ts";
-import { VITEST_SHARDS } from "../ci-scope.mjs";
-import { DurationSequencer, SHARD_WEIGHTS_FILE, loadPlatformShardWeights, loadShardWeights, planShards, weightKey } from "./duration-sequencer.ts";
+import { VITEST_SHARDS, VITEST_WORKERS } from "../ci-scope.mjs";
+import {
+  DurationSequencer, FIRST_SHARD_EXTRA_SECONDS, SHARD_WEIGHTS_FILE, firstShardHead, loadPlatformShardWeights, loadShardWeights, planShards, weightKey,
+} from "./duration-sequencer.ts";
 import { isPortableE2e } from "./host-e2e.ts";
 import { buildWeights, mergePlatformWeights, parseVitestLog, RUNNER_PLATFORMS } from "./update-shard-weights.mjs";
 
@@ -28,7 +30,8 @@ function context(index: number, count: number, log: (line: string) => void = () 
 /** Each CI platform's files, weights and shard count, as ci-scope.mjs and ci.yml run them. */
 const CI_PLATFORMS = Object.entries(VITEST_SHARDS).map(([os, count]) => {
   const platform = RUNNER_PLATFORMS[os as keyof typeof RUNNER_PLATFORMS] as NodeJS.Platform;
-  return { os, platform, count, files: os === "ubuntu-latest" ? FILES : FILES.filter((file) => !isPortableE2e(file)) };
+  const workers = VITEST_WORKERS[os as keyof typeof VITEST_WORKERS];
+  return { os, platform, count, workers, files: os === "ubuntu-latest" ? FILES : FILES.filter((file) => !isPortableE2e(file)) };
 });
 
 async function split(Sequencer: TestSequencerConstructor, files: readonly string[], count: number) {
@@ -48,11 +51,19 @@ describe("vitest shard balance", () => {
     expect(viteConfig.test?.sequence?.sequencer ?? BaseSequencer).toBe(DurationSequencer);
   });
 
-  it.each(CI_PLATFORMS)("gives no $os shard much more recorded time than the others", ({ platform, count, files }) => {
-    const { loads } = planShards(files, loadShardWeights(ROOT, platform), count);
+  it.each(CI_PLATFORMS)("gives no $os shard much more recorded time than the others", ({ platform, count, files, workers }) => {
+    const { loads } = planShards(files, loadShardWeights(ROOT, platform), count, firstShardHead(platform, workers));
     const mean = loads.reduce((sum, load) => sum + load, 0) / loads.length;
     // equal file counts put three of the four slowest e2e files in one shard: ~1.4x the mean
     expect(Math.max(...loads) / mean, `recorded seconds per shard: ${loads.join(", ")}`).toBeLessThan(1.05);
+  });
+
+  it.each(CI_PLATFORMS)("has no $os file that outlasts its shard", ({ platform, count, files, workers }) => {
+    const weights = loadShardWeights(ROOT, platform);
+    const { loads } = planShards(files, weights, count, firstShardHead(platform, workers));
+    const shardSeconds = loads.reduce((sum, load) => sum + load, 0) / loads.length / workers;
+    const longer = files.filter((file) => (weights[file] ?? 0) > shardSeconds).map((file) => `${file} (${weights[file]}s)`);
+    expect(longer, `a shard's ${workers} files at once take about ${Math.round(shardSeconds)}s: split these`).toEqual([]);
   });
 
   it("runs every test file in exactly one shard for one to eight shards", async () => {
@@ -76,6 +87,18 @@ describe("vitest shard balance", () => {
     const forward = planShards(FILES, WEIGHTS, 4).shardOf;
     const backward = planShards(shuffled, WEIGHTS, 4).shardOf;
     expect(shuffled.map((file) => forward[FILES.indexOf(file)])).toEqual(backward);
+  });
+
+  it("gives the first shard less vitest work by the node tests its job runs after it", () => {
+    const weights = { "a.test.ts": 400, "b.test.ts": 400, "c.test.ts": 300, "d.test.ts": 100 };
+    expect(planShards(Object.keys(weights), weights, 2, 0).shardOf).toEqual([0, 1, 0, 1]);
+    const head = firstShardHead("linux", 4);
+    expect(head).toBe(FIRST_SHARD_EXTRA_SECONDS.linux * 4);
+    const { shardOf, loads } = planShards(Object.keys(weights), weights, 2, head);
+    expect(shardOf).toEqual([1, 0, 1, 1]);
+    expect(loads).toEqual([head + 400, 800]);
+    expect(planShards(Object.keys(weights), weights, 1, head).loads).toEqual([1200]);
+    expect(firstShardHead("freebsd", 4)).toBe(0);
   });
 
   it("keys Windows and POSIX paths the same way", () => {

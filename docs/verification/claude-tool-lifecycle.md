@@ -117,7 +117,7 @@ replacement session, not the abandoned one.
 
 ```sh
 pnpm exec vitest run server/drivers/claude.test.ts server/turn-context.test.ts server/resume-recovery.test.ts
-pnpm exec vitest run server/delta-context.e2e.test.ts -t "resets Claude's native context"
+pnpm exec vitest run server/delta-context-provenance.e2e.test.ts -t "resets Claude's native context"
 ```
 
 The second command launches a disposable server and fake CLI through the

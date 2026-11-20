@@ -97,6 +97,8 @@ jobs:
         run: node scripts/ci-scope.mjs
       - run: pnpm install --frozen-lockfile
       - name: Verify CI selection and documentation references
+        env:
+          OMB_VITEST_WORKERS: 4
         run: pnpm exec vitest run scripts/ci-scope.test.ts scripts/ci-linux-lanes.test.ts scripts/ci-workflow.test.ts scripts/testing/verification-docs.test.ts
       - name: Validate locale catalogs
         run: pnpm i18n:check
@@ -115,6 +117,8 @@ jobs:
       - name: Source guards
         # The tests that only read the source: seconds here, and they stay in the shards. On Nov 3-4 2026 one of them was
         # red on main for 11 hours, and each PR heard about it after about 70 minutes, once its shards had found a runner.
+        env:
+          OMB_VITEST_WORKERS: 4
         run: pnpm exec vitest run src/locales/ scripts/testing/file-size-ratchet.test.ts scripts/testing/index-route-ratchet.test.ts scripts/testing/tighten-ratchets.test.ts scripts/testing/comment-history.test.ts scripts/testing/lazy-server-modules.test.ts scripts/testing/duration-sequencer.test.ts scripts/testing/host-e2e.test.ts scripts/testing/ci-retry-list.test.ts src/lib/copy-text.guard.test.ts src/components/Select.guard.test.ts --reporter=default --reporter=github-actions
       # The rest runs only on a Boat VM, where ci-scope moved the Linux jobs' work into this job.
       - name: Remove what Boat installs and GitHub's runners lack
@@ -628,10 +632,20 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - name: Restore the smoke tools' packages
+        # Ubuntu's mirror once took 5 min 13 s for these 26 MB (82 kB/s). apt downloads only what the cache lacks.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/omb-apt
+          key: apt-ubuntu-24.04-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-ubuntu-24.04-
       - name: Install package validation and native smoke tools
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          at-spi2-core dbus-x11 desktop-file-utils libxi6 libxkbcommon0 openbox squashfs-tools x11-utils xdotool xvfb
+        run: |
+          mkdir -p ~/.cache/omb-apt/partial
+          sudo apt-get update
+          sudo apt-get install -y -o Dir::Cache::Archives="$HOME/.cache/omb-apt" \
+            at-spi2-core dbus-x11 desktop-file-utils libxi6 libxkbcommon0 openbox squashfs-tools x11-utils xdotool xvfb
+          sudo chown -R "$(id -u):$(id -g)" ~/.cache/omb-apt
       - run: pnpm install --frozen-lockfile
       - name: Stage the pinned CUA runtime
         run: pnpm build:cua:linux

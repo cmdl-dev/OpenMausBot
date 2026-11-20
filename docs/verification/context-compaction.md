@@ -10,7 +10,7 @@ when no model wrote the summary, it says the agent continues from recent excerpt
 
 ```sh
 pnpm exec vitest run server/context-compaction.e2e.test.ts
-pnpm exec vitest run server/context-rebuild.test.ts server/compaction-summary.test.ts server/context-budget.test.ts server/delta-context.e2e.test.ts
+pnpm exec vitest run server/context-rebuild.test.ts server/compaction-summary.test.ts server/context-budget.test.ts server/delta-context.e2e.test.ts server/delta-context-provenance.e2e.test.ts server/delta-context-restart.e2e.test.ts server/delta-context-replay.e2e.test.ts server/delta-context-engine-switch.e2e.test.ts
 pnpm exec vitest run server/side-jobs.test.ts server/helper-model.e2e.test.ts
 pnpm exec vitest run server/store.test.ts server/config.test.ts src/components/DigestChip.test.ts
 pnpm test:packaged-server

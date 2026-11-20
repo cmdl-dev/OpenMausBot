@@ -141,6 +141,27 @@ counts one second, or the median e2e time if it is an e2e file. Every file
 still runs exactly once, and each shard job logs a `duration-sequencer:` line
 with its share.
 
+The first shard's job also runs the broker and Electron node tests after
+Vitest, about a minute and a half, so the sequencer starts that shard with
+those seconds (times the files it runs at once) already counted, and it gets
+that much less Vitest work.
+
+A shard can end no sooner than its slowest file, and the files in a shard run
+side by side on a busy runner, so one file's tests take two or three times
+their solo time there. `scripts/testing/duration-sequencer.test.ts` fails
+when a file's recorded time is longer than its platform's shard takes: split
+that file. The delta-context suite was one file of 48 server-driving tests
+that took 12 minutes on its own and set the length of every run; it is now
+five files that share one fixture
+(`server/testing/delta-context-fixture.ts`).
+
+Each fixture server and fake engine is a fresh `node` process that compiles
+the server's TypeScript again. `server/testing/setup.ts` points
+`NODE_COMPILE_CACHE` at one folder under the OS temp directory, and the
+fixture launcher passes it to the server, so after the first boot on a runner
+each one loads V8's cached code instead. On a developer Mac, eight e2e files
+at four workers took 13 to 22 percent less time with it.
+
 Refresh the times from a few recent nightly or manual runs (they have all
 three platforms) when shards drift apart:
 
@@ -351,8 +372,8 @@ vitest runner (`scripts/testing/ci-retry-runner.ts`) gives each listed test
 two retries; nothing else is retried, and local runs never retry. Retries
 are bounded per file: once a listed test fails all three attempts, that is a
 real failure, and the file's later listed tests get no retry. Otherwise a
-regression that breaks a whole fixture (six listed tests share
-`server/delta-context.e2e.test.ts`) would triple their wall time and push the
+regression that breaks a whole fixture (four listed tests share
+`server/delta-context-replay.e2e.test.ts`) would triple their wall time and push the
 Linux shard past its 25-minute cap, and a timed-out job loses the failing
 tests' annotations and this summary. The cost: a real flake listed after a
 broken test in the same file is not retried in that run. A listed

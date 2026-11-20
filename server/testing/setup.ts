@@ -12,6 +12,9 @@ process.env.HOME = home;
 process.env.USERPROFILE = home;
 // A provider that answers 5xx retries with backoff: no test should wait out real seconds.
 process.env.FAKE_OPENAI_COMPAT_RETRY_SCALE ??= "0.001";
+// Node keeps the V8 code of every module a spawned server or fake engine compiles here (Node 22.1+), so the next one
+// starts without compiling the server again. Entries are keyed by source content, so one folder serves every checkout.
+process.env.NODE_COMPILE_CACHE ??= join(tmpdir(), "omb-test-compile-cache");
 // OMB_DATA_DIR must never escape the throwaway home the suite deletes.
 delete process.env.OMB_DATA_DIR;
 // The model manifest comes from the bundled copy in tests; refreshing it would be a network call in every server boot.

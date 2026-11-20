@@ -54,7 +54,7 @@ async function build(session: Awaited<ReturnType<typeof launchVerificationServer
   // Wrap the fake Claude so each launch records its owner, its --resume or
   // --session-id, and runs under the mode in <dataDir>/claude-mode:
   // "api-error", or "resume=dead-session" for --resume launches only (the
-  // wrapper of server/delta-context.e2e.test.ts, for this engine alone). A
+  // wrapper of server/testing/delta-context-fixture.ts, for this engine alone). A
   // process kept warm between turns ends once it is idle after the mode
   // changed, as a CLI that exited between turns would.
   const wrapper = join(dataDir, "claude.mjs");

@@ -1,0 +1,172 @@
+# Phone calls
+
+A bot can phone someone for you: a restaurant, a doctor's office, a shop. The bot
+writes a brief, you approve the call, and an OpenAI Realtime voice talks to the
+person from that brief over Twilio. A card in the conversation follows the call
+(dialing, ringing, on the call, ended) with a **Hang up** button. When the call
+ends, the bot gets the transcript and posts a summary in the chat.
+
+Every call:
+
+- waits for your tap on **Send on your behalf?**, whatever the bot's sending rule
+  or access level;
+- opens with Twilio saying *"Hi, this is an AI assistant calling on behalf of
+  &lt;name&gt;. This call is transcribed."* before the voice speaks;
+- ends after **10 minutes** by default (the voice is asked to wrap up 45 seconds
+  before the limit);
+- hangs up when voicemail or an answering machine picks up, without leaving a
+  message;
+- keeps a speaker-labelled, timestamped transcript (AI voice, callee, notes) in
+  `~/.openmausbot/calls/`. The bot reads it as outside data, never as
+  instructions.
+
+The bot's tools are `place_call`, `call_status`, `hang_up` and
+`get_call_transcript`. They appear once any phone call setting is saved, and the
+person can turn them off per bot (Settings → Access → Tools → Phone calls).
+Until every setting is in place, `place_call` and Settings → Phone calls name
+exactly what is missing.
+
+## Settings
+
+| What | Settings label | `config.json` | Environment variable |
+| --- | --- | --- | --- |
+| Twilio Account SID (`AC…`) | Settings → API keys → Twilio Account SID | `calls.accountSid` | `OMB_TWILIO_ACCOUNT_SID` |
+| Twilio auth token | Settings → API keys → Twilio auth token | `calls.authToken` | `OMB_TWILIO_AUTH_TOKEN` |
+| Caller ID number, E.164 (`+14155550123`) | Settings → Phone calls → Caller ID number | `calls.callerId` | `OMB_CALLS_CALLER_ID` |
+| OpenAI API key (the existing one is reused) | Settings → API keys → OpenAI | `openai.key` | `OMB_OPENAI_API_KEY` |
+| Public address (https) | Settings → Phone calls → Public address | `calls.publicUrl` | `OMB_CALLS_PUBLIC_URL` |
+| Max call minutes (1–60, default 10) | Settings → Phone calls | `calls.maxMinutes` | `OMB_CALLS_MAX_MINUTES` |
+| Realtime model (default `gpt-realtime-2.1-mini`) | Settings → Phone calls | `calls.model` | `OMB_CALLS_REALTIME_MODEL` |
+| Voice (default `marin`) | Settings → Phone calls | `calls.voice` | `OMB_CALLS_VOICE` |
+| Allowlist (numbers or prefixes like `+1415*`) | Settings → Phone calls | `calls.allow` | `OMB_CALLS_ALLOW` (comma separated) |
+| Denylist (wins over the allowlist) | Settings → Phone calls | `calls.deny` | `OMB_CALLS_DENY` (comma separated) |
+| Name the voice calls for (default: your profile name) | Settings → Phone calls | `calls.onBehalfOf` | `OMB_CALLS_ON_BEHALF_OF` |
+| Call listener port (default 8805) | Settings → Phone calls | `calls.port` | `OMB_CALLS_PORT` |
+
+On the desktop app the Account SID and auth token are stored encrypted like
+every other API key. With no settings at all the server starts normally and
+offers no call tools; `GET /api/calls/setup` lists what is missing.
+
+A non-empty allowlist admits only the numbers it names. The denylist always
+wins. A bot can't call the caller ID number itself, and runs one call at a time.
+
+## Twilio
+
+1. Create a Twilio account and copy the **Account SID** and **Auth token** from
+   the Console's front page into Settings → API keys.
+2. Pick the caller ID:
+   - **A number you already own** (your mobile, say): Console → Phone Numbers →
+     Manage → **Verified Caller IDs** → *Add a new Caller ID*. Twilio calls or
+     texts it with a code. Once verified, enter it in E.164 form as the Caller
+     ID number.
+   - Or a Twilio number bought on the account (Phone Numbers → Buy a number).
+3. Console → Voice → Settings → **Geo permissions**: turn on each country you
+   want to call.
+4. A **trial** account can only call verified numbers and plays a trial notice
+   before every call; upgrade the account for normal calls.
+
+Twilio errors come back to the bot in plain words (an unverified caller ID, a
+trial account calling an unverified number, a country turned off, a wrong
+token).
+
+## The public address
+
+Twilio has to reach OpenMausBot from the internet: it fetches what to do when
+the callee answers, posts the call's progress, and opens a WebSocket that
+carries the call's audio. OpenMausBot answers these on a **separate call
+listener** on `127.0.0.1:8805` (change it with `calls.port`). That listener
+answers only these paths and returns 404 for everything else, so exposing it
+exposes nothing else of OpenMausBot:
+
+| Path | Kind | Check |
+| --- | --- | --- |
+| `/calls/twilio/answer/<call id>` | HTTP POST (returns TwiML) | `X-Twilio-Signature` |
+| `/calls/twilio/status/<call id>` | HTTP POST | `X-Twilio-Signature` |
+| `/calls/twilio/machine/<call id>` | HTTP POST | `X-Twilio-Signature` |
+| `/calls/twilio/stream/<call id>/<token>` | WebSocket | the call's one-time 48-hex token |
+
+Expose **only port 8805**, never the app's own port (8799) or the webhook port
+(8800). Forward paths unchanged and keep WebSockets on. The public address you
+enter is the https origin that reaches the listener, e.g.
+`https://calls.example.com`.
+
+### Cloudflare Tunnel (recommended on the Mac mini)
+
+A named tunnel keeps a stable hostname. With a domain on Cloudflare:
+
+```sh
+cloudflared tunnel login
+cloudflared tunnel create omb-calls
+cloudflared tunnel route dns omb-calls calls.example.com
+```
+
+`~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: omb-calls
+credentials-file: /Users/<you>/.cloudflared/<tunnel id>.json
+ingress:
+  - hostname: calls.example.com
+    service: http://127.0.0.1:8805
+  - service: http_status:404
+```
+
+Then `cloudflared tunnel run omb-calls` (or `sudo cloudflared service install`
+to start it at boot) and set the public address to `https://calls.example.com`.
+Cloudflare passes WebSockets through by default. A quick tunnel
+(`cloudflared tunnel --url http://127.0.0.1:8805`) works for a test, but its
+`trycloudflare.com` address changes every time it starts.
+
+The `cloudflared` already running on the Mac mini belongs to T3 Code; leave it
+alone and run this one as its own tunnel.
+
+### Tailscale Funnel
+
+Funnel publishes one of the ports 443, 8443 or 10000 of the machine's
+`ts.net` name, and makes **everything served on that port public**. On the Mac
+mini all three already carry tailnet-only Serve mounts (443 → T3 Code, 8443 and
+10000 → other local services), so turning Funnel on for any of them would
+publish those too. Use Funnel only on a port with nothing else on it, for
+example after moving one of those mounts:
+
+```sh
+tailscale funnel --bg --https=10000 http://127.0.0.1:8805
+```
+
+and set the public address to `https://<machine>.<tailnet>.ts.net:10000`.
+
+## Checking it
+
+- Settings → Phone calls shows **Ready**, or the missing settings and the env
+  variable for each.
+- `curl https://calls.example.com/calls/twilio/status/x` should answer `404`
+  (the listener is reachable and refuses anything that isn't a call path).
+- Ask a bot to call your own mobile. Approve the card, answer, and talk to it.
+  After you hang up, the bot posts a summary; the transcript is under
+  Settings → Phone calls → Call history.
+
+## Putting this branch on the Mac mini
+
+The Mac mini runs the packaged desktop app built from
+`/Users/cmdl/work/OpenMausBot-codex` (main). To run this branch there:
+
+1. Quit OpenMausBot (menu bar → Quit), so nothing is mid-turn.
+2. In `/Users/cmdl/work/OpenMausBot-codex`: `git fetch origin` and
+   `git checkout feat/phone-calls` (or merge it into main once reviewed), then
+   `pnpm install --frozen-lockfile`.
+3. `pnpm package:mac` and open the new
+   `release/mac-arm64/OpenMausBot.app` (the data in `~/.openmausbot` stays).
+4. Settings → API keys: Twilio Account SID, Twilio auth token (OpenAI is already
+   there if Live calls work). Settings → Phone calls: Caller ID number and
+   Public address.
+5. Start the tunnel to port 8805 and check it as above.
+
+To go back, check out main again and rebuild; the `calls` settings are ignored
+by builds without phone calls.
+
+## Not yet
+
+- Telnyx: the provider sits behind `CallProvider` (`server/calls/provider.ts`);
+  only Twilio is implemented.
+- Incoming calls.
+- Leaving a voicemail message.

@@ -249,7 +249,7 @@ describe("PATCH /api/bots/:id toolsOff", () => {
     expect(store.bot(bot.id)?.toolsOff).toEqual(["meetings", "pages"]);
     const refused = await patch(bot.id, { toolsOff: ["browser"] });
     expect(refused.status).toBe(400);
-    expect(refused.body.error).toBe("toolsOff must be a list of meetings, data, pages, images, email");
+    expect(refused.body.error).toBe("toolsOff must be a list of meetings, calls, data, pages, images, email");
     expect((await patch(bot.id, { toolsOff: "meetings" })).status).toBe(400);
     expect(store.bot(bot.id)?.toolsOff).toEqual(["meetings", "pages"]);
     expect((await patch(bot.id, { toolsOff: [] })).status).toBe(200);

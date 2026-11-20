@@ -14,7 +14,7 @@ describe("tool groups a bot has off", () => {
   });
 
   it("offers the groups this workspace has, Pages and apps always", () => {
-    expect(availableToolGroups({ meetings: false, data: false, images: false, email: false })).toEqual(["pages"]);
-    expect(availableToolGroups({ meetings: true, data: true, images: true, email: true })).toEqual(["meetings", "data", "pages", "images", "email"]);
+    expect(availableToolGroups({ meetings: false, calls: false, data: false, images: false, email: false })).toEqual(["pages"]);
+    expect(availableToolGroups({ meetings: true, calls: true, data: true, images: true, email: true })).toEqual(["meetings", "calls", "data", "pages", "images", "email"]);
   });
 });

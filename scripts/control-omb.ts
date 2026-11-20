@@ -190,6 +190,16 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     childEnv.OMB_OPENAI_LIVE_URL = liveUrl;
     if (parentEnv.OMB_OPENAI_LIVE_KEY) childEnv.OMB_OPENAI_LIVE_KEY = parentEnv.OMB_OPENAI_LIVE_KEY;
   }
+  // Phone calls against loopback stand-ins only (server/testing/fake-twilio.ts): the Twilio and OpenAI credentials cross
+  // only with both stand-ins, so no test reaches the real Twilio or OpenAI.
+  const twilioUrl = parentEnv.OMB_TWILIO_API_URL?.trim() ?? "";
+  const realtimeUrl = parentEnv.OMB_CALLS_REALTIME_URL?.trim() ?? "";
+  if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(twilioUrl) && /^ws:\/\/127\.0\.0\.1:\d{1,5}$/.test(realtimeUrl)) {
+    Object.assign(childEnv, { OMB_TWILIO_API_URL: twilioUrl, OMB_CALLS_REALTIME_URL: realtimeUrl });
+    for (const key of ["OMB_TWILIO_ACCOUNT_SID", "OMB_TWILIO_AUTH_TOKEN", "OMB_CALLS_CALLER_ID", "OMB_CALLS_PUBLIC_URL", "OMB_CALLS_PORT", "OMB_OPENAI_API_KEY"]) {
+      if (parentEnv[key]) childEnv[key] = parentEnv[key];
+    }
+  }
   // A loopback stand-in for Postiz Cloud only (server/testing/fake-postiz.ts): no test signs in to the real one.
   const postizUrl = parentEnv.OMB_POSTIZ_CLOUD_URL?.trim() ?? "";
   if (/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(postizUrl)) childEnv.OMB_POSTIZ_CLOUD_URL = postizUrl;

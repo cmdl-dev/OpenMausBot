@@ -32,6 +32,8 @@ export interface CatalogProfile {
   imageGeneration?: boolean;
   /** A cloud computer can be had here (Boat): the meeting tools and reset_cloud_computer are mounted. */
   meetings?: boolean;
+  /** Phone calls are being set up here (a Twilio or call setting is saved): the call tools are mounted. */
+  phoneCalls?: boolean;
   /** The plan's included app hosting reaches this server: publish_app is mounted. */
   appHosting?: boolean;
   /** The tool groups this bot's person turned off: none of their tools is mounted. */
@@ -56,6 +58,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     room: env.OMB_ROOM === "1",
     imageGeneration: env.OMB_IMAGE_GENERATION === "1",
     meetings: env.OMB_MEETINGS === "1",
+    phoneCalls: env.OMB_PHONE_CALLS === "1",
     appHosting: env.OMB_APP_HOSTING === "1",
     toolsOff: toolsOffFromEnv(env.OMB_TOOLS_OFF),
   };

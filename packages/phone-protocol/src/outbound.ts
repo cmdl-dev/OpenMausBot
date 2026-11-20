@@ -35,8 +35,8 @@ const SEND_VERBS = new Set([
 ]);
 
 /** Creating one of these is sending it: a created comment is a comment
- * someone reads, a created invoice is one someone receives, a created call rings someone. */
-const CREATE_VERBS = new Set(["CREATE", "CREATION", "ADD", "NEW", "MAKE"]);
+ * someone reads, a created invoice is one someone receives, a created or placed call rings someone. */
+const CREATE_VERBS = new Set(["CREATE", "CREATION", "ADD", "NEW", "MAKE", "PLACE"]);
 const SENT_NOUNS = new Set(["MESSAGE", "COMMENT", "POST", "EMAIL", "MAIL", "INVOICE", "PAYMENT", "REFUND", "REPLY", "TWEET", "DM", "CALL"]);
 
 /** Telnyx's hosted server reaches its whole API through one tool, so any call of it may ring, text or buy. */

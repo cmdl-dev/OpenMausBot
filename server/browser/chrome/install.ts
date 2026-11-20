@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { dirname, join, win32 } from "node:path";
+import { dirname, join, posix, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 import { renameWithRetry } from "../../atomic.ts";
@@ -53,6 +53,20 @@ export function chromeForTestingExecutable(dataDir: string, pin: Pick<ChromeForT
   const relative = EXECUTABLES[pin.platform];
   if (!relative) throw new Error(`Chrome for Testing has no known layout for ${pin.platform}.`);
   return join(chromeForTestingDirectory(dataDir, pin), relative);
+}
+
+/** The folder Chrome for Testing's archive unpacks into, e.g. `chrome-linux64`. */
+export function chromeForTestingArchiveFolder(pin: Pick<ChromeForTestingPin, "platform">): string {
+  const relative = EXECUTABLES[pin.platform];
+  if (!relative) throw new Error(`Chrome for Testing has no known layout for ${pin.platform}.`);
+  return relative.split("/")[0]!;
+}
+
+/** Where a server's root-owned copy lives: AppArmor lets only a copy its service user cannot replace use Chrome's sandbox. */
+export const SANDBOX_CHROME_ROOT = "/opt/openmausbot-browser";
+
+export function sandboxChromeExecutable(pin: Pick<ChromeForTestingPin, "version">): string {
+  return posix.join(SANDBOX_CHROME_ROOT, `chrome-${pin.version}`, "chrome");
 }
 
 export interface DownloadProgress { received: number; total: number }

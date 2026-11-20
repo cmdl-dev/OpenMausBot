@@ -21,13 +21,17 @@ while the server runs:
    `/etc/opt/chrome/policies/managed`). Bots get profiles of their own; the
    person's Chrome profile is never touched. A Google Chrome that cannot start
    headless gives way to Chrome for Testing where one is pinned.
-3. **Chrome for Testing** 153.0.8010.47, downloaded once into `tools/chrome/` in
+3. On a Linux server, the root-owned copy of the pinned Chrome for Testing at
+   `/opt/openmausbot-browser/chrome-VERSION/chrome`. The service's root step
+   installs it where AppArmor blocks Chrome's sandbox
+   ([deploy-vps](deploy-vps.md#ubuntu-2404-browser-sandbox)).
+4. **Chrome for Testing** 153.0.8010.47, downloaded once into `tools/chrome/` in
    the data directory, checked against its pinned size and SHA-256 before it is
    unpacked, and moved into place in one rename. Only Apple silicon Macs and
    Linux servers on x64 or arm64 have a pin (`scripts/pin-chrome-for-testing.ts`
    measures more). A browser call made during the download waits up to 45
    seconds, then says how far it got. A server needs `unzip` for it.
-4. Otherwise there is no bot browser: Windows, Intel Macs and Linux desktops
+5. Otherwise there is no bot browser: Windows, Intel Macs and Linux desktops
    without Google Chrome. Settings, the bot's Access settings and its Browser
    panel say so, and that installing Google Chrome, then restarting
    OpenMausBot, fixes it.

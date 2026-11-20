@@ -9,6 +9,8 @@ import {
 } from "./service-unit.ts";
 import { defaultSentinelOut, outRefusal } from "./sentinel/paths.ts";
 import { cliCommand } from "./cli-invocation.ts";
+import { SANDBOX_SCRIPT_PATH, sandboxSetupScript } from "./browser/chrome/host-setup.ts";
+import { chromeForTestingPin } from "./browser/chrome/install.ts";
 
 export interface ServiceInstallInput {
   action: "install" | "uninstall";
@@ -33,6 +35,7 @@ export interface ServiceInstallInput {
   /** Under npx: installs `openmausbot@version` into `prefix` and resolves whether npm succeeded. */
   installCopy?: (prefix: string, version: string) => boolean;
   platform?: NodeJS.Platform;
+  arch?: string;
   home?: string;
   user?: string;
 }
@@ -60,7 +63,8 @@ export function runServiceCommand(input: ServiceInstallInput, io: ServiceIo): nu
   const platform = input.platform ?? process.platform;
   const home = input.home ?? homedir();
   if (input.sentinel) return runSentinelService(input, platform, home, io);
-  const plan = servicePlan(platform, input.dataDir, home);
+  const chromePin = platform === "linux" ? chromeForTestingPin(platform, input.arch ?? process.arch) : null;
+  const plan = servicePlan(platform, input.dataDir, home, chromePin ? { browserSandbox: SANDBOX_SCRIPT_PATH } : {});
   if (!plan) {
     io.error("services are written for Linux (systemd) and macOS (launchd); on Windows, use Task Scheduler to run `openmausbot serve` at startup");
     return 1;
@@ -86,11 +90,16 @@ export function runServiceCommand(input: ServiceInstallInput, io: ServiceIo): nu
     bindsLowPorts: Boolean(input.domain),
     ...(input.label ? { label: input.label } : {}),
     ...(script !== input.script ? { cliPrefix: "npx openmausbot" } : {}),
+    ...(plan.browserSandbox ? { browserSandbox: plan.browserSandbox.installed } : {}),
   };
   const rendered = platform === "darwin" ? launchdPlist(spec) : systemdUnit(spec);
   mkdirSync(input.dataDir, { recursive: true, mode: 0o700 });
   writeFileSync(plan.file, rendered, { mode: 0o644 });
   io.log(`wrote ${plan.file}`);
+  if (plan.browserSandbox && chromePin) {
+    writeFileSync(plan.browserSandbox.file, sandboxSetupScript(chromePin), { mode: 0o755 });
+    io.log(`wrote ${plan.browserSandbox.file}, which lets the bots' Chrome use its sandbox where AppArmor blocks it (Ubuntu 23.10+)`);
+  }
   io.log("");
   io.log(platform === "darwin" ? "to install and start it (runs at login):" : "to install and start it (runs at boot, restarts if it stops):");
   for (const line of plan.activate) io.log(`  ${line}`);

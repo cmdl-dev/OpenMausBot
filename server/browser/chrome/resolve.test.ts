@@ -88,6 +88,15 @@ describe("which Chrome the bots' browser runs", () => {
     expect(resolveChromePlan({ ...host("linux", []), arch: "ia32" })).toEqual(NOT_INSTALLED);
   });
 
+  it("on a Linux server runs the root-owned copy the service's sandbox step installed, ahead of a download into the data dir", () => {
+    const pin = chromeForTestingPin("linux", "arm64")!;
+    const sandboxed = `/opt/openmausbot-browser/chrome-${pin.version}/chrome`;
+    const downloaded = chromeForTestingExecutable("/data", pin);
+    expect(resolveChromePlan(host("linux", [sandboxed, downloaded]))).toEqual({ kind: "chrome", chrome: { path: sandboxed, source: "sandboxed" }, fallback: null });
+    expect(resolveChromePlan(host("linux", ["/opt/openmausbot-browser/chrome-1.0.0.0/chrome", downloaded]))).toMatchObject({ chrome: { source: "downloaded" } });
+    expect(resolveChromePlan(host("darwin", [sandboxed]))).toEqual({ kind: "download", pin: chromeForTestingPin("darwin", "arm64") });
+  });
+
   it("on a Linux server downloads Chrome for Testing even where another Chromium is on PATH", () => {
     const withPath = host("linux", ["/usr/bin/chromium"], { env: { PATH: "/usr/local/bin:/usr/bin" } });
     expect(resolveChromePlan(withPath)).toMatchObject({ kind: "download" });

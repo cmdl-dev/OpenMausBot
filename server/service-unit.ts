@@ -15,6 +15,8 @@ export interface ServiceSpec {
   label?: string;
   /** How the person runs the CLI by hand, when it isn't `openmausbot` (a copy installed for the service). */
   cliPrefix?: string;
+  /** The root-owned script that lets the bots' Chrome use its sandbox, run as root before each start. */
+  browserSandbox?: string;
 }
 
 export const SYSTEMD_UNIT_NAME = "openmausbot.service";
@@ -48,6 +50,12 @@ export function systemdUnit(spec: ServiceSpec): string {
     `Environment=HOME=${spec.home}`,
     `Environment=OMB_DATA_DIR=${spec.dataDir}`,
     ...(spec.cliPrefix ? [`Environment=${quoteSystemd(`OMB_CLI_PREFIX=${spec.cliPrefix}`)}`] : []),
+    ...(spec.browserSandbox ? [
+      "# As root before each start: lets the bots' Chrome use its sandbox where AppArmor blocks it; a failure is logged and ignored.",
+      `ExecStartPre=-+${quoteSystemd(spec.browserSandbox)}`,
+      "# The first start downloads Chrome there (about 200 MB).",
+      "TimeoutStartSec=15min",
+    ] : []),
     `ExecStart=${serviceCommand(spec).map(quoteSystemd).join(" ")}`,
     "Restart=always",
     "RestartSec=3",
@@ -115,14 +123,31 @@ export function unstableInstallWarning(script: string): string | null {
   return null;
 }
 
-export function servicePlan(platform: NodeJS.Platform, dataDir: string, home = homedir()): { file: string; installed: string; activate: string[]; deactivate: string[] } | null {
+export interface ServicePlan {
+  file: string;
+  installed: string;
+  /** The browser sandbox script as written beside the data, and where root's copy goes. */
+  browserSandbox?: { file: string; installed: string };
+  activate: string[];
+  deactivate: string[];
+}
+
+export function servicePlan(platform: NodeJS.Platform, dataDir: string, home = homedir(), options: { browserSandbox?: string } = {}): ServicePlan | null {
   if (platform === "linux") {
     const installed = `/etc/systemd/system/${SYSTEMD_UNIT_NAME}`;
+    const sandbox = options.browserSandbox ? { file: join(dataDir, basename(options.browserSandbox)), installed: options.browserSandbox } : undefined;
     return {
       file: join(dataDir, SYSTEMD_UNIT_NAME),
       installed,
-      activate: [`sudo install -m 644 ${join(dataDir, SYSTEMD_UNIT_NAME)} ${installed}`, "sudo systemctl daemon-reload", `sudo systemctl enable --now ${basename(SYSTEMD_UNIT_NAME, ".service")}`],
-      deactivate: [`sudo systemctl disable --now ${basename(SYSTEMD_UNIT_NAME, ".service")}`, `sudo rm ${installed}`, "sudo systemctl daemon-reload"],
+      ...(sandbox ? { browserSandbox: sandbox } : {}),
+      activate: [
+        ...(sandbox ? [`sudo install -m 755 -o root -g root ${sandbox.file} ${sandbox.installed}`] : []),
+        `sudo install -m 644 ${join(dataDir, SYSTEMD_UNIT_NAME)} ${installed}`, "sudo systemctl daemon-reload", `sudo systemctl enable --now ${basename(SYSTEMD_UNIT_NAME, ".service")}`,
+      ],
+      deactivate: [
+        `sudo systemctl disable --now ${basename(SYSTEMD_UNIT_NAME, ".service")}`, `sudo rm ${installed}`, "sudo systemctl daemon-reload",
+        ...(sandbox ? [`sudo rm -f ${sandbox.installed}`] : []),
+      ],
     };
   }
   if (platform === "darwin") {

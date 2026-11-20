@@ -6,9 +6,9 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, resolve, win32 } from "node:path";
 
-import { chromeForTestingExecutable, chromeForTestingPin, type ChromeForTestingPin } from "./install.ts";
+import { chromeForTestingExecutable, chromeForTestingPin, sandboxChromeExecutable, type ChromeForTestingPin } from "./install.ts";
 
-export type ChromeSource = "installed" | "downloaded" | "named";
+export type ChromeSource = "installed" | "downloaded" | "sandboxed" | "named";
 
 export interface FoundChrome { path: string; source: ChromeSource }
 
@@ -96,6 +96,8 @@ export function resolveChromePlan(host: ChromeHost): ChromePlan {
   const managed = installed !== null && chromePolicyManaged(host);
   if (installed && !managed) return { kind: "chrome", chrome: { path: installed, source: "installed" }, fallback: pin };
   if (pin) {
+    const sandboxed = platform === "linux" ? sandboxChromeExecutable(pin) : null;
+    if (sandboxed && host.exists(sandboxed)) return { kind: "chrome", chrome: { path: sandboxed, source: "sandboxed" }, fallback: null };
     const executable = chromeForTestingExecutable(host.dataDir, pin);
     if (host.exists(executable)) return { kind: "chrome", chrome: { path: executable, source: "downloaded" }, fallback: null };
     return { kind: "download", pin };

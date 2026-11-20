@@ -20,6 +20,7 @@ type State =
 const SOURCES: Record<FoundChrome["source"], string> = {
   installed: "installed",
   downloaded: "downloaded",
+  sandboxed: "root-owned copy allowed its sandbox",
   named: "named by OMB_CHROME_PATH",
 };
 
@@ -175,5 +176,5 @@ export class ChromeLauncher {
 function product(chrome: FoundChrome, identity?: ChromeIdentity): string {
   if (identity?.userAgentMetadata.brands.some(({ brand }) => brand === "Google Chrome")) return "Google Chrome";
   if (chrome.source === "installed") return "Google Chrome";
-  return chrome.source === "downloaded" || /for Testing|chrome-(?:linux|mac|win)/iu.test(chrome.path) ? "Chrome for Testing" : "Chromium";
+  return chrome.source === "downloaded" || chrome.source === "sandboxed" || /for Testing|chrome-(?:linux|mac|win)/iu.test(chrome.path) ? "Chrome for Testing" : "Chromium";
 }

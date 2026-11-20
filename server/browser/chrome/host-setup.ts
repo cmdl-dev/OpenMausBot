@@ -7,18 +7,19 @@
 // OMB turns Chrome's sandbox off by itself only in a container or when it runs
 // as root (needsNoSandbox), where a sandboxed Chrome cannot start and the
 // container is the isolation boundary. Anywhere else a host that cannot give
-// Chrome its sandbox gets the manual setup steps instead, and only an
-// operator's explicit OMB_BROWSER_SANDBOX=0 launches without it.
+// Chrome its sandbox gets setup steps instead (the service's root step, or by
+// hand), and only an operator's explicit OMB_BROWSER_SANDBOX=0 launches without it.
 
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import { needsNoSandbox } from "./identity.ts";
+import { chromeForTestingArchiveFolder, chromeForTestingUrl, SANDBOX_CHROME_ROOT, sandboxChromeExecutable, type ChromeForTestingPin } from "./install.ts";
 
 /** Installs the Linux libraries Chrome needs (as root, once). */
 export const LIBRARIES_COMMAND = "sudo openmausbot browser install --with-deps";
-/** There is no command for the sandbox: an administrator allows one root-owned Chrome by hand. */
+/** `openmausbot service install` sets the sandbox up before every start; these are its steps, and the ones by hand. */
 export const SANDBOX_STEPS_URL = "https://github.com/milind-soni/OpenMausBot/blob/main/docs/deploy-vps.md#ubuntu-2404-browser-sandbox";
 
 /** What Chrome prints before aborting when it cannot sandbox itself. */
@@ -65,6 +66,62 @@ profile ${APPARMOR_PROFILE_NAME} ${executable} flags=(unconfined) {
 `;
 }
 
+/** Where the systemd unit's root step lives: root runs only this root-owned copy, never the service user's writable CLI. */
+export const SANDBOX_SCRIPT_PATH = "/usr/local/sbin/openmausbot-browser-sandbox";
+
+/**
+ * The root step `openmausbot service install` puts before every start. Where
+ * AppArmor restricts user namespaces it installs the pinned Chrome for Testing,
+ * checked against its SHA-256, as a root-owned copy, and loads the profile that
+ * lets exactly that copy use its sandbox; elsewhere it does nothing.
+ */
+export function sandboxSetupScript(pin: ChromeForTestingPin): string {
+  if (!/^\d+(?:\.\d+)+$/.test(pin.version) || !/^[0-9a-f]{64}$/.test(pin.sha256)) throw new Error(`Chrome for Testing ${pin.version} has no usable pin.`);
+  const executable = sandboxChromeExecutable(pin);
+  const profile = appArmorProfile(executable);
+  return `#!/bin/sh
+# Written by \`openmausbot service install\`; openmausbot.service runs it as root
+# before each start. Where AppArmor blocks unprivileged user namespaces (Ubuntu
+# 23.10+), Chrome's sandbox needs a profile that names one root-owned executable:
+# this installs Chrome for Testing ${pin.version} at ${executable} and lets only
+# that copy use its sandbox. A failure here never stops the server starting.
+set -eu
+umask 022
+say() { echo "openmausbot-browser-sandbox: $*"; }
+
+restricted=$(cat ${USERNS_RESTRICTION} 2>/dev/null || echo 0)
+[ "$restricted" = 1 ] || exit 0
+for tool in curl sha256sum unzip apparmor_parser; do
+  command -v "$tool" >/dev/null 2>&1 || { say "$tool is missing; install it (sudo openmausbot browser install --with-deps installs unzip)" >&2; exit 1; }
+done
+
+root=${SANDBOX_CHROME_ROOT}
+dir=$root/chrome-${pin.version}
+if [ ! -x "$dir/chrome" ]; then
+  say "installing Chrome for Testing ${pin.version} into $dir"
+  install -d -o root -g root -m 0755 "$root"
+  work=$(mktemp -d "$root/.install.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
+  curl -fsSL --retry 3 -o "$work/chrome.zip" '${chromeForTestingUrl(pin)}'
+  echo "${pin.sha256}  $work/chrome.zip" | sha256sum -c - >/dev/null 2>&1 || { say "the Chrome download failed its SHA-256 check; nothing was installed" >&2; exit 1; }
+  unzip -q "$work/chrome.zip" -d "$work/unpacked"
+  chown -R root:root "$work/unpacked"
+  chmod -R go-w "$work/unpacked"
+  rm -rf "$dir"
+  mv "$work/unpacked/${chromeForTestingArchiveFolder(pin)}" "$dir"
+fi
+for old in "$root"/chrome-[0-9]*; do
+  [ "$old" = "$dir" ] || rm -rf "$old"
+done
+
+cat > ${APPARMOR_PROFILE_PATH}.new <<'PROFILE'
+${profile}PROFILE
+mv ${APPARMOR_PROFILE_PATH}.new ${APPARMOR_PROFILE_PATH}
+apparmor_parser -r ${APPARMOR_PROFILE_PATH}
+say "Chrome ${pin.version} may use its sandbox"
+`;
+}
+
 export type BrowserHostNeed = "sandbox" | "container" | "libraries";
 
 export class BrowserHostError extends Error {
@@ -73,7 +130,7 @@ export class BrowserHostError extends Error {
 
   constructor(kind: BrowserHostNeed, libraries: readonly string[] = []) {
     super(kind === "sandbox"
-      ? `This host blocks the sandbox the browser runs in (AppArmor on Ubuntu 23.10+). An administrator can allow it for one root-owned copy of Chrome, following ${SANDBOX_STEPS_URL}, then try again.`
+      ? `This host blocks the sandbox the browser runs in (AppArmor on Ubuntu 23.10+). An administrator can allow it for one root-owned copy of Chrome: run \`openmausbot service install\` and the sudo commands it prints, which set this up before every start, or follow ${SANDBOX_STEPS_URL}. Then try again.`
       : kind === "container"
       ? "Chrome's sandbox can't start in this container. The operator can set OMB_BROWSER_SANDBOX=0 to run the browser without it and rely on the container's isolation, then restart OpenMausBot."
       : `This host is missing libraries the browser needs (${libraries.join(", ")}). Run \`${LIBRARIES_COMMAND}\` on the host to install them, then try again.`);

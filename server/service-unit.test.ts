@@ -36,6 +36,18 @@ describe("service units", () => {
     expect(systemdUnit({ ...spec, dataDir: "/home/maus/My Data", serveArgs: ["--data-dir", "/home/maus/My Data"] })).toContain('ExecStart=/usr/bin/node /usr/lib/node_modules/openmausbot/cli.js serve --data-dir "/home/maus/My Data"');
   });
 
+  it("runs the browser sandbox's root step before each start, ignoring its failure, only when given one", () => {
+    const unit = systemdUnit({ ...spec, browserSandbox: "/usr/local/sbin/openmausbot-browser-sandbox" });
+    expect(unit).toContain("ExecStartPre=-+/usr/local/sbin/openmausbot-browser-sandbox");
+    expect(unit.indexOf("ExecStartPre=")).toBeLessThan(unit.indexOf("ExecStart="));
+    expect(unit).toContain("TimeoutStartSec=15min");
+    expect(systemdUnit(spec)).not.toContain("ExecStartPre");
+    const plan = servicePlan("linux", "/home/maus/.openmausbot", "/home/maus", { browserSandbox: "/usr/local/sbin/openmausbot-browser-sandbox" });
+    expect(plan?.browserSandbox).toEqual({ file: "/home/maus/.openmausbot/openmausbot-browser-sandbox", installed: "/usr/local/sbin/openmausbot-browser-sandbox" });
+    expect(plan?.activate[0]).toBe("sudo install -m 755 -o root -g root /home/maus/.openmausbot/openmausbot-browser-sandbox /usr/local/sbin/openmausbot-browser-sandbox");
+    expect(plan?.deactivate.at(-1)).toBe("sudo rm -f /usr/local/sbin/openmausbot-browser-sandbox");
+  });
+
   it("renders a launchd agent that keeps the server alive and logs under the data dir", () => {
     const plist = launchdPlist({ ...spec, home: "/Users/maus", dataDir: "/Users/maus/.openmausbot" });
     expect(plist).toContain("<string>com.openmausbot.serve</string>");

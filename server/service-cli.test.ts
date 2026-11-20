@@ -49,6 +49,18 @@ describe("openmausbot service", () => {
     expect(installs).toEqual([join(dir, "x", "app", "latest"), join(dir, "x", "app", "latest")]);
   });
 
+  it("on a Linux server with a Chrome for Testing pin, writes the browser sandbox's root step beside the unit and installs it first", () => {
+    expect(runServiceCommand({ action: "install", dataDir: dir, port: 8799, tunnel: true, script: "/usr/lib/node_modules/openmausbot/cli.js", node: "/usr/bin/node", platform: "linux", arch: "x64", home: "/home/maus", user: "maus" }, io)).toBe(0);
+    expect(readFileSync(join(dir, "openmausbot-browser-sandbox"), "utf8")).toContain("apparmor_parser -r /etc/apparmor.d/openmausbot-chrome");
+    expect(readFileSync(join(dir, "openmausbot.service"), "utf8")).toContain("ExecStartPre=-+/usr/local/sbin/openmausbot-browser-sandbox");
+    expect(out.join("\n")).toContain(`sudo install -m 755 -o root -g root ${join(dir, "openmausbot-browser-sandbox")} /usr/local/sbin/openmausbot-browser-sandbox`);
+
+    const other = join(dir, "other");
+    expect(runServiceCommand({ action: "install", dataDir: other, port: 8799, tunnel: true, script: "/usr/lib/node_modules/openmausbot/cli.js", node: "/usr/bin/node", platform: "linux", arch: "ia32", home: "/home/maus", user: "maus" }, io)).toBe(0);
+    expect(existsSync(join(other, "openmausbot-browser-sandbox"))).toBe(false);
+    expect(readFileSync(join(other, "openmausbot.service"), "utf8")).not.toContain("ExecStartPre");
+  });
+
   it("writes a launchd agent on macOS and explains uninstall on both", () => {
     expect(runServiceCommand({ action: "install", dataDir: dir, port: 8799, tunnel: true, script: "/opt/homebrew/lib/node_modules/openmausbot/cli.js", node: "/opt/homebrew/bin/node", platform: "darwin", home: "/Users/maus" }, io)).toBe(0);
     expect(readFileSync(join(dir, "com.openmausbot.serve.plist"), "utf8")).toContain("<string>--tunnel</string>");

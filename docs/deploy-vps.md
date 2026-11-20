@@ -239,7 +239,8 @@ The first command needs root and installs nothing in a home; the second must run
 as the user running `serve`. Both must finish successfully.
 
 On Ubuntu 24.04, AppArmor may also require [administrator sandbox setup](#ubuntu-2404-browser-sandbox).
-The one-click installer downloads the browser; it does not grant these OS permissions.
+`openmausbot service install` sets it up before every start. The one-click
+installer downloads the browser but does not grant these OS permissions.
 
 Then turn the browser on under Settings → Computers, and per bot. Each bot
 gets its own isolated session whose logins persist across restarts.
@@ -738,9 +739,32 @@ If the browser reports that the host blocks its sandbox, or Chrome reports
 `DENIED` for `userns`, Chrome is installed but Ubuntu is blocking its sandbox. [Chromium documents this restriction](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
 Do not add `--no-sandbox` or disable `kernel.apparmor_restrict_unprivileged_userns` globally.
 
-For paths A and C, an administrator can allow only a trusted, root-owned Chrome
-copy. Find the Chrome for Testing the service user's `browser install`
-downloaded into its data directory:
+AppArmor can allow the sandbox only for a root-owned Chrome copy that the
+service user cannot replace. For paths A and C, the simplest way is to let the
+service set that copy up. Run `openmausbot service install` from the `maus` shell
+(add your `serve` options) and run the sudo commands it prints. The first command
+installs `/usr/local/sbin/openmausbot-browser-sandbox`, which is root-owned. The
+unit runs it as root before every start:
+
+```ini
+ExecStartPre=-+/usr/local/sbin/openmausbot-browser-sandbox
+```
+
+On a host that restricts user namespaces, the script downloads the release's
+pinned Chrome for Testing into `/opt/openmausbot-browser/chrome-VERSION`. It
+checks the download against the pinned SHA-256 first. Then it writes
+`/etc/apparmor.d/openmausbot-chrome` for exactly that executable and loads it.
+The server picks that copy up without `OMB_CHROME_PATH`. Later starts only
+reload the profile. On other hosts the script does nothing. If it fails, the
+reason is in `journalctl -u openmausbot`, and the server starts anyway. After
+you upgrade OpenMausBot, run `service install` and its commands again so the
+script follows the new Chrome pin. Root runs only its own copy of the script,
+never the CLI in the service user's home, which the user and its bots can
+change.
+
+To use a unit you wrote yourself, do the same steps by hand. Find the Chrome for
+Testing that the service user's `browser install` downloaded into its data
+directory:
 
 ```sh
 find /home/maus/.openmausbot/tools/chrome -type f -name chrome -executable

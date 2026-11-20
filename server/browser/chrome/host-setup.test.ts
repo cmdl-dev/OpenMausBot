@@ -1,10 +1,16 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { removeTempDir } from "../../testing/cleanup.ts";
-import { appArmorProfile, BrowserHostError, diagnoseLaunchFailure, hostSetupOf, LIBRARIES_COMMAND, missingLibraries, SANDBOX_STEPS_URL, sandboxBlocked, sandboxDisabled, USERNS_RESTRICTION } from "./host-setup.ts";
+import {
+  APPARMOR_PROFILE_PATH, appArmorProfile, BrowserHostError, diagnoseLaunchFailure, hostSetupOf, LIBRARIES_COMMAND, missingLibraries, SANDBOX_STEPS_URL, sandboxBlocked,
+  sandboxDisabled, sandboxSetupScript, USERNS_RESTRICTION,
+} from "./host-setup.ts";
+import { chromeForTestingPin, SANDBOX_CHROME_ROOT, sandboxChromeExecutable } from "./install.ts";
 
 const folders: string[] = [];
 afterAll(async () => { for (const folder of folders) await removeTempDir(folder); });
@@ -75,5 +81,65 @@ describe("host setup", () => {
     expect(sandboxBlocked({ platform: "linux", read, exists: () => true })).toBe(false);
     expect(sandboxBlocked({ platform: "linux", read: () => "0", exists: () => false })).toBe(false);
     expect(sandboxBlocked({ platform: "darwin", read, exists: () => false })).toBe(false);
+  });
+
+  it("writes a root step that pins the sandbox exemption to the pinned Chrome for Testing it installs", () => {
+    const pin = chromeForTestingPin("linux", "x64")!;
+    const script = sandboxSetupScript(pin);
+    expect(script.startsWith("#!/bin/sh\n")).toBe(true);
+    expect(script).toContain(`https://storage.googleapis.com/chrome-for-testing-public/${pin.version}/linux64/chrome-linux64.zip`);
+    expect(script).toContain(`echo "${pin.sha256}  $work/chrome.zip" | sha256sum -c -`);
+    expect(script).toContain(appArmorProfile(sandboxChromeExecutable(pin)));
+    expect(sandboxChromeExecutable(pin)).toBe(`/opt/openmausbot-browser/chrome-${pin.version}/chrome`);
+    expect(() => sandboxSetupScript({ ...pin, version: "1; rm -rf /" })).toThrow();
+    expect(() => sandboxSetupScript({ ...pin, sha256: "$(id)" })).toThrow();
+    expect(new BrowserHostError("sandbox").message).toContain("openmausbot service install");
+  });
+
+  it.skipIf(process.platform === "win32")("the root step installs Chrome once, checked, drops older copies and loads the profile; it does nothing where namespaces are free", () => {
+    const dir = mkdtempSync(join(tmpdir(), "omb-sandbox-script-"));
+    folders.push(dir);
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const payload = "pretend chrome archive";
+    const pin = { ...chromeForTestingPin("linux", "x64")!, sha256: createHash("sha256").update(payload).digest("hex") };
+    const fake = (name: string, body: string) => writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    fake("curl", `while [ "$1" != -o ]; do shift; done; printf '%s' "$(cat '${dir}/payload')" > "$2"; echo curl >> '${dir}/calls'`);
+    fake("unzip", `mkdir -p "$4/chrome-linux64" && printf '#!/bin/sh\\n' > "$4/chrome-linux64/chrome" && chmod 755 "$4/chrome-linux64/chrome"`);
+    fake("apparmor_parser", `echo "apparmor_parser $*" >> '${dir}/calls'`);
+    fake("install", `for last; do :; done; mkdir -p "$last"`);
+    fake("chown", ":");
+    writeFileSync(join(dir, "payload"), payload);
+    const restriction = join(dir, "restrict");
+    const root = join(dir, "opt");
+    const profile = join(dir, "apparmor-profile");
+    const local = sandboxSetupScript(pin).replaceAll(USERNS_RESTRICTION, restriction).replaceAll(SANDBOX_CHROME_ROOT, root).replaceAll(APPARMOR_PROFILE_PATH, profile);
+    writeFileSync(join(dir, "step.sh"), local, { mode: 0o755 });
+    const run = () => spawnSync("sh", [join(dir, "step.sh")], { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin` } });
+    const calls = () => existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trim().split("\n") : [];
+
+    writeFileSync(restriction, "0\n");
+    expect(run().status).toBe(0);
+    expect(existsSync(root)).toBe(false);
+
+    writeFileSync(restriction, "1\n");
+    mkdirSync(join(root, "chrome-150.0.1.2"), { recursive: true });
+    const first = run();
+    expect(first.status, first.stderr).toBe(0);
+    const executable = join(root, `chrome-${pin.version}`, "chrome");
+    expect(existsSync(executable)).toBe(true);
+    expect(existsSync(join(root, "chrome-150.0.1.2"))).toBe(false);
+    expect(readFileSync(profile, "utf8")).toContain(`profile openmausbot-chrome ${executable} flags=(unconfined)`);
+    expect(calls()).toEqual(["curl", `apparmor_parser -r ${profile}`]);
+
+    expect(run().status).toBe(0);
+    expect(calls()).toEqual(["curl", `apparmor_parser -r ${profile}`, `apparmor_parser -r ${profile}`]);
+
+    writeFileSync(join(dir, "payload"), "tampered");
+    spawnSync("rm", ["-rf", join(root, `chrome-${pin.version}`)]);
+    const tampered = run();
+    expect(tampered.status).not.toBe(0);
+    expect(tampered.stdout + tampered.stderr).toContain("failed its SHA-256 check");
+    expect(existsSync(executable)).toBe(false);
   });
 });

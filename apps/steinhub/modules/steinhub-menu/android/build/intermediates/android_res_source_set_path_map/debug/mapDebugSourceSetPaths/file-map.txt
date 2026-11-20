@@ -1,0 +1,9 @@
+com.cmdl.steinhub.menu.steinhub-menu-pngs-0 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/generated/res/pngs/debug
+com.cmdl.steinhub.menu.steinhub-menu-updated_navigation_xml-1 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/generated/updated_navigation_xml/debug
+com.cmdl.steinhub.menu.steinhub-menu-mergeDebugResources-2 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+com.cmdl.steinhub.menu.steinhub-menu-mergeDebugResources-3 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+com.cmdl.steinhub.menu.steinhub-menu-debug-4 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/intermediates/merged_res/debug/mergeDebugResources
+com.cmdl.steinhub.menu.steinhub-menu-debug-5 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/build/intermediates/packaged_res/debug/packageDebugResources
+com.cmdl.steinhub.menu.steinhub-menu-debug-6 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/src/debug/res
+com.cmdl.steinhub.menu.steinhub-menu-main-7 /Users/cmdl/.t3/worktrees/OpenMausBot-codex/t3-799deb42-3e6584141d8260f6/apps/steinhub/modules/steinhub-menu/android/src/main/res
+gradleHome-0 /Users/cmdl/.gradle

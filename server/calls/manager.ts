@@ -59,6 +59,8 @@ const KEEP_ENDED = 500;
 const RING_SECONDS = 45;
 const WRAP_UP_BEFORE_MS = 45_000;
 const MAX_ACTIVE = 3;
+const STREAM_WAIT_MS = 20_000;
+export const NO_AUDIO_DETAIL = "The call's audio never reached OpenMausBot: check that the public address forwards WebSockets to the call listener.";
 const PATH = "/calls/twilio";
 
 export class CallError extends Error {
@@ -295,6 +297,11 @@ export function createCalls(deps: CallDeps) {
       if (!record || isEnded(record) || !running || "refusal" in settings) return hangUpTwiml();
       const disclosure = disclosureLine(record.onBehalfOf);
       answered(record);
+      running.timers.push(setTimeout(() => {
+        if (running.bridge || isEnded(record)) return;
+        record.endDetail = NO_AUDIO_DETAIL;
+        void hangUp(id, "error");
+      }, STREAM_WAIT_MS));
       addLine(record, { speaker: "note", text: disclosure, at: now() });
       return connectStreamTwiml({ disclosure, streamUrl: urls(settings, record, running.token).streamUrl });
     },

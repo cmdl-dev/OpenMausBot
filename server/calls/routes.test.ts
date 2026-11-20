@@ -125,7 +125,7 @@ describe("call limits", () => {
   it("asks the voice to wrap up, then hangs up at the time limit, and ends with that reason", async () => {
     vi.useFakeTimers();
     const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
-    calls.answer(record.id);
+    calls.status(record.id, { CallStatus: "in-progress" }, () => ({ kind: "answered" }));
     expect(calls.record(record.id)!.phase).toBe("in_progress");
     await vi.advanceTimersByTimeAsync(9 * 60_000);
     expect(provider.hungUp).toHaveLength(0);
@@ -133,6 +133,16 @@ describe("call limits", () => {
     expect(provider.hungUp).toEqual(["CA1"]);
     calls.status(record.id, { CallStatus: "completed" }, () => ({ kind: "ended", reason: "completed" }));
     expect(calls.record(record.id)).toMatchObject({ phase: "ended", endReason: "max_length" });
+  });
+
+  it("hangs up an answered call whose audio stream never arrives, saying why", async () => {
+    vi.useFakeTimers();
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    calls.answer(record.id);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(provider.hungUp).toEqual(["CA1"]);
+    calls.status(record.id, { CallStatus: "completed" }, () => ({ kind: "ended", reason: "completed" }));
+    expect(calls.record(record.id)).toMatchObject({ phase: "ended", endReason: "error", endDetail: expect.stringContaining("forwards WebSockets") });
   });
 
   it("ends the call by itself when the provider never confirms a hang-up", async () => {

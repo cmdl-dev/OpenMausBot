@@ -148,6 +148,8 @@ describe("old links", () => {
     expect(where("updates")).toEqual({ page: "app", anchor: "updates" });
     expect(resolveSettingsTarget("updates", PEOPLE["My Cloud in a browser (owner)"])).toEqual({ page: "overview" });
     expect(where("usage")).toEqual({ page: "usage" });
+    expect(where("calls")).toEqual({ page: "ai", anchor: "calls" });
+    expect(resolveSettingsTarget("calls", fullContext({ advanced: false }))).toEqual({ page: "ai", anchor: "calls", advanced: true });
   });
 
   it("opens Overview, saying so, when the page can't exist on this place", () => {
@@ -173,6 +175,7 @@ describe("search", () => {
   it.each(["cancel", "billing", "invoice", "subscription", "refund"])("puts Plan & billing first for “%s”", (query) => expect(first(query)?.page).toBe("plan"));
   it.each(["voice", "microphone", "dictation"])("puts the Talk shortcut first for “%s” on the desktop", (query) => expect(first(query)?.id).toBe("talk"));
   it("puts All bots on You and your bots", () => expect(first("all bots")?.page).toBe("bots"));
+  it.each(["phone calls", "twilio", "call history"])("puts AI › Phone calls first for “%s”", (query) => expect(first(query)).toMatchObject({ page: "ai", anchor: "calls" }));
   it.each(["kimi", "hidden providers", "unhide"])("puts AI › Providers first for “%s”", (query) => expect(first(query)?.id).toBe("providers"));
   it("finds AI › Providers for “cursor” beside importing from Cursor", () => expect(find("cursor").map((hit) => hit.entry.id)).toEqual(expect.arrayContaining(["providers", "ai-apps"])));
   it("finds Activity in Data where it exists: a browser, for an admin", () => {

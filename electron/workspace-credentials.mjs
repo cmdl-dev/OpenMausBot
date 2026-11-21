@@ -27,6 +27,8 @@ export const WORKSPACE_CREDENTIALS = [
   { section: "live", field: "key", name: "openaiLiveKey", env: "OMB_OPENAI_LIVE_KEY" },
   { section: "treg", field: "key", name: "tregApiKey", env: "OMB_TREG_KEY" },
   { section: "postiz", field: "key", name: "postizApiKey", env: "OMB_POSTIZ_API_KEY" },
+  { section: "calls", field: "accountSid", name: "twilioAccountSid", env: "OMB_TWILIO_ACCOUNT_SID" },
+  { section: "calls", field: "authToken", name: "twilioAuthToken", env: "OMB_TWILIO_AUTH_TOKEN" },
   { section: "opencodeGo", field: "apiKey", name: "opencodeGoApiKey", env: "OPENCODE_API_KEY" },
 ];
 

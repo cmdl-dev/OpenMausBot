@@ -122,6 +122,7 @@ export const LEGACY_SETTINGS: Record<Exclude<AppSettingsSection, SettingsPageId>
   skills: () => ({ page: "bots", anchor: "skills" }),
   import: () => ({ page: "transfer", anchor: "bring-in" }),
   updates: (ctx) => (ctx.desktop ? { page: "app", anchor: "updates" } : { page: "overview" }),
+  calls: () => ({ page: "ai", anchor: "calls" }),
 };
 
 export const isSettingsPage = (id: string | null | undefined): id is SettingsPageId => SETTINGS_PAGES.some((page) => page.id === id);
@@ -190,6 +191,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: "keys", page: "ai", anchor: "ai-keys", labelKey: "settings.ai.otherServices", topFor: ["api keys", "api key"], synonyms: ["keys", "key", "openai", "anthropic", "xai", "openrouter", "router", "base url", "mistral", "groq", "cerebras", "deepseek", "opencode", "composio", "elevenlabs"] },
   { id: "backup-model", page: "ai", anchor: "backup-model", labelKey: "settings.recovery.title", sectionKey: "settings.ai.backupModel", advanced: true, synonyms: ["backup model", "fallback", "recovery"] },
   { id: "routing", page: "ai", anchor: "routing", labelKey: "settings.ai.routing", advanced: true, synonyms: ["decision and extraction", "decision", "extraction", "routing", "who answers", "jev", "typesafe", "cloudflare", "workers ai"] },
+  { id: "calls", page: "ai", anchor: "calls", labelKey: "settings.calls.title", advanced: true, topFor: ["phone calls", "twilio", "call history"],
+    synonyms: ["calls", "call", "caller id", "phone number", "transcript", "hang up", "allowlist", "denylist"] },
   { id: "images", page: "ai", anchor: "images", labelKey: "settings.ai.images", advanced: true, synonyms: ["image generation", "images", "generate", "picture"] },
   { id: "about-you", page: "bots", anchor: "about-you", labelKey: "settings.bots.aboutYou", topFor: ["name", "my name", "photo", "avatar", "picture", "profile", "profile picture", "about me"], synonyms: ["rules", "rules for every bot"] },
   { id: "away-emails", page: "bots", anchor: "about-you", labelKey: "settings.profile.awayEmails", sectionKey: "settings.bots.aboutYou", synonyms: ["away", "emails", "email me"] },

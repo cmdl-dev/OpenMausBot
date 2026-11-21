@@ -104,6 +104,42 @@ describe("every credential has one home on the keys page", () => {
   });
 });
 
+describe("phone calls", () => {
+  it("keeps the Twilio Account SID and auth token in the desktop store, saved under calls", () => {
+    const sid = keyEntry("twilioSid");
+    const token = keyEntry("twilioToken");
+    expect(sid).toMatchObject({ section: "voice", kind: "key", env: ["OMB_TWILIO_ACCOUNT_SID"] });
+    expect(token).toMatchObject({ section: "voice", kind: "key", env: ["OMB_TWILIO_AUTH_TOKEN"] });
+    expect(sid.target).toMatchObject({ slot: "twilioAccountSid", href: "https://console.twilio.com", analytics: "twilio" });
+    expect(token.target).toMatchObject({ slot: "twilioAuthToken", href: "https://console.twilio.com", analytics: "twilio" });
+    expect(sid.target!.patch("AC1", false)).toEqual({ calls: { accountSid: "AC1" } });
+    expect(token.target!.patch("t", false)).toEqual({ calls: { authToken: "t" } });
+    expect(t(sid.labelKey)).toBe("Twilio Account SID");
+    expect(t(token.labelKey)).toBe("Twilio auth token");
+  });
+
+  it("reads saved state from the config's saved keys", () => {
+    const config = { savedKeys: { twilioAccountSid: { configured: true, last4: "beef" }, twilioAuthToken: { configured: false } } } as ConfigStatus;
+    expect(savedState(keyEntry("twilioSid"), config)).toEqual({ configured: true, last4: "beef" });
+    expect(savedState(keyEntry("twilioToken"), config)).toEqual({ configured: false });
+  });
+
+  it("knows an Account SID by its shape, and opens Phone calls from its own row", () => {
+    const sid = `AC${"0123456789abcdef".repeat(2)}`;
+    expect(looksLikeOtherKey(keyEntry("openai"), sid)?.id).toBe("twilioSid");
+    expect(looksLikeOtherKey(keyEntry("twilioSid"), sid)).toBeNull();
+    expect(looksLikeOtherKey(keyEntry("twilioSid"), "ACnot-a-sid")).toBeNull();
+    expect(keyEntry("phoneCalls")).toMatchObject({ kind: "elsewhere", opens: "calls" });
+  });
+
+  it("is found by twilio, phone and call", () => {
+    const found = (query: string) => KEY_CATALOG.filter((entry) => keyMatches(entry, query)).map((entry) => entry.id);
+    expect(found("twilio")).toEqual(["twilioSid", "twilioToken", "phoneCalls"]);
+    expect(found("phone")).toEqual(expect.arrayContaining(["phoneCalls", "twilioSid", "twilioToken"]));
+    expect(found("caller id")).toEqual(["phoneCalls"]);
+  });
+});
+
 describe("searching the keys", () => {
   const found = (query: string) => KEY_CATALOG.filter((entry) => keyMatches(entry, query)).map((entry) => entry.id);
 

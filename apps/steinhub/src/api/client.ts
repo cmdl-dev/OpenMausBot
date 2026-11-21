@@ -1,3 +1,4 @@
+import type { CallDetail, CallLine, CallSummary } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type {
   BotsResponse,
   BotUpdateResponse,
@@ -13,6 +14,7 @@ import type { InboxView } from "@openmausbot/phone-protocol/inbox.ts";
 import type { Routine, RoutineRun } from "@openmausbot/phone-protocol/routines.ts";
 import type { WidgetValues } from "@openmausbot/phone-protocol/widget.ts";
 import type { ServerFrame, WireBot, WireMessage } from "@openmausbot/phone-protocol/wire.ts";
+import type { File } from "expo-file-system";
 import { createSseParser } from "@/api/sse";
 import type { Transport } from "@/api/transport";
 
@@ -141,6 +143,8 @@ export interface MemoryDocReply {
   exists: boolean;
 }
 
+export type { CallDetail, CallLine, CallSummary };
+
 export interface StreamFrame {
   frame: ServerFrame;
   /** The SSE `id`, the cursor a reconnect resumes from. */
@@ -225,6 +229,9 @@ export function desktopClient(transport: Transport) {
     memory: (botId: string) => transport.request<MemoryReply>("GET", `/api/bots/${id(botId)}/memory`),
     memoryFile: (botId: string, path: string) =>
       transport.request<MemoryDocReply>("GET", `/api/bots/${id(botId)}/memory/file?path=${id(path)}`),
+    calls: () => transport.request<{ calls: CallSummary[] }>("GET", "/api/calls"),
+    call: (callId: string) => transport.request<CallDetail>("GET", `/api/calls/${id(callId)}`),
+    callRecording: (callId: string, to: File) => transport.download(`/api/calls/${id(callId)}/recording`, to),
     inbox: () => transport.request<InboxView>("GET", "/api/inbox"),
     /** Done or Cancel on a bot's sign-in card: either hands its browser back and lets the bot carry on. */
     answerSignIn: (botId: string, messageId: string, threadId: string, outcome: "done" | "cancel") =>

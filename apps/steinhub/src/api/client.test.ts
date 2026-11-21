@@ -4,6 +4,9 @@ import { DesktopError, problemText } from "@/api/errors";
 import { httpTransport, type Transport } from "@/api/transport";
 import { fakeFetch, jsonResponse, pushStream, streamResponse } from "@/testing/fake-desktop";
 
+const mockDownload = jest.fn();
+jest.mock("expo-file-system", () => ({ File: { downloadFileAsync: (...args: unknown[]) => mockDownload(...args) } }));
+
 const BASE = "http://mac.local:8810";
 
 function recordingTransport(reply: unknown = {}) {
@@ -19,6 +22,10 @@ function recordingTransport(reply: unknown = {}) {
       return reply as T;
     },
     stream: async () => undefined,
+    download: async (path: string, to) => {
+      calls.push({ method: "DOWNLOAD", path, body: to.uri });
+      return to;
+    },
   };
   return { transport, calls };
 }
@@ -53,6 +60,13 @@ describe("desktopClient", () => {
       { method: "PATCH", path: "/api/routines/r1", body: { enabled: false } },
       { method: "POST", path: "/api/routines/r1/run", body: {} },
     ]);
+  });
+
+  test("saves a call's recording from the call's own route", async () => {
+    const { transport, calls } = recordingTransport();
+    const to = { uri: "file:///cache/c-1.wav" } as unknown as Parameters<Transport["download"]>[1];
+    await desktopClient(transport).callRecording("c-1", to);
+    expect(calls).toEqual([{ method: "DOWNLOAD", path: "/api/calls/c-1/recording", body: "file:///cache/c-1.wav" }]);
   });
 
   test("turns the event stream into frames with their cursors, asking for no screens", async () => {
@@ -91,6 +105,24 @@ test("uploads photos and files as raw bytes with a retry-safe id", async () => {
 });
 
 describe("httpTransport", () => {
+  test("downloads with the device token only, replacing an earlier copy", async () => {
+    const to = { uri: "file:///cache/c-1.wav" } as unknown as Parameters<Transport["download"]>[1];
+    mockDownload.mockResolvedValueOnce(to);
+    await expect(httpTransport({ baseUrl: BASE, token: "tok" }).download("/api/calls/c-1/recording", to)).resolves.toBe(to);
+    expect(mockDownload).toHaveBeenLastCalledWith(`${BASE}/api/calls/c-1/recording`, to, { headers: { authorization: "Bearer tok" }, idempotent: true });
+  });
+
+  test.each([
+    ["response has status 404", "refused", 404],
+    ["response has status: 401", "signed-out", 401],
+    ["The Internet connection appears to be offline.", "offline", undefined],
+  ])("a download that fails with %j is %s", async (message, kind, status) => {
+    mockDownload.mockRejectedValueOnce(new Error(message));
+    const failure = await httpTransport({ baseUrl: BASE, token: "tok" }).download("/api/calls/c-1/recording", {} as never).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(DesktopError);
+    expect(failure).toMatchObject({ kind, status });
+  });
+
   test("sends the device token as a bearer and no Origin", async () => {
     const { fetch, calls } = fakeFetch({ "GET /api/bots": jsonResponse(200, { bots: [] }) });
     await httpTransport({ baseUrl: `${BASE}/`, token: "tok", fetch }).request("GET", "/api/bots");

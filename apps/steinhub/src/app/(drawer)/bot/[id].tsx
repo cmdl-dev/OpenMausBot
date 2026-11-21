@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { Brain, Cpu, Globe, MessageSquare } from "lucide-react-native";
+import { Brain, Cpu, Globe, MessageSquare, Phone } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -65,6 +65,13 @@ export default function BotProfileScreen() {
             onPress={() => router.push({ pathname: "/browser", params: { bot: bot.id, thread: browserThread } })}
           />
         ) : null}
+        <Row
+          title="Phone calls"
+          subtitle="Calls this bot placed, with what was said"
+          leading={<Phone {...iconProps} />}
+          chevron
+          onPress={() => router.push({ pathname: "/calls", params: { bot: bot.id } })}
+        />
       </Group>
 
       <SectionLabel>Threads</SectionLabel>

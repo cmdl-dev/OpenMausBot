@@ -552,6 +552,8 @@ export function createConfigRoutes(deps: ConfigRouteDeps): RouteHandler {
           if (persisted.live?.key !== undefined) persisted.live.key = "";
           if (persisted.treg?.key !== undefined) persisted.treg.key = "";
           if (persisted.postiz?.key !== undefined) persisted.postiz.key = "";
+          if (persisted.calls?.accountSid !== undefined) persisted.calls.accountSid = "";
+          if (persisted.calls?.authToken !== undefined) persisted.calls.authToken = "";
           saveConfig(persisted);
           configWriteCommitted = true;
           syncCredentialEnv(patch);

@@ -1,6 +1,6 @@
 import { FILE_MAX_BYTES, limitMegabytes } from "@openmausbot/phone-protocol/upload-limits.ts";
 import * as Crypto from "expo-crypto";
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import type { SentAttachment } from "@/api/attachments";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
@@ -11,6 +11,8 @@ import {
   type AppCatalogReply,
   type AppConnection,
   type AppConnectionsReply,
+  type CallDetail,
+  type CallSummary,
   type DesktopClient,
   type NewVaultItem,
   type VaultKind,
@@ -89,6 +91,12 @@ export interface Connection {
   /** What a bot remembers: its MEMORY.md and the files beside it. */
   memory(botId: string): Promise<MemoryReply>;
   memoryFile(botId: string, path: string): Promise<MemoryDocReply>;
+  /** The phone calls bots have placed, newest first. */
+  calls(): Promise<CallSummary[]>;
+  /** A call with its brief and transcript; null when the computer no longer has it. */
+  call(callId: string): Promise<CallDetail | null>;
+  /** A call's recording, saved in this phone's cache. */
+  callRecording(callId: string): Promise<File>;
 }
 
 const ConnectionContext = createContext<Connection | null>(null);
@@ -122,6 +130,31 @@ const SAMPLE_MEMORY: MemoryReply = {
 };
 const SAMPLE_MEMORY_FILES: Record<string, string> = {
   "memory/people.md": "# People\n\n- **Jordan**, the landlord. Prefers email.\n- **Sam**, the accountant. Files the quarterly taxes.",
+};
+/** The demo world's phone call. 555-01xx numbers are reserved for fiction. */
+const SAMPLE_CALL_AT = Date.UTC(2026, 10, 15, 17, 2);
+const SAMPLE_CALL: CallDetail = {
+  id: "call-dentist",
+  botId: "mausbot",
+  botName: "MausBot",
+  threadId: "offsite",
+  to: "+14155550123",
+  calleeName: "Bright Smile Dental",
+  goal: "Move Alex's cleaning from Thursday to next week.",
+  brief: "Move Alex's cleaning from Thursday to next week.\nAny morning works except Monday.",
+  phase: "ended",
+  createdAt: SAMPLE_CALL_AT,
+  answeredAt: SAMPLE_CALL_AT + 8_000,
+  endedAt: SAMPLE_CALL_AT + 102_000,
+  endReason: "completed",
+  seconds: 94,
+  lines: 4,
+  transcript: [
+    { speaker: "note", text: "MausBot said it is an AI assistant calling for Alex.", at: SAMPLE_CALL_AT + 8_000 },
+    { speaker: "callee", text: "Bright Smile Dental, this is Dana.", at: SAMPLE_CALL_AT + 10_000 },
+    { speaker: "bot", text: "Hi Dana, I'm calling to move Alex Rivera's cleaning from Thursday to a morning next week.", at: SAMPLE_CALL_AT + 14_000 },
+    { speaker: "callee", text: "Tuesday at 9:30 is open. I've moved it.", at: SAMPLE_CALL_AT + 31_000 },
+  ],
 };
 const PAGE_SIZE = 60;
 
@@ -371,6 +404,29 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [mode, client],
   );
 
+  const calls = useCallback(async () => (mode === "demo" ? [SAMPLE_CALL] : (await client().calls()).calls), [mode, client]);
+
+  const call = useCallback(
+    async (callId: string) => {
+      if (mode === "demo") return callId === SAMPLE_CALL.id ? SAMPLE_CALL : null;
+      try {
+        return await client().call(callId);
+      } catch (failure) {
+        if (asDesktopError(failure).status === 404) return null;
+        throw failure;
+      }
+    },
+    [mode, client],
+  );
+
+  const callRecording = useCallback(
+    async (callId: string) => {
+      if (mode !== "live") throw new Error("Recordings open from a paired computer.");
+      return client().callRecording(callId, new File(Paths.cache, `${callId.replace(/[^\w-]/g, "")}.wav`));
+    },
+    [mode, client],
+  );
+
   const setRoutineEnabled = useCallback(
     async (routineId: string, enabled: boolean) => {
       const reply = await client().setRoutineEnabled(routineId, enabled);
@@ -549,6 +605,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       markInboxRead,
       memory,
       memoryFile,
+      calls,
+      call,
+      callRecording,
       vault,
       addToVault,
       removeFromVault,
@@ -588,6 +647,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       markInboxRead,
       memory,
       memoryFile,
+      calls,
+      call,
+      callRecording,
       vault,
       addToVault,
       removeFromVault,

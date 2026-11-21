@@ -1,16 +1,16 @@
 /** Groups of built-in tools a person can turn off for one bot (`Bot.toolsOff`), so its model is not sent their
  * definitions on every request. A trim, not a permission: a bot with a group on is held to the same rules as before. */
-export const TOOL_GROUPS = ["meetings", "data", "pages", "images", "email"] as const;
+export const TOOL_GROUPS = ["meetings", "calls", "data", "pages", "images", "email"] as const;
 export type ToolGroup = (typeof TOOL_GROUPS)[number];
 
 /** How a group is named where the server writes to the bot or the person in English. */
 export const TOOL_GROUP_LABELS: Readonly<Record<ToolGroup, string>> = {
-  meetings: "Meetings", data: "Data", pages: "Pages and apps", images: "Images", email: "Email",
+  meetings: "Meetings", calls: "Phone calls", data: "Data", pages: "Pages and apps", images: "Images", email: "Email",
 };
 
 /** About how many tokens each group's tool definitions add to every request where the workspace has the group. */
 export const TOOL_GROUP_TOKENS: Readonly<Record<ToolGroup, number>> = {
-  meetings: 900, data: 1600, pages: 1500, images: 200, email: 1300,
+  meetings: 900, calls: 900, data: 1600, pages: 1500, images: 200, email: 1300,
 };
 
 /** The agents server's environment variable that carries `toolsOff`: group ids joined with commas. */

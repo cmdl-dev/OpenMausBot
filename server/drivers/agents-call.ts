@@ -26,7 +26,7 @@ import { callBurstTool } from "./agents-burst-tool.ts";
 import { callComputerAskTool, COMPUTER_ASK_TOOL_NAMES } from "./agents-computer-ask-tool.ts";
 import { callImageTool, IMAGE_TOOL_NAMES } from "./agents-image-tools.ts";
 import { callHostingTool, HOSTING_TOOL_NAMES } from "./agents-hosting-tools.ts";
-import { callMeetingTool, MEETING_TOOL_NAMES } from "./agents-meeting-tools.ts";
+import { callMeetingTool, MEETING_TOOL_NAMES } from "./agents-meeting-tools.ts"; import { CALL_TOOL_NAMES, callPhoneTool } from "./agents-call-tools.ts";
 import { callMausBotTool, MAUSBOT_TOOL_NAMES } from "./agents-mausbot-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
@@ -248,6 +248,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (IMAGE_TOOL_NAMES.has(name)) return callImageTool(name, args, context);
   if (HOSTING_TOOL_NAMES.has(name)) return callHostingTool(name, args, context);
   if (MEETING_TOOL_NAMES.has(name)) return callMeetingTool(name, args, context);
+  if (CALL_TOOL_NAMES.has(name)) return callPhoneTool(name, args, context);
   if (MAUSBOT_TOOL_NAMES.has(name)) return callMausBotTool(name, args, context);
   if (PAGE_TOOL_NAMES.has(name)) return callPageTool(name, args, context);
   if (PERSON_TOOL_NAMES.has(name)) return callPersonTool(name, args, context);

@@ -27,7 +27,7 @@ const READY: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: [], deny: ["+1900*"], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera",
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", nameDefault: { name: "Sam Rivera", from: "profile" },
   prompts: {
     ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `Default ${key} for {callee}.`, default: `Default ${key} for {callee}.`, custom: false }])) as CallsSetup["prompts"],
     opening: { value: "Greet {callee} and say why you're calling.", default: "Default opening.", custom: true },
@@ -179,11 +179,10 @@ describe("Phone calls fields", () => {
     type(field("callerId"), "+1 (415) 555-0100");
     type(field("allow"), "+1415*, +44 20 7123 4567\n");
     type(field("deny"), "");
-    type(field("onBehalfOf"), "Sam Rivera");
     flushSync(() => $<HTMLButtonElement>('[data-calls-save="calls-settings"]')!.click());
     await settle();
     expect(puts()).toHaveLength(1);
-    expect(JSON.parse(puts()[0]![1].body)).toEqual({ calls: { callerId: "+14155550100", allow: ["+1415*", "+442071234567"], deny: null, onBehalfOf: "Sam Rivera" } });
+    expect(JSON.parse(puts()[0]![1].body)).toEqual({ calls: { callerId: "+14155550100", allow: ["+1415*", "+442071234567"], deny: null } });
     expect(fx.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "configStatus" }));
     expect(host.textContent).toContain("Saved.");
   });
@@ -279,27 +278,94 @@ describe("Voice settings", () => {
   });
 });
 
-describe("Calls on behalf of", () => {
-  const nudge = () => $<HTMLElement>("[data-calls-on-behalf-nudge]");
+describe("About you", () => {
+  const aboutField = <T extends HTMLInputElement | HTMLTextAreaElement>(name: string) => $<T>(`[data-calls-form="calls-about"] [name="${name}"]`)!;
+  const aboutSave = () => $<HTMLButtonElement>('[data-calls-save="calls-about"]')!;
+  const nameDefault = () => $<HTMLElement>("[data-calls-name-default]");
 
-  it("says which name the disclosure uses while it is empty", async () => {
+  it("is its own optional group with Your name, Callback number and a multi-line About me", async () => {
     await render();
-    expect(nudge()?.dataset.callsOnBehalfNudge).toBe("profile");
-    expect(nudge()?.textContent).toBe("While this is empty, the disclosure says the call is on behalf of Sam Rivera. Enter the name callees should hear.");
+    const group = $('[data-calls-form="calls-about"]')!;
+    expect([...group.querySelectorAll<HTMLInputElement>("[name]")].map((element) => element.name)).toEqual(["userName", "callbackNumber", "aboutMe"]);
+    expect(aboutField("aboutMe").tagName).toBe("TEXTAREA");
+    expect(aboutField("callbackNumber").type).toBe("tel");
+    expect(host.textContent).toContain("About you");
+    expect(host.textContent).toContain("Optional. Calls use these when the bot doesn't give its own.");
+    expect(host.textContent).toContain("The voice may share this on calls when it helps");
+    expect(aboutSave().disabled).toBe(true);
+    expect($('[data-calls-form="calls-settings"] [name="onBehalfOf"]')).toBeNull();
+    expect(host.querySelector('[data-calls-form="calls-about"] [role="alert"]')).toBeNull();
   });
 
-  it("warns harder when there is no profile name either", async () => {
-    setup = { ...READY, onBehalfOfDefault: "the person I work for" };
+  it("fills in what is saved, and a name saved as Calls on behalf of while Your name is empty", async () => {
+    setup = { ...READY, userName: "Sam", callbackNumber: "+14155550111", aboutMe: "Patient since 2019." };
     await render();
-    expect(nudge()?.dataset.callsOnBehalfNudge).toBe("standIn");
-    expect(nudge()?.textContent).toContain("on behalf of \"the person I work for\". Enter your name");
+    expect(aboutField("userName").value).toBe("Sam");
+    expect(aboutField("callbackNumber").value).toBe("+14155550111");
+    expect(aboutField("aboutMe").value).toBe("Patient since 2019.");
+    flushSync(() => root.unmount());
+    root = createRoot(host);
+    setup = { ...READY, onBehalfOf: "Sam Rivera" };
+    await render();
+    expect(aboutField("userName").value).toBe("Sam Rivera");
   });
 
-  it("says nothing more once a name is saved", async () => {
+  it("saves each field trimmed, and deletes a cleared one with null", async () => {
+    setup = { ...READY, aboutMe: "Old note." };
+    await render();
+    type(aboutField("userName"), " Sam Rivera ");
+    type(aboutField("callbackNumber"), "+1 415 555 0111");
+    type(aboutField("aboutMe"), "");
+    flushSync(() => aboutSave().click());
+    await settle();
+    expect(puts().map(([, init]) => JSON.parse(init.body))).toEqual([{ calls: { userName: "Sam Rivera", callbackNumber: "+1 415 555 0111", aboutMe: null } }]);
+    expect(host.textContent).toContain("Saved.");
+  });
+
+  it("clears the name saved as Calls on behalf of when Your name is saved", async () => {
     setup = { ...READY, onBehalfOf: "Sam" };
     await render();
-    expect(field("onBehalfOf").value).toBe("Sam");
-    expect(nudge()).toBeNull();
+    type(aboutField("userName"), "Sam Rivera");
+    flushSync(() => aboutSave().click());
+    await settle();
+    expect(puts().map(([, init]) => JSON.parse(init.body))).toEqual([{ calls: { userName: "Sam Rivera", onBehalfOf: null } }]);
+  });
+
+  it("refuses a name over 80 characters without saving", async () => {
+    await render();
+    type(aboutField("userName"), "x".repeat(81));
+    flushSync(() => aboutSave().click());
+    await settle();
+    expect(puts()).toHaveLength(0);
+    expect($('[data-calls-form="calls-about"] [role="alert"]')?.textContent).toBe("Shorten this to 80 characters or fewer.");
+  });
+
+  it("says quietly that calls use the profile name while Your name is empty", async () => {
+    await render();
+    expect(nameDefault()?.dataset.callsNameDefault).toBe("profile");
+    expect(nameDefault()?.textContent).toBe("Calls will use your profile name, Sam Rivera.");
+    expect(nameDefault()?.closest('[role="alert"]')).toBeNull();
+    expect(nameDefault()?.className ?? "").not.toContain("warning");
+    expect(host.textContent).not.toContain("the person I work for");
+  });
+
+  it("says the voice calls for a client when there is no name at all", async () => {
+    setup = { ...READY, nameDefault: { name: "", from: "none" } };
+    await render();
+    expect(nameDefault()?.dataset.callsNameDefault).toBe("none");
+    expect(nameDefault()?.textContent).toBe("With no name, the voice says it's calling for a client.");
+  });
+
+  it("says nothing more once a name is there", async () => {
+    setup = { ...READY, userName: "Sam", nameDefault: { name: "Sam", from: "settings" } };
+    await render();
+    expect(nameDefault()).toBeNull();
+    setup = READY;
+    flushSync(() => root.unmount());
+    root = createRoot(host);
+    await render();
+    type(aboutField("userName"), "Sam");
+    expect(nameDefault()).toBeNull();
   });
 });
 
@@ -395,9 +461,16 @@ describe("What the call says", () => {
     expect($('[data-calls-prompt="closing"] label')?.textContent).toBe("Closing");
     expect($('[data-calls-prompt="closing"]')?.textContent).toContain("Sent when the voice tries to hang up without having said goodbye; the call hangs up after it.");
     expect(prompt("closing").value).toBe("Default closing for {callee}.");
+    expect($('[data-calls-prompt="opening"] label')?.textContent).toBe("Business call opening");
+    expect($('[data-calls-prompt="openingOwner"] label')?.textContent).toBe("Opening when it calls you");
+    expect($('[data-calls-prompt="openingOwner"]')?.textContent).toContain("The same, when the bot calls you yourself.");
+    expect(prompt("openingOwner").value).toBe("Default openingOwner for {callee}.");
     expect(host.textContent).toContain("Calls use these texts exactly as saved, with nothing added.");
     const legend = $("[data-calls-placeholders]")!.textContent!;
-    expect(legend).toContain("{onBehalfOf}");
+    expect(legend).toContain("{onBehalfOf}Kept for texts saved earlier: {userName}, or \"a client\" when no name is known.");
+    for (const name of ["forUser", "userName", "purpose", "bookingName", "callbackNumber", "details", "callType", "callTypeNote"]) expect(legend).toContain(`{${name}}`);
+    expect(legend).toContain("{forUser}\"for <your name>\", or \"for a client\" when no name is known.");
+    expect(legend).toContain("You are calling the person you represent themselves, not a business.");
     expect(legend).toContain("{maxMinutes}The call's time limit in minutes.");
     expect(legend).toContain("{recordingNotice}\"This call is recorded.\" while Record calls is on, else \"This call is transcribed.\"");
     expect(legend).toContain("{disclosureHeard}While Speak disclosure is on: When they answered, they heard: \"<the disclosure>\" Don't repeat it.");
@@ -574,6 +647,41 @@ describe("Call history", () => {
     expect(sent.querySelector("[data-call-sent-values]")!.textContent).not.toContain("Reasoning effort");
     expect(sent.querySelector("[data-call-sent-values]")!.textContent).not.toContain("Disclosure spoken");
     expect(sent.querySelector("[data-call-sent-after-opening]")).toBeNull();
+  });
+
+  it("shows who the call was for and why, with where each value came from", async () => {
+    const caller: NonNullable<CallDetail["sent"]>["caller"] = {
+      callType: "business", purpose: "book a cleaning", userName: "Sam Rivera", userNameFrom: "settings", bookingName: "Sam R.", bookingNameFrom: "call",
+      callbackNumberFrom: "none", details: "Patient since 2019.", aboutMeIncluded: true,
+    };
+    fx.api.mockImplementation(async (path: string) => {
+      if (path === "/api/calls/setup") return setup;
+      if (path === "/api/calls") return { calls: [ENDED] };
+      if (path === "/api/calls/c1") return { ...DETAIL, sent: { ...DETAIL.sent!, caller } };
+      throw new Error(`unexpected ${path}`);
+    });
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    const rows = [...host.querySelectorAll<HTMLElement>("[data-call-sent-caller] [data-call-caller]")];
+    expect(rows.map((row) => [row.dataset.callCaller, row.textContent])).toEqual([
+      ["callType", "Call typeTo a business"],
+      ["purpose", "Purposebook a cleaning"],
+      ["userName", "Name givenSam Rivera · from About you"],
+      ["bookingName", "Booking nameSam R. · from the call"],
+      ["callbackNumber", "Callback numberNone"],
+      ["details", "DetailsPatient since 2019. · includes About me"],
+    ]);
+    expect($('[data-call-sent-text="opening"] h5')?.textContent).toBe("Opening");
+  });
+
+  it("shows no caller block for an older call", async () => {
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    expect($("[data-call-sent]")).not.toBeNull();
+    expect($("[data-call-sent-caller]")).toBeNull();
+    expect($("[data-call-sent]")!.textContent).not.toContain("Name given");
   });
 
   it("hangs up a call that hasn't ended", async () => {

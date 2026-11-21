@@ -1,15 +1,14 @@
 import type { LocaleKey } from "@/locales";
 import {
-  CALL_PROMPT_KEYS, ON_BEHALF_OF_STAND_IN, REALTIME_MODELS, REALTIME_VOICES, RECOMMENDED_VOICES, e164, numberRule, realtimeMinuteCost, type CallDetail,
-  type CallEndReason, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSent, type CallSetting, type CallsSetup, type CallSummary,
-  type CallTurnDetection,
+  CALL_PROMPT_KEYS, REALTIME_MODELS, REALTIME_VOICES, RECOMMENDED_VOICES, e164, numberRule, realtimeMinuteCost, type CallCaller, type CallDetail,
+  type CallEndReason, type CallInfoSource, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSent, type CallSetting, type CallsSetup,
+  type CallSummary, type CallTurnDetection,
 } from "../../../shared/phone-calls";
 
-export type { CallDetail, CallLine, CallPromptKey, CallRecording, CallSent, CallSummary, CallTurnDetection } from "../../../shared/phone-calls";
+export type { CallCaller, CallDetail, CallLine, CallPromptKey, CallRecording, CallSent, CallSummary, CallTurnDetection } from "../../../shared/phone-calls";
 export { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, CALL_REASONING_EFFORTS, REALTIME_MODELS } from "../../../shared/phone-calls";
 
-/** `GET /api/calls/setup`, with the name the voice says it calls for. */
-export type CallsSetupStatus = CallsSetup & { onBehalfOf?: string };
+export type CallsSetupStatus = CallsSetup;
 
 export const CALLS_PATH = "/api/calls";
 
@@ -90,10 +89,18 @@ export const REASONING_LABEL: Record<CallReasoningEffort, LocaleKey> = {
   high: "settings.calls.reasoning.high",
 };
 
+export const ABOUT_YOU_LIMITS = {
+  userName: { max: 80, wrong: "settings.calls.userNameTooLong" },
+  callbackNumber: { max: 40, wrong: "settings.calls.callbackNumberTooLong" },
+  aboutMe: { max: 2000, wrong: "settings.calls.aboutMeTooLong" },
+} as const satisfies Record<string, { max: number; wrong: LocaleKey }>;
 
-export function onBehalfOfNudge(setup: Pick<CallsSetup, "onBehalfOf" | "onBehalfOfDefault">): "profile" | "standIn" | null {
-  if (setup.onBehalfOf?.trim()) return null;
-  return setup.onBehalfOfDefault === ON_BEHALF_OF_STAND_IN ? "standIn" : "profile";
+type AboutYouField = keyof typeof ABOUT_YOU_LIMITS;
+
+export function emptyNameNote(nameDefault: CallsSetup["nameDefault"]): { key: LocaleKey; name: string } | null {
+  if (nameDefault.from === "profile" && nameDefault.name.trim()) return { key: "settings.calls.userNameProfile", name: nameDefault.name };
+  if (nameDefault.from === "none") return { key: "settings.calls.userNameNone", name: "" };
+  return null;
 }
 
 export interface CallsDraft {
@@ -114,7 +121,9 @@ export interface CallsDraft {
   maxTurnsWithoutReply: string;
   allow: string;
   deny: string;
-  onBehalfOf: string;
+  userName: string;
+  callbackNumber: string;
+  aboutMe: string;
 }
 
 export type DraftField = keyof CallsDraft;
@@ -148,7 +157,9 @@ export function draftFrom(setup: CallsSetupStatus): CallsDraft {
     maxTurnsWithoutReply: String(setup.maxTurnsWithoutReply),
     allow: setup.allow.join("\n"),
     deny: setup.deny.join("\n"),
-    onBehalfOf: setup.onBehalfOf ?? "",
+    userName: setup.userName ?? setup.onBehalfOf ?? "",
+    callbackNumber: setup.callbackNumber ?? "",
+    aboutMe: setup.aboutMe ?? "",
   };
 }
 
@@ -204,12 +215,12 @@ function turnDetectionOf(draft: CallsDraft, invalid: Partial<Record<DraftField, 
 }
 
 /** The `calls` part of a config patch for what changed since `saved` (null deletes a field), or the fields that are wrong. */
-export function callsPatch(draft: CallsDraft, saved: CallsDraft):
+export function callsPatch(draft: CallsDraft, saved: CallsDraft, legacy: Pick<CallsSetup, "onBehalfOf"> = {}):
   { ok: true; calls: Record<string, unknown> } | { ok: false; invalid: Partial<Record<DraftField, LocaleKey>> } {
   const invalid: Partial<Record<DraftField, LocaleKey>> = {};
   const calls: Record<string, unknown> = {};
   const changed = (field: DraftField) => draft[field].trim() !== saved[field].trim();
-  const text = (field: "model" | "voice" | "transcriptionModel" | "onBehalfOf", pattern?: RegExp, wrong?: LocaleKey) => {
+  const text = (field: "model" | "voice" | "transcriptionModel", pattern?: RegExp, wrong?: LocaleKey) => {
     if (!changed(field)) return;
     const value = draft[field].trim();
     if (pattern && wrong && !pattern.test(value)) invalid[field] = wrong;
@@ -245,7 +256,13 @@ export function callsPatch(draft: CallsDraft, saved: CallsDraft):
   }
   if (changed("noiseReduction")) calls.noiseReduction = draft.noiseReduction;
   whole("maxTurnsWithoutReply");
-  text("onBehalfOf");
+  for (const field of Object.keys(ABOUT_YOU_LIMITS) as AboutYouField[]) {
+    if (!changed(field)) continue;
+    const value = draft[field].trim();
+    if (value.length > ABOUT_YOU_LIMITS[field].max) invalid[field] = ABOUT_YOU_LIMITS[field].wrong;
+    else calls[field] = value || null;
+  }
+  if (changed("userName") && legacy.onBehalfOf !== undefined) calls.onBehalfOf = null;
   for (const field of ["allow", "deny"] as const) {
     if (!changed(field)) continue;
     const rules = splitRules(draft[field]).map((rule) => numberRule(rule));
@@ -263,6 +280,7 @@ export const PROMPT_LABEL: Record<CallPromptKey, LocaleKey> = {
   disclosure: "settings.calls.prompt.disclosure",
   instructions: "settings.calls.prompt.instructions",
   opening: "settings.calls.prompt.opening",
+  openingOwner: "settings.calls.prompt.openingOwner",
   closing: "settings.calls.prompt.closing",
   wrapUp: "settings.calls.prompt.wrapUp",
   goodbye: "settings.calls.prompt.goodbye",
@@ -274,6 +292,7 @@ export const PROMPT_ROLE: Record<CallPromptKey, LocaleKey> = {
   disclosure: "settings.calls.promptRole.disclosure",
   instructions: "settings.calls.promptRole.instructions",
   opening: "settings.calls.promptRole.opening",
+  openingOwner: "settings.calls.promptRole.openingOwner",
   closing: "settings.calls.promptRole.closing",
   wrapUp: "settings.calls.promptRole.wrapUp",
   goodbye: "settings.calls.promptRole.goodbye",
@@ -282,6 +301,14 @@ export const PROMPT_ROLE: Record<CallPromptKey, LocaleKey> = {
 };
 
 export const PLACEHOLDER_MEANING: Partial<Record<string, LocaleKey>> = {
+  forUser: "settings.calls.placeholder.forUser",
+  userName: "settings.calls.placeholder.userName",
+  purpose: "settings.calls.placeholder.purpose",
+  bookingName: "settings.calls.placeholder.bookingName",
+  callbackNumber: "settings.calls.placeholder.callbackNumber",
+  details: "settings.calls.placeholder.details",
+  callType: "settings.calls.placeholder.callType",
+  callTypeNote: "settings.calls.placeholder.callTypeNote",
   onBehalfOf: "settings.calls.placeholder.onBehalfOf",
   callee: "settings.calls.placeholder.callee",
   calleeName: "settings.calls.placeholder.calleeName",
@@ -309,6 +336,32 @@ export function promptsPatch(draft: PromptDraft, saved: PromptDraft):
     else calls[key] = draft[key].trim() ? draft[key] : null;
   }
   return Object.keys(invalid).length ? { ok: false, invalid } : { ok: true, calls };
+}
+
+export const CALL_TYPE_LABEL: Record<CallCaller["callType"], LocaleKey> = {
+  business: "settings.calls.caller.business",
+  owner: "settings.calls.caller.owner",
+};
+
+const SOURCE_LABEL: Record<Exclude<CallInfoSource, "none">, LocaleKey> = {
+  call: "settings.calls.from.call",
+  settings: "settings.calls.from.settings",
+  profile: "settings.calls.from.profile",
+};
+
+export function callerRows(caller: CallCaller, t: (key: LocaleKey) => string): Array<{ id: string; label: string; value: string }> {
+  const none = t("settings.calls.caller.none");
+  const sourced = (value: string | undefined, from: CallInfoSource) =>
+    from === "none" || !value?.trim() ? none : `${value} · ${t(SOURCE_LABEL[from])}`;
+  const details = caller.details?.trim() ? caller.details : none;
+  return [
+    { id: "callType", label: t("settings.calls.caller.callType"), value: t(CALL_TYPE_LABEL[caller.callType]) },
+    { id: "purpose", label: t("settings.calls.caller.purpose"), value: caller.purpose?.trim() ? caller.purpose : none },
+    { id: "userName", label: t("settings.calls.caller.userName"), value: sourced(caller.userName, caller.userNameFrom) },
+    { id: "bookingName", label: t("settings.calls.caller.bookingName"), value: sourced(caller.bookingName, caller.bookingNameFrom) },
+    { id: "callbackNumber", label: t("settings.calls.callbackNumber"), value: sourced(caller.callbackNumber, caller.callbackNumberFrom) },
+    { id: "details", label: t("settings.calls.caller.details"), value: caller.aboutMeIncluded ? `${details} · ${t("settings.calls.caller.aboutMeIncluded")}` : details },
+  ];
 }
 
 /** Whether Twilio spoke the disclosure on this call; undefined for a call placed before it was recorded. */

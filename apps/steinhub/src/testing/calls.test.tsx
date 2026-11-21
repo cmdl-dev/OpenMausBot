@@ -163,3 +163,43 @@ test("an older call shows neither whether the disclosure was spoken nor an updat
   expect(screen.queryByText("Disclosure spoken")).toBeNull();
   expect(screen.queryByText("Sent after the opening")).toBeNull();
 });
+
+test("what was sent says who the call was for and why, with where each value came from", async () => {
+  await openSent({
+    ...SENT,
+    caller: {
+      callType: "business",
+      purpose: "move the cleaning",
+      userName: "Ada Lovelace",
+      userNameFrom: "settings",
+      bookingName: "Ada L.",
+      bookingNameFrom: "call",
+      callbackNumber: "+14155550111",
+      callbackNumberFrom: "profile",
+      details: "Patient since 2019.",
+      aboutMeIncluded: true,
+    },
+  });
+  expect(screen.getByText("Call type")).toBeTruthy();
+  expect(screen.getByText("To a business")).toBeTruthy();
+  expect(screen.getByText("move the cleaning")).toBeTruthy();
+  expect(screen.getByText("Ada Lovelace · from About you")).toBeTruthy();
+  expect(screen.getByText("Ada L. · from the call")).toBeTruthy();
+  expect(screen.getByText("+14155550111 · from your profile")).toBeTruthy();
+  expect(screen.getByText("Patient since 2019. · includes About me")).toBeTruthy();
+});
+
+test("a call to the owner with nothing given reads None for each value", async () => {
+  await openSent({
+    ...SENT,
+    caller: { callType: "owner", userNameFrom: "none", bookingNameFrom: "none", callbackNumberFrom: "none", aboutMeIncluded: false },
+  });
+  expect(screen.getByText("To you")).toBeTruthy();
+  expect(screen.getAllByText("None")).toHaveLength(5);
+});
+
+test("an older call shows no caller details", async () => {
+  await openSent(SENT);
+  expect(screen.queryByText("Call type")).toBeNull();
+  expect(screen.queryByText("Name given")).toBeNull();
+});

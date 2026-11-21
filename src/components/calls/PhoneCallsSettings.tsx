@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import { TriangleAlert } from "lucide-react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { intlLocale, t } from "@/lib/i18n";
@@ -15,7 +14,7 @@ import { useCallsSwitch } from "./use-calls-switch";
 import { useSavedDraft } from "./use-saved-draft";
 import {
   CALL_REASONING_EFFORTS, CALLS_PATH, CUSTOM_MODEL, EAGERNESS, EAGERNESS_LABEL, MODEL_TAG, NOISE_REDUCTION, NOISE_REDUCTION_LABEL, NUMBER_RANGES, REALTIME_MODELS,
-  REASONING_LABEL, SETTING_LABEL, TURN_TYPES, TURN_TYPE_LABEL, DEFAULT_REASONING_EFFORT, callsPatch, draftChanged, draftFrom, listedModel, modelPrices, onBehalfOfNudge,
+  REASONING_LABEL, SETTING_LABEL, TURN_TYPES, TURN_TYPE_LABEL, DEFAULT_REASONING_EFFORT, callsPatch, draftChanged, draftFrom, emptyNameNote, listedModel, modelPrices,
   turnFieldShown, voiceOptions, type CallsDraft, type CallsSetupStatus, type DraftField,
 } from "./calls-settings";
 
@@ -54,6 +53,8 @@ export function PhoneCallsSettings() {
     {setup && <>
       <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.settings")} block="calls-settings" fields={CALLING_FIELDS}
         lead={<RecordRow record={setup.record !== false} onSaved={load} />} />
+      <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.aboutYou")} description={t("settings.calls.aboutYouLine")} block="calls-about"
+        fields={ABOUT_YOU_FIELDS} />
       <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.voiceGroup")} block="calls-voice" fields={VOICE_FIELDS} />
       <CallPrompts setup={setup} onSaved={load} />
     </>}
@@ -135,16 +136,11 @@ function modelPriceNote(draft: CallsDraft) {
   return <span data-calls-model-price={model.id}><code className="font-mono">{model.id}</code> · {t("settings.calls.modelPrice", modelPrices(model, intlLocale()))}</span>;
 }
 
-function onBehalfOfHint(_draft: CallsDraft, setup: CallsSetupStatus) {
-  const nudge = onBehalfOfNudge(setup);
+function userNameHint(draft: CallsDraft, setup: CallsSetupStatus) {
+  const note = draft.userName.trim() ? null : emptyNameNote(setup.nameDefault);
   return <>
-    {t("settings.calls.onBehalfOfHint")}
-    {nudge && (
-      <span data-calls-on-behalf-nudge={nudge} className={cn("mt-1 flex items-start gap-1.5", nudge === "standIn" ? "text-warning" : "text-ink-secondary")}>
-        <TriangleAlert size={14} aria-hidden="true" className="mt-px shrink-0 text-warning" />
-        <span>{t(nudge === "standIn" ? "settings.calls.onBehalfOfStandIn" : "settings.calls.onBehalfOfDefault", { name: setup.onBehalfOfDefault })}</span>
-      </span>
-    )}
+    {t("settings.calls.userNameHint")}
+    {note && <>{" "}<span data-calls-name-default={setup.nameDefault.from}>{t(note.key, { name: note.name })}</span></>}
   </>;
 }
 
@@ -152,9 +148,14 @@ const CALLING_FIELDS: readonly FieldSpec[] = [
   { field: "callerId", label: "settings.calls.callerId", hint: "settings.calls.callerIdHint", placeholder: "+14155550123", type: "tel" },
   { field: "publicUrl", label: "settings.calls.publicUrl", hint: "settings.calls.publicUrlHint", placeholder: "https://calls.example.com", type: "url" },
   { field: "maxMinutes", label: "settings.calls.maxMinutes", type: "number" },
-  { field: "onBehalfOf", label: "settings.calls.onBehalfOf", hint: onBehalfOfHint },
   { field: "allow", label: "settings.calls.allow", hint: "settings.calls.allowHint", placeholder: "+1415*", lines: true },
   { field: "deny", label: "settings.calls.deny", hint: "settings.calls.denyHint", placeholder: "+1900*", lines: true },
+];
+
+const ABOUT_YOU_FIELDS: readonly FieldSpec[] = [
+  { field: "userName", label: "settings.calls.userName", hint: userNameHint },
+  { field: "callbackNumber", label: "settings.calls.callbackNumber", hint: "settings.calls.callbackNumberHint", type: "tel" },
+  { field: "aboutMe", label: "settings.calls.aboutMe", hint: "settings.calls.aboutMeHint", lines: true },
 ];
 
 const VOICE_FIELDS: readonly FieldSpec[] = [
@@ -184,8 +185,8 @@ const VOICE_FIELDS: readonly FieldSpec[] = [
   { field: "maxTurnsWithoutReply", label: "settings.calls.maxTurns", hint: "settings.calls.maxTurnsHint", type: "number" },
 ];
 
-function CallsForm({ setup, onSaved, label, block, fields, lead }: {
-  setup: CallsSetupStatus; onSaved: () => void; label: string; block: string; fields: readonly FieldSpec[]; lead?: ReactNode;
+function CallsForm({ setup, onSaved, label, description, block, fields, lead }: {
+  setup: CallsSetupStatus; onSaved: () => void; label: string; description?: string; block: string; fields: readonly FieldSpec[]; lead?: ReactNode;
 }) {
   const { dispatch } = useStore();
   const latest = useMemo(() => draftFrom(setup), [setup]);
@@ -199,7 +200,7 @@ function CallsForm({ setup, onSaved, label, block, fields, lead }: {
   const dirty = draftChanged(draft, saved);
 
   const save = async () => {
-    const patch = callsPatch(draft, saved);
+    const patch = callsPatch(draft, saved, setup);
     setNotice(null);
     setError(null);
     if (!patch.ok) { setInvalid(patch.invalid); return; }
@@ -218,7 +219,7 @@ function CallsForm({ setup, onSaved, label, block, fields, lead }: {
   };
 
   return (
-    <SettingsGroup label={label} block={block}>
+    <SettingsGroup label={label} block={block} description={description}>
       <SettingsRows>
         {lead}
         <form id={formId} noValidate data-calls-form={block} className="flex flex-col gap-4 px-4 pb-1 pt-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void save(); }}>

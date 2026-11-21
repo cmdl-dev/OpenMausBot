@@ -10,8 +10,8 @@ import { SettingsEmptyRow, SettingsFoldRow, SettingsGroup, SettingsRows } from "
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { PRE } from "./CallPrompts";
 import {
-  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, REASONING_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, disclosureSpoken, lineOffset, recordingDownloadUrl,
-  type CallDetail, type CallLine, type CallRecording, type CallSent, type CallSummary, type CallTurnDetection,
+  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, REASONING_LABEL, TURN_TYPE_LABEL, callOngoing, callerRows, clockLength, disclosureSpoken, lineOffset,
+  recordingDownloadUrl, type CallCaller, type CallDetail, type CallLine, type CallRecording, type CallSent, type CallSummary, type CallTurnDetection,
 } from "./calls-settings";
 
 const LIVE_POLL_MS = 4_000;
@@ -198,6 +198,11 @@ function RecordingSection({ recording }: { recording: CallRecording }) {
 
 const SENT_TEXTS = ["disclosure", "instructions", "opening", "closing", "wrapUp", "goodbye"] as const;
 
+function sentTextLabel(key: (typeof SENT_TEXTS)[number], unspoken: boolean): string {
+  if (unspoken) return t("settings.calls.disclosureNotSpoken");
+  return key === "opening" ? t("settings.calls.sentOpening") : t(PROMPT_LABEL[key]);
+}
+
 function turnDetectionText(detection: CallTurnDetection): string {
   const parts = [t(TURN_TYPE_LABEL[detection.type])];
   if (detection.threshold !== undefined) parts.push(`${t("settings.calls.threshold")} ${detection.threshold}`);
@@ -205,6 +210,17 @@ function turnDetectionText(detection: CallTurnDetection): string {
   if (detection.silenceDurationMs !== undefined) parts.push(`${t("settings.calls.silence")} ${detection.silenceDurationMs}`);
   if (detection.eagerness) parts.push(`${t("settings.calls.eagerness")} ${t(EAGERNESS_LABEL[detection.eagerness])}`);
   return parts.join(" · ");
+}
+
+function CallerValues({ caller }: { caller: CallCaller }) {
+  return (
+    <dl data-call-sent-caller="" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px] leading-[18px]">
+      {callerRows(caller, t).map(({ id, label, value }) => <div key={id} data-call-caller={id} className="contents">
+        <dt className="text-ink-tertiary">{label}</dt>
+        <dd dir="auto" className="min-w-0 whitespace-pre-wrap break-words text-ink">{value}</dd>
+      </div>)}
+    </dl>
+  );
 }
 
 function SentSection({ sent }: { sent: CallSent }) {
@@ -232,7 +248,7 @@ function SentSection({ sent }: { sent: CallSent }) {
       <div id={bodyId} hidden={!open} className="flex flex-col gap-3">
         {SENT_TEXTS.filter((key) => sent[key] !== undefined).map((key) => {
           const unspoken = key === "disclosure" && spoken === false;
-          const label = unspoken ? t("settings.calls.disclosureNotSpoken") : t(PROMPT_LABEL[key]);
+          const label = sentTextLabel(key, unspoken);
           return (
             <div key={key} data-call-sent-text={key} data-call-sent-unspoken={unspoken ? "" : undefined} className="flex flex-col gap-1">
               <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{label}</h5>
@@ -240,6 +256,7 @@ function SentSection({ sent }: { sent: CallSent }) {
             </div>
           );
         })}
+        {sent.caller && <CallerValues caller={sent.caller} />}
         <dl data-call-sent-values="" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px] leading-[18px]">
           {values.map(([label, value]) => <div key={label} className="contents">
             <dt className="text-ink-tertiary">{label}</dt>

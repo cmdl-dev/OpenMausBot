@@ -2,7 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import { ChevronDown, ChevronRight, Play } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import type { CallRecording, CallSent } from "@openmausbot/phone-protocol/phone-calls.ts";
+import type { CallCaller, CallInfoSource, CallRecording, CallSent } from "@openmausbot/phone-protocol/phone-calls.ts";
 import type { CallDetail, CallLine } from "@/api/client";
 import { asDesktopError, problemText } from "@/api/errors";
 import { Button } from "@/components/button";
@@ -157,11 +157,34 @@ const SENT_TEXTS = [
   ["goodbye", "Goodbye"],
 ] as const satisfies ReadonlyArray<readonly [keyof CallSent, string]>;
 
+const SOURCE_TEXT: Record<Exclude<CallInfoSource, "none">, string> = {
+  call: "from the call",
+  settings: "from About you",
+  profile: "from your profile",
+};
+
+function sourced(value: string | undefined, from: CallInfoSource): string {
+  return from === "none" || !value?.trim() ? "None" : `${value} · ${SOURCE_TEXT[from]}`;
+}
+
+function callerValues(caller: CallCaller): Array<[string, string]> {
+  const details = caller.details?.trim() ? caller.details : "None";
+  return [
+    ["Call type", caller.callType === "owner" ? "To you" : "To a business"],
+    ["Purpose", caller.purpose?.trim() ? caller.purpose : "None"],
+    ["Name given", sourced(caller.userName, caller.userNameFrom)],
+    ["Booking name", sourced(caller.bookingName, caller.bookingNameFrom)],
+    ["Callback number", sourced(caller.callbackNumber, caller.callbackNumberFrom)],
+    ["Details", caller.aboutMeIncluded ? `${details} · includes About me` : details],
+  ];
+}
+
 function SentSection({ sent }: { sent: CallSent }) {
   const [open, setOpen] = useState(false);
   const Chevron = open ? ChevronDown : ChevronRight;
   const spoken = sent.disclosureSpoken ?? sent.disclosureEnabled;
   const values: Array<[string, string]> = [
+    ...(sent.caller ? callerValues(sent.caller) : []),
     ...(spoken === undefined ? [] : [["Disclosure spoken", spoken ? "Yes" : "No"] as [string, string]]),
     ["Realtime model", sent.model],
     ["Voice", sent.voice],

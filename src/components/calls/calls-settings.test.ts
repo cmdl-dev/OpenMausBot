@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, type CallsSetup } from "../../../shared/phone-calls";
 import {
-  END_TEXT, PLACEHOLDER_MEANING, callsPatch, disclosureSpoken, draftChanged, draftFrom, keepEdits, modelPrices, onBehalfOfNudge, voiceOptions, lineOffset, promptDraftFrom, promptsPatch, recordingDownloadUrl, splitRules, turnFieldShown, type CallsDraft,
+  END_TEXT, PLACEHOLDER_MEANING, PROMPT_LABEL, PROMPT_ROLE, callerRows, callsPatch, disclosureSpoken, draftChanged, draftFrom, emptyNameNote, keepEdits, modelPrices, voiceOptions, lineOffset, promptDraftFrom, promptsPatch, recordingDownloadUrl, splitRules, turnFieldShown, type CallsDraft,
 } from "./calls-settings";
 
 const prompts = Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `${key} text`, default: `${key} text`, custom: false }])) as CallsSetup["prompts"];
@@ -9,7 +9,7 @@ const setup: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: ["+1415*"], deny: [], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera", prompts, tools: [],
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", nameDefault: { name: "Sam Rivera", from: "profile" }, prompts, tools: [],
 };
 const saved: CallsDraft = draftFrom(setup);
 
@@ -92,10 +92,54 @@ it("offers the built-in voices, recommended first, and keeps a saved one that is
   expect(voiceOptions("")).toHaveLength(10);
 });
 
-it("nudges for a Calls on behalf of name only while it is empty", () => {
-  expect(onBehalfOfNudge({ onBehalfOf: "Sam", onBehalfOfDefault: "Sam Rivera" })).toBeNull();
-  expect(onBehalfOfNudge({ onBehalfOfDefault: "Sam Rivera" })).toBe("profile");
-  expect(onBehalfOfNudge({ onBehalfOf: " ", onBehalfOfDefault: "the person I work for" })).toBe("standIn");
+describe("About you", () => {
+  it("fills Your name from the saved name, else from Calls on behalf of", () => {
+    expect(draftFrom({ ...setup, userName: "Sam", onBehalfOf: "Old" }).userName).toBe("Sam");
+    expect(draftFrom({ ...setup, onBehalfOf: "Old" }).userName).toBe("Old");
+    expect(draftFrom(setup)).toMatchObject({ userName: "", callbackNumber: "", aboutMe: "" });
+  });
+
+  it("saves each field trimmed, deletes a cleared one, and clears Calls on behalf of with a changed name", () => {
+    expect(callsPatch({ ...saved, userName: " Sam ", callbackNumber: "+14155550111", aboutMe: "Patient." }, saved)).toEqual({ ok: true, calls: {
+      userName: "Sam", callbackNumber: "+14155550111", aboutMe: "Patient.",
+    } });
+    const legacy = draftFrom({ ...setup, onBehalfOf: "Old" });
+    expect(callsPatch({ ...legacy, userName: "Sam" }, legacy, { onBehalfOf: "Old" })).toEqual({ ok: true, calls: { userName: "Sam", onBehalfOf: null } });
+    expect(callsPatch({ ...legacy, userName: "" }, legacy, { onBehalfOf: "Old" })).toEqual({ ok: true, calls: { userName: null, onBehalfOf: null } });
+    expect(callsPatch({ ...legacy, aboutMe: "Hi." }, legacy, { onBehalfOf: "Old" })).toEqual({ ok: true, calls: { aboutMe: "Hi." } });
+  });
+
+  it("refuses values over the server's limits", () => {
+    expect(callsPatch({ ...saved, userName: "x".repeat(81), callbackNumber: "1".repeat(41), aboutMe: "x".repeat(2001) }, saved)).toEqual({ ok: false, invalid: {
+      userName: "settings.calls.userNameTooLong", callbackNumber: "settings.calls.callbackNumberTooLong", aboutMe: "settings.calls.aboutMeTooLong",
+    } });
+    expect(callsPatch({ ...saved, userName: "x".repeat(80), aboutMe: "x".repeat(2000) }, saved).ok).toBe(true);
+  });
+
+  it("says what an empty name falls back to only for a profile name or none", () => {
+    expect(emptyNameNote({ name: "Sam Rivera", from: "profile" })).toEqual({ key: "settings.calls.userNameProfile", name: "Sam Rivera" });
+    expect(emptyNameNote({ name: "", from: "none" })).toEqual({ key: "settings.calls.userNameNone", name: "" });
+    expect(emptyNameNote({ name: "Sam", from: "settings" })).toBeNull();
+  });
+});
+
+it("labels the business and owner openings apart", () => {
+  expect(PROMPT_LABEL.openingOwner).toBe("settings.calls.prompt.openingOwner");
+  expect(PROMPT_ROLE.openingOwner).toBe("settings.calls.promptRole.openingOwner");
+});
+
+it("lists who a call was for, with sources, and None for what nobody gave", () => {
+  const label = (key: string) => key;
+  expect(callerRows({
+    callType: "owner", userNameFrom: "profile", userName: "Sam", bookingNameFrom: "none", callbackNumber: "+14155550111", callbackNumberFrom: "settings", aboutMeIncluded: false,
+  }, label).map(({ id, value }) => [id, value])).toEqual([
+    ["callType", "settings.calls.caller.owner"],
+    ["purpose", "settings.calls.caller.none"],
+    ["userName", "Sam · settings.calls.from.profile"],
+    ["bookingName", "settings.calls.caller.none"],
+    ["callbackNumber", "+14155550111 · settings.calls.from.settings"],
+    ["details", "settings.calls.caller.none"],
+  ]);
 });
 
 it("times a transcript line from the answer, or from dialing when nobody answered", () => {
@@ -135,6 +179,7 @@ describe("call recordings and placeholders", () => {
     expect(CALL_PLACEHOLDERS.filter(({ name }) => !PLACEHOLDER_MEANING[name]).map(({ name }) => name)).toEqual([]);
     expect(PLACEHOLDER_MEANING.recordingNotice).toBe("settings.calls.placeholder.recordingNotice");
     expect(PLACEHOLDER_MEANING.disclosureHeard).toBe("settings.calls.placeholder.disclosureHeard");
+    expect(PLACEHOLDER_MEANING.callTypeNote).toBe("settings.calls.placeholder.callTypeNote");
   });
 });
 

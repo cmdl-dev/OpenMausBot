@@ -27,7 +27,7 @@ const READY: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: [], deny: ["+1900*"], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera",
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera",
   prompts: {
     ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `Default ${key} for {callee}.`, default: `Default ${key} for {callee}.`, custom: false }])) as CallsSetup["prompts"],
     opening: { value: "Greet {callee} and say why you're calling.", default: "Default opening.", custom: true },
@@ -54,7 +54,9 @@ const DETAIL: CallDetail = {
     disclosure: "This call is from an AI assistant.", instructions: "You are calling Dr. Lee's office for Sam.", opening: "Greet Dr. Lee's office.",
     closing: "Say goodbye before you hang up.", wrapUp: "Wrap up now.", goodbye: "Say goodbye.", reasoningEffort: "medium", model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-4o-mini-transcribe",
     turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field", maxTurnsWithoutReply: 3, maxMinutes: 10, recorded: true,
+    disclosureEnabled: true, disclosureSpoken: true,
     session: { type: "realtime", instructions: "You are calling Dr. Lee's office for Sam." },
+    afterOpening: { type: "session.update", session: { audio: { input: { turn_detection: { type: "semantic_vad", create_response: true, interrupt_response: true } } } } },
   },
   recording: { path: "/data/calls/c1.wav", bytes: 1_440_044, seconds: 90, url: "/api/calls/c1/recording" },
 };
@@ -398,6 +400,7 @@ describe("What the call says", () => {
     expect(legend).toContain("{onBehalfOf}");
     expect(legend).toContain("{maxMinutes}The call's time limit in minutes.");
     expect(legend).toContain("{recordingNotice}\"This call is recorded.\" while Record calls is on, else \"This call is transcribed.\"");
+    expect(legend).toContain("{disclosureHeard}While Speak disclosure is on: When they answered, they heard: \"<the disclosure>\" Don't repeat it.");
   });
 
   it("saves only the text that changed, exactly as typed", async () => {
@@ -418,6 +421,54 @@ describe("What the call says", () => {
     expect(puts()).toHaveLength(1);
     expect(JSON.parse(puts()[0]![1].body)).toEqual({ calls: { opening: null } });
     expect(prompt("opening").value).toBe("Default opening.");
+  });
+
+  it("shows whether the disclosure is spoken and saves the switch at once", async () => {
+    await render();
+    const toggle = $<HTMLButtonElement>("[data-calls-speak-disclosure]")!;
+    expect(toggle.getAttribute("role")).toBe("switch");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(toggle.closest("[data-calls-prompt]")?.getAttribute("data-calls-prompt")).toBe("disclosure");
+    expect(document.getElementById(toggle.getAttribute("aria-labelledby")!)?.textContent).toBe("Speak disclosure");
+    expect(prompt("disclosure").disabled).toBe(false);
+    setup = { ...READY, disclosureEnabled: false };
+    flushSync(() => toggle.click());
+    await settle();
+    expect(puts().map(([, init]) => JSON.parse(init.body))).toEqual([{ calls: { disclosureEnabled: false } }]);
+    expect(fx.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "configStatus" }));
+    expect($("[data-calls-speak-disclosure]")!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("keeps the saved disclosure on show but out of reach while it isn't spoken, and turns it back on", async () => {
+    setup = { ...READY, disclosureEnabled: false, prompts: { ...READY.prompts, disclosure: { value: "This is Sam's AI assistant.", default: "Default disclosure.", custom: true } } };
+    await render();
+    expect($("[data-calls-speak-disclosure]")!.getAttribute("aria-checked")).toBe("false");
+    expect(prompt("disclosure").value).toBe("This is Sam's AI assistant.");
+    expect(prompt("disclosure").disabled).toBe(true);
+    expect($<HTMLButtonElement>('[data-calls-prompt-reset="disclosure"]')!.disabled).toBe(true);
+    expect(prompt("opening").disabled).toBe(false);
+    flushSync(() => $<HTMLButtonElement>("[data-calls-speak-disclosure]")!.click());
+    await settle();
+    expect(puts().map(([, init]) => JSON.parse(init.body))).toEqual([{ calls: { disclosureEnabled: true } }]);
+  });
+
+  it("says California needs a recording notice while the disclosure is off and calls are recorded, inline", async () => {
+    setup = { ...READY, disclosureEnabled: false, record: true };
+    await render();
+    const line = host.querySelectorAll("[data-calls-disclosure-recorded]");
+    expect([...line].map((element) => element.textContent)).toEqual(["California requires telling people a call is recorded."]);
+    expect(line[0]!.closest('[data-calls-prompt="disclosure"]')).not.toBeNull();
+    expect(document.body.querySelector('[role="alertdialog"], [role="dialog"]')).toBeNull();
+  });
+
+  it.each([
+    ["off while calls aren't recorded", { disclosureEnabled: false, record: false }],
+    ["on while calls are recorded", { disclosureEnabled: true, record: true }],
+  ])("says nothing about California while the disclosure is %s", async (_case, change) => {
+    setup = { ...READY, ...change };
+    await render();
+    expect($("[data-calls-disclosure-recorded]")).toBeNull();
+    expect(host.textContent).not.toContain("California");
   });
 
   it("shows the tools as sent, read-only", async () => {
@@ -482,10 +533,32 @@ describe("Call history", () => {
     expect(values).toContain("By meaning (semantic VAD) · Eagerness Low");
     expect(values).toContain("Far (speakerphone)");
     expect(JSON.parse(sent.querySelector("[data-call-sent-session]")!.textContent!)).toEqual(DETAIL.sent!.session);
+    expect(values).toContain("Disclosure spokenYes");
+    expect(texts[0]!.querySelector("h5")!.textContent).toBe("Disclosure");
+    expect(sent.querySelector("[data-call-sent-unspoken]")).toBeNull();
+    expect(JSON.parse(sent.querySelector("[data-call-sent-after-opening]")!.textContent!)).toEqual(DETAIL.sent!.afterOpening);
+    expect(sent.textContent).toContain("Sent after the opening");
+  });
+
+  it("says when the disclosure wasn't spoken, and doesn't present its text as said", async () => {
+    fx.api.mockImplementation(async (path: string) => {
+      if (path === "/api/calls/setup") return setup;
+      if (path === "/api/calls") return { calls: [ENDED] };
+      if (path === "/api/calls/c1") return { ...DETAIL, sent: { ...DETAIL.sent!, disclosureEnabled: false, disclosureSpoken: false } };
+      throw new Error(`unexpected ${path}`);
+    });
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    const sent = $("[data-call-sent]")!;
+    expect(sent.querySelector("[data-call-sent-values]")!.textContent).toContain("Disclosure spokenNo");
+    const disclosure = sent.querySelector<HTMLElement>('[data-call-sent-text="disclosure"]')!;
+    expect(disclosure.hasAttribute("data-call-sent-unspoken")).toBe(true);
+    expect(disclosure.querySelector("h5")!.textContent).toBe("Disclosure (not spoken)");
   });
 
   it("leaves out what an older call wasn't sent", async () => {
-    const { closing: _closing, reasoningEffort: _effort, ...older } = DETAIL.sent!;
+    const { closing: _closing, reasoningEffort: _effort, disclosureEnabled: _enabled, disclosureSpoken: _spoken, afterOpening: _after, ...older } = DETAIL.sent!;
     fx.api.mockImplementation(async (path: string) => {
       if (path === "/api/calls/setup") return setup;
       if (path === "/api/calls") return { calls: [ENDED] };
@@ -499,6 +572,8 @@ describe("Call history", () => {
     expect([...sent.querySelectorAll<HTMLElement>("[data-call-sent-text]")].map((element) => element.dataset.callSentText))
       .toEqual(["disclosure", "instructions", "opening", "wrapUp", "goodbye"]);
     expect(sent.querySelector("[data-call-sent-values]")!.textContent).not.toContain("Reasoning effort");
+    expect(sent.querySelector("[data-call-sent-values]")!.textContent).not.toContain("Disclosure spoken");
+    expect(sent.querySelector("[data-call-sent-after-opening]")).toBeNull();
   });
 
   it("hangs up a call that hasn't ended", async () => {

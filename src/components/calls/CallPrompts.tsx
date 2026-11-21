@@ -3,27 +3,44 @@ import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { SETTINGS_INPUT, SettingsFormFoot, SettingsGroup, SettingsRows, SettingsTag } from "../SettingsPrimitives";
+import { SETTINGS_INPUT, SettingsFormFoot, SettingsGroup, SettingsRows, SettingsTag, Switch } from "../SettingsPrimitives";
 import {
   CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, PLACEHOLDER_MEANING, PROMPT_LABEL, PROMPT_ROLE, promptDraftFrom, promptsPatch, type CallPromptKey, type CallsSetupStatus,
   type PromptDraft,
 } from "./calls-settings";
+import { useCallsSwitch } from "./use-calls-switch";
 import { useSavedDraft } from "./use-saved-draft";
 
 const MAX_ROWS = 16;
 
 export const PRE = "max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ink/[0.045] px-3 py-2 font-mono text-[12px] leading-[18px] text-ink";
 
-export function CallPrompts({ setup, onSaved }: { setup: CallsSetupStatus; onSaved: () => void }) {
+function SpeakDisclosure({ on, saving, error, toggle, record }: ReturnType<typeof useCallsSwitch> & { record: boolean }) {
+  const labelId = useId();
+  return (
+    <div data-calls-speak-disclosure-row="" className="flex flex-col gap-1">
+      <div className="flex min-h-7 items-center gap-3">
+        <span id={labelId} className="text-[13px] leading-[18px] text-ink">{t("settings.calls.speakDisclosure")}</span>
+        <Switch checked={on} disabled={saving} data-calls-speak-disclosure="" aria-labelledby={labelId} className="ms-auto" onClick={() => void toggle()} />
+      </div>
+      {!on && record && <p data-calls-disclosure-recorded="" className="text-[12px] leading-4 text-ink-secondary">{t("settings.calls.speakDisclosureRecorded")}</p>}
+      {error && <span role="alert" className="text-[12px] leading-4 text-danger">{error}</span>}
+    </div>
+  );
+}
+
+export function CallPrompts({ setup, onSaved }: { setup: CallsSetupStatus; onSaved: () => Promise<unknown> }) {
   const { dispatch } = useStore();
   const latest = useMemo(() => promptDraftFrom(setup), [setup]);
   const { saved, draft, edit, markSaved } = useSavedDraft<PromptDraft>(latest);
+  const speak = useCallsSwitch("disclosureEnabled", setup.disclosureEnabled !== false, onSaved);
+  const sendable: PromptDraft = speak.on ? draft : { ...draft, disclosure: saved.disclosure };
   const [invalid, setInvalid] = useState<Partial<Record<CallPromptKey, LocaleKey>>>({});
   const [busy, setBusy] = useState<CallPromptKey | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const formId = useId();
-  const dirty = CALL_PROMPT_KEYS.some((key) => draft[key] !== saved[key]);
+  const dirty = CALL_PROMPT_KEYS.some((key) => sendable[key] !== saved[key]);
 
   const put = async (calls: Partial<Record<CallPromptKey, string | null>>, after: Partial<PromptDraft>) => {
     setNotice(null);
@@ -33,14 +50,14 @@ export function CallPrompts({ setup, onSaved }: { setup: CallsSetupStatus; onSav
       dispatch({ type: "configStatus", config });
       markSaved(after);
       setNotice(t("settings.calls.saved"));
-      onSaved();
+      void onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("settings.calls.saveFailed"));
     }
   };
 
   const save = async () => {
-    const patch = promptsPatch(draft, saved);
+    const patch = promptsPatch(sendable, saved);
     if (!patch.ok) { setInvalid(patch.invalid); return; }
     setInvalid({});
     const changed = Object.keys(patch.calls) as CallPromptKey[];
@@ -66,20 +83,22 @@ export function CallPrompts({ setup, onSaved }: { setup: CallsSetupStatus; onSav
           {CALL_PROMPT_KEYS.map((key) => {
             const wrong = invalid[key];
             const custom = setup.prompts[key].custom;
+            const silenced = key === "disclosure" && !speak.on;
             return (
               <div key={key} data-calls-prompt={key} className="flex flex-col gap-1.5">
                 <div className="flex min-h-7 items-center gap-2">
                   <label htmlFor={`${formId}-${key}`} className="text-[13px] font-medium leading-[18px] text-ink">{t(PROMPT_LABEL[key])}</label>
                   <span data-calls-prompt-state={custom ? "custom" : "default"}><SettingsTag>{t(custom ? "settings.calls.promptCustom" : "settings.calls.promptDefault")}</SettingsTag></span>
                   {custom && (
-                    <button type="button" data-calls-prompt-reset={key} disabled={busy !== null} onClick={() => void reset(key)}
+                    <button type="button" data-calls-prompt-reset={key} disabled={busy !== null || silenced} onClick={() => void reset(key)}
                       className="ui-button ui-button-sm ms-auto rounded-full">
                       {busy === key ? t("settings.calls.resetting") : t("settings.calls.resetPrompt")}
                     </button>
                   )}
                 </div>
                 <p id={`${formId}-${key}-role`} className="text-[12px] leading-4 text-ink-secondary">{t(PROMPT_ROLE[key])}</p>
-                <textarea id={`${formId}-${key}`} name={key} value={draft[key]} disabled={busy !== null} dir="auto" spellCheck={false} autoComplete="off"
+                {key === "disclosure" && <SpeakDisclosure {...speak} record={setup.record !== false} />}
+                <textarea id={`${formId}-${key}`} name={key} value={silenced ? saved[key] : draft[key]} disabled={busy !== null || silenced} dir="auto" spellCheck={false} autoComplete="off"
                   aria-describedby={`${formId}-${key}-role`} aria-invalid={Boolean(wrong) || undefined}
                   rows={Math.min(MAX_ROWS, Math.max(2, draft[key].split("\n").length + 1))}
                   onChange={(event) => { edit({ [key]: event.target.value }); setNotice(null); }}

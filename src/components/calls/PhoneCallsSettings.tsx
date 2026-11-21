@@ -11,6 +11,7 @@ import { openKeySettings } from "../keys/key-focus";
 import { Select } from "../Select";
 import { CallHistory } from "./CallHistory";
 import { CallPrompts } from "./CallPrompts";
+import { useCallsSwitch } from "./use-calls-switch";
 import { useSavedDraft } from "./use-saved-draft";
 import {
   CALL_REASONING_EFFORTS, CALLS_PATH, CUSTOM_MODEL, EAGERNESS, EAGERNESS_LABEL, MODEL_TAG, NOISE_REDUCTION, NOISE_REDUCTION_LABEL, NUMBER_RANGES, REALTIME_MODELS,
@@ -54,7 +55,7 @@ export function PhoneCallsSettings() {
       <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.settings")} block="calls-settings" fields={CALLING_FIELDS}
         lead={<RecordRow record={setup.record !== false} onSaved={load} />} />
       <CallsForm setup={setup} onSaved={() => void load()} label={t("settings.calls.voiceGroup")} block="calls-voice" fields={VOICE_FIELDS} />
-      <CallPrompts setup={setup} onSaved={() => void load()} />
+      <CallPrompts setup={setup} onSaved={load} />
     </>}
     <CallHistory />
   </>;
@@ -97,28 +98,11 @@ function KeyRows() {
 }
 
 function RecordRow({ record, onSaved }: { record: boolean; onSaved: () => Promise<unknown> }) {
-  const { dispatch } = useStore();
-  const [pending, setPending] = useState<boolean | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const on = pending ?? record;
-
-  const toggle = async () => {
-    const next = !on;
-    setPending(next);
-    setError(null);
-    try {
-      const config: ConfigStatus = await api("/api/config", { method: "PUT", body: JSON.stringify({ calls: { record: next } }) });
-      dispatch({ type: "configStatus", config });
-      await onSaved();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("settings.calls.saveFailed"));
-    } finally { setPending(null); }
-  };
-
+  const { on, saving, error, toggle } = useCallsSwitch("record", record, onSaved);
   return (
     <SettingRow title={t("settings.calls.record")} subtitle={t("settings.calls.recordLine")}
       message={error ? <span role="alert" className="text-danger">{error}</span> : undefined}>
-      <Switch checked={on} disabled={pending !== null} data-calls-record="" aria-label={t("settings.calls.record")} onClick={() => void toggle()} />
+      <Switch checked={on} disabled={saving} data-calls-record="" aria-label={t("settings.calls.record")} onClick={() => void toggle()} />
     </SettingRow>
   );
 }

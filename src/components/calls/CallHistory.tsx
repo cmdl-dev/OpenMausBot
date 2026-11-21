@@ -10,7 +10,7 @@ import { SettingsEmptyRow, SettingsFoldRow, SettingsGroup, SettingsRows } from "
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { PRE } from "./CallPrompts";
 import {
-  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, REASONING_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, recordingDownloadUrl,
+  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, REASONING_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, disclosureSpoken, lineOffset, recordingDownloadUrl,
   type CallDetail, type CallLine, type CallRecording, type CallSent, type CallSummary, type CallTurnDetection,
 } from "./calls-settings";
 
@@ -210,7 +210,9 @@ function turnDetectionText(detection: CallTurnDetection): string {
 function SentSection({ sent }: { sent: CallSent }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
+  const spoken = disclosureSpoken(sent);
   const values: Array<[string, string]> = [
+    ...(spoken === undefined ? [] : [[t("settings.calls.disclosureSpoken"), t(spoken ? "settings.calls.disclosureSpokenYes" : "settings.calls.disclosureSpokenNo")] as [string, string]]),
     [t("settings.calls.model"), sent.model],
     [t("settings.calls.voice"), sent.voice],
     ...(sent.reasoningEffort ? [[t("settings.calls.reasoningEffort"), t(REASONING_LABEL[sent.reasoningEffort])] as [string, string]] : []),
@@ -228,12 +230,16 @@ function SentSection({ sent }: { sent: CallSent }) {
         {t("settings.calls.sent")}
       </button>
       <div id={bodyId} hidden={!open} className="flex flex-col gap-3">
-        {SENT_TEXTS.filter((key) => sent[key] !== undefined).map((key) => (
-          <div key={key} data-call-sent-text={key} className="flex flex-col gap-1">
-            <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t(PROMPT_LABEL[key])}</h5>
-            <pre tabIndex={0} aria-label={t(PROMPT_LABEL[key])} dir="auto" className={PRE}>{sent[key]}</pre>
-          </div>
-        ))}
+        {SENT_TEXTS.filter((key) => sent[key] !== undefined).map((key) => {
+          const unspoken = key === "disclosure" && spoken === false;
+          const label = unspoken ? t("settings.calls.disclosureNotSpoken") : t(PROMPT_LABEL[key]);
+          return (
+            <div key={key} data-call-sent-text={key} data-call-sent-unspoken={unspoken ? "" : undefined} className="flex flex-col gap-1">
+              <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{label}</h5>
+              <pre tabIndex={0} aria-label={label} dir="auto" className={PRE}>{sent[key]}</pre>
+            </div>
+          );
+        })}
         <dl data-call-sent-values="" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px] leading-[18px]">
           {values.map(([label, value]) => <div key={label} className="contents">
             <dt className="text-ink-tertiary">{label}</dt>
@@ -244,6 +250,10 @@ function SentSection({ sent }: { sent: CallSent }) {
           <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t("settings.calls.session")}</h5>
           <pre data-call-sent-session="" tabIndex={0} aria-label={t("settings.calls.session")} dir="ltr" className={PRE}>{JSON.stringify(sent.session, null, 2)}</pre>
         </div>
+        {sent.afterOpening && <div className="flex flex-col gap-1">
+          <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t("settings.calls.afterOpening")}</h5>
+          <pre data-call-sent-after-opening="" tabIndex={0} aria-label={t("settings.calls.afterOpening")} dir="ltr" className={PRE}>{JSON.stringify(sent.afterOpening, null, 2)}</pre>
+        </div>}
       </div>
     </section>
   );

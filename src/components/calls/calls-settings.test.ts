@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, type CallsSetup } from "../../../shared/phone-calls";
 import {
-  END_TEXT, PLACEHOLDER_MEANING, callsPatch, draftChanged, draftFrom, keepEdits, modelPrices, onBehalfOfNudge, voiceOptions, lineOffset, promptDraftFrom, promptsPatch, recordingDownloadUrl, splitRules, turnFieldShown, type CallsDraft,
+  END_TEXT, PLACEHOLDER_MEANING, callsPatch, disclosureSpoken, draftChanged, draftFrom, keepEdits, modelPrices, onBehalfOfNudge, voiceOptions, lineOffset, promptDraftFrom, promptsPatch, recordingDownloadUrl, splitRules, turnFieldShown, type CallsDraft,
 } from "./calls-settings";
 
 const prompts = Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `${key} text`, default: `${key} text`, custom: false }])) as CallsSetup["prompts"];
@@ -9,7 +9,7 @@ const setup: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: ["+1415*"], deny: [], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera", prompts, tools: [],
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, disclosureEnabled: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera", prompts, tools: [],
 };
 const saved: CallsDraft = draftFrom(setup);
 
@@ -134,5 +134,13 @@ describe("call recordings and placeholders", () => {
   it("names every placeholder in the app's language", () => {
     expect(CALL_PLACEHOLDERS.filter(({ name }) => !PLACEHOLDER_MEANING[name]).map(({ name }) => name)).toEqual([]);
     expect(PLACEHOLDER_MEANING.recordingNotice).toBe("settings.calls.placeholder.recordingNotice");
+    expect(PLACEHOLDER_MEANING.disclosureHeard).toBe("settings.calls.placeholder.disclosureHeard");
   });
+});
+
+it("says whether the disclosure was spoken from what Twilio did, else from the setting, and nothing for older calls", () => {
+  expect(disclosureSpoken({ disclosureEnabled: true, disclosureSpoken: false })).toBe(false);
+  expect(disclosureSpoken({ disclosureEnabled: false })).toBe(false);
+  expect(disclosureSpoken({ disclosureEnabled: true })).toBe(true);
+  expect(disclosureSpoken({})).toBeUndefined();
 });

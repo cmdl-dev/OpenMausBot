@@ -160,7 +160,9 @@ const SENT_TEXTS = [
 function SentSection({ sent }: { sent: CallSent }) {
   const [open, setOpen] = useState(false);
   const Chevron = open ? ChevronDown : ChevronRight;
+  const spoken = sent.disclosureSpoken ?? sent.disclosureEnabled;
   const values: Array<[string, string]> = [
+    ...(spoken === undefined ? [] : [["Disclosure spoken", spoken ? "Yes" : "No"] as [string, string]]),
     ["Realtime model", sent.model],
     ["Voice", sent.voice],
     ...(sent.reasoningEffort ? [["Reasoning effort", sent.reasoningEffort] as [string, string]] : []),
@@ -183,7 +185,7 @@ function SentSection({ sent }: { sent: CallSent }) {
           {SENT_TEXTS.filter(([key]) => sent[key] !== undefined).map(([key, label]) => (
             <View key={key} style={styles.line}>
               <Txt variant="caption" tone="secondary">
-                {label}
+                {key === "disclosure" && spoken === false ? "Disclosure (not spoken)" : label}
               </Txt>
               <Txt variant="footnote" mono selectable>
                 {sent[key]}
@@ -208,6 +210,16 @@ function SentSection({ sent }: { sent: CallSent }) {
               {JSON.stringify(sent.session, null, 2)}
             </Txt>
           </View>
+          {sent.afterOpening ? (
+            <View style={styles.line}>
+              <Txt variant="caption" tone="secondary">
+                Sent after the opening
+              </Txt>
+              <Txt variant="footnote" mono selectable>
+                {JSON.stringify(sent.afterOpening, null, 2)}
+              </Txt>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </>

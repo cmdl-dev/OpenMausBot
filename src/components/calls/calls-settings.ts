@@ -1,7 +1,7 @@
 import type { LocaleKey } from "@/locales";
 import {
   CALL_PROMPT_KEYS, ON_BEHALF_OF_STAND_IN, REALTIME_MODELS, REALTIME_VOICES, RECOMMENDED_VOICES, e164, numberRule, realtimeMinuteCost, type CallDetail,
-  type CallEndReason, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSetting, type CallsSetup, type CallSummary,
+  type CallEndReason, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSent, type CallSetting, type CallsSetup, type CallSummary,
   type CallTurnDetection,
 } from "../../../shared/phone-calls";
 
@@ -290,6 +290,7 @@ export const PLACEHOLDER_MEANING: Partial<Record<string, LocaleKey>> = {
   brief: "settings.calls.placeholder.brief",
   disclosure: "settings.calls.placeholder.disclosure",
   maxMinutes: "settings.calls.placeholder.maxMinutes",
+  disclosureHeard: "settings.calls.placeholder.disclosureHeard",
   recordingNotice: "settings.calls.placeholder.recordingNotice",
 };
 
@@ -308,6 +309,11 @@ export function promptsPatch(draft: PromptDraft, saved: PromptDraft):
     else calls[key] = draft[key].trim() ? draft[key] : null;
   }
   return Object.keys(invalid).length ? { ok: false, invalid } : { ok: true, calls };
+}
+
+/** Whether Twilio spoke the disclosure on this call; undefined for a call placed before it was recorded. */
+export function disclosureSpoken(sent: Pick<CallSent, "disclosureEnabled" | "disclosureSpoken">): boolean | undefined {
+  return sent.disclosureSpoken ?? sent.disclosureEnabled;
 }
 
 export function callOngoing(call: Pick<CallSummary, "phase">): boolean {

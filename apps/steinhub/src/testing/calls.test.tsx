@@ -114,3 +114,52 @@ test("a call without a recording shows no recording", async () => {
   expect(screen.queryByText("Open recording")).toBeNull();
   expect(screen.queryByText("Recording")).toBeNull();
 });
+
+const SENT: NonNullable<CallDetail["sent"]> = {
+  disclosure: "This is Scout, an AI assistant calling for Ada.",
+  instructions: "You are calling Bright Smile Dental for Ada.",
+  opening: "Say why you're calling.",
+  wrapUp: "Wrap up now.",
+  goodbye: "Say goodbye.",
+  model: "gpt-realtime-2.1-mini",
+  voice: "marin",
+  transcriptionModel: "gpt-4o-mini-transcribe",
+  turnDetection: { type: "semantic_vad", eagerness: "auto" },
+  noiseReduction: "near_field",
+  maxTurnsWithoutReply: 3,
+  maxMinutes: 10,
+  recorded: true,
+  disclosureEnabled: true,
+  disclosureSpoken: true,
+  session: { type: "realtime", instructions: "You are calling Bright Smile Dental for Ada." },
+  afterOpening: { type: "session.update", session: { audio: { input: { turn_detection: { type: "semantic_vad", create_response: true } } } } },
+};
+
+async function openSent(sent: CallDetail["sent"]) {
+  await openCall({ ...CALL, sent });
+  await fireEvent.press(screen.getByText("What was sent"));
+}
+
+test("what was sent says the disclosure was spoken and shows the update sent after the opening", async () => {
+  await openSent(SENT);
+  expect(screen.getByText("Disclosure spoken")).toBeTruthy();
+  expect(screen.getByText("Yes")).toBeTruthy();
+  expect(screen.getByText("Disclosure")).toBeTruthy();
+  expect(screen.getByText("Sent after the opening")).toBeTruthy();
+  expect(screen.getByText(JSON.stringify(SENT.afterOpening, null, 2))).toBeTruthy();
+});
+
+test("a disclosure Twilio didn't speak is labelled not spoken", async () => {
+  await openSent({ ...SENT, disclosureEnabled: false, disclosureSpoken: false });
+  expect(screen.getByText("No")).toBeTruthy();
+  expect(screen.getByText("Disclosure (not spoken)")).toBeTruthy();
+  expect(screen.queryByText("Disclosure")).toBeNull();
+});
+
+test("an older call shows neither whether the disclosure was spoken nor an update after the opening", async () => {
+  const { disclosureEnabled: _enabled, disclosureSpoken: _spoken, afterOpening: _after, ...older } = SENT;
+  await openSent(older);
+  expect(screen.getByText("Disclosure")).toBeTruthy();
+  expect(screen.queryByText("Disclosure spoken")).toBeNull();
+  expect(screen.queryByText("Sent after the opening")).toBeNull();
+});

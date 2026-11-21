@@ -9,7 +9,7 @@ import { writeFileAtomic } from "../atomic.ts";
 import type { ReadyCalls } from "./config.ts";
 import { callTexts, summaryPrompt } from "./prompt.ts";
 import type { CallProvider, ProviderProgress } from "./provider.ts";
-import { bridgeCall, realtimeSession, type CallBridge } from "./realtime.ts";
+import { bridgeCall, realtimeSession, reasoningModel, type CallBridge } from "./realtime.ts";
 import { connectStreamTwiml, hangUpTwiml } from "./twilio.ts";
 import { createCallRecorder, repairRecording, type CallRecorder } from "./recording.ts";
 
@@ -304,9 +304,10 @@ export function createCalls(deps: CallDeps) {
       };
       const texts = callTexts(settings.prompts, { ...record, recorded: settings.record });
       record.sent = {
-        disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
+        disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, closing: texts.closing, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
         model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel, turnDetection: settings.turnDetection,
         noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes, recorded: settings.record,
+        ...(reasoningModel(settings.model) ? { reasoningEffort: settings.reasoningEffort } : {}),
         session: realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription }),
       };
       records.set(record.id, record);
@@ -375,7 +376,7 @@ export function createCalls(deps: CallDeps) {
         save();
       }
       running.bridge = bridgeCall(socket, () => deps.openRealtime(settings), {
-        session: sent.session, opening: sent.opening, goodbye: sent.goodbye, maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
+        session: sent.session, opening: sent.opening, goodbye: sent.goodbye, closing: sent.closing ?? sent.goodbye, maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
         ...(running.recorder ? { recorder: running.recorder } : {}),
       }, {
         started: () => answered(record),

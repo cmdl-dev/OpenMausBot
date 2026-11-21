@@ -1,8 +1,8 @@
 // Phone calls' settings in config.json, their OMB_* overrides, and what is still missing before a call can be placed.
 import { z } from "zod";
-import { CALL_PROMPT_KEYS, CALL_SETTINGS, e164, numberRule, type CallNoiseReduction, type CallPromptKey, type CallSetting, type CallsSetup, type CallTurnDetection } from "../../shared/phone-calls.ts";
+import { CALL_PROMPT_KEYS, CALL_REASONING_EFFORTS, CALL_SETTINGS, e164, numberRule, ON_BEHALF_OF_STAND_IN, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSetting, type CallsSetup, type CallTurnDetection } from "../../shared/phone-calls.ts";
 import { usableLiveKey, type LiveConfig } from "../live-config.ts";
-import { DEFAULT_CALL_PROMPTS } from "./prompt.ts";
+import { customPrompt, DEFAULT_CALL_PROMPTS } from "./prompt.ts";
 import { endCallTool } from "./realtime.ts";
 
 export const DEFAULT_CALL_MINUTES = 10;
@@ -12,9 +12,19 @@ export const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
 export const DEFAULT_CALL_VOICE = "marin";
 export const DEFAULT_CALLS_PORT = 8805;
 export const DEFAULT_TURNS_WITHOUT_REPLY = 3;
+/** A phone's microphone is close to the speaker's mouth: near_field. */
 export const DEFAULT_NOISE_REDUCTION: CallNoiseReduction = "near_field";
-/** Phone audio is noisy and has echo: a higher threshold than OpenAI's default and a longer silence before a turn ends. */
-export const DEFAULT_TURN_DETECTION: CallTurnDetection = { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 };
+/** Semantic VAD waits until the callee has finished a thought, so it cuts in less on a phone's pauses and line noise than
+ * silence-based server VAD; "auto" (medium) waits up to 4 s, where "low" waits up to 8 s, too long a silence on a call. */
+export const DEFAULT_TURN_DETECTION: CallTurnDetection = { type: "semantic_vad", eagerness: "auto" };
+/** Server VAD's numbers when it is chosen and one is left blank: a higher threshold than OpenAI's 0.5 for phone noise and
+ * echo, and a longer silence than its 500 ms before a turn ends. */
+export const SERVER_VAD_DEFAULTS = { threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 } as const;
+/** Turn detections that were the built-in default; one saved exactly so reads as unset. */
+const RETIRED_TURN_DETECTIONS: readonly CallTurnDetection[] = [{ type: "server_vad", ...SERVER_VAD_DEFAULTS }];
+/** OpenAI's recommended start for production voice agents. */
+export const DEFAULT_REASONING_EFFORT: CallReasoningEffort = "low";
+
 
 /** `calls` in config.json. `accountSid` and `authToken` are the Twilio account's (encrypted on the desktop like every
  * API key); `callerId` is a number verified on that account (E.164) that calls come from; `publicUrl` is the https
@@ -47,6 +57,7 @@ export const callsConfigSchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field", "off"]).optional(),
   maxTurnsWithoutReply: z.number().int().min(1).max(10).optional(),
   record: z.boolean().optional(),
+  reasoningEffort: z.enum(CALL_REASONING_EFFORTS).optional(),
   ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, z.string().max(12_000).optional()])) as Record<CallPromptKey, z.ZodOptional<z.ZodString>>,
 });
 
@@ -111,6 +122,7 @@ export interface ReadyCalls {
   maxTurnsWithoutReply: number;
   /** Each call is recorded on this computer. */
   record: boolean;
+  reasoningEffort: CallReasoningEffort;
   /** Each call text: the saved one, else the built-in default. */
   prompts: Record<CallPromptKey, string>;
   allow: string[];
@@ -120,18 +132,22 @@ export interface ReadyCalls {
 
 /** The saved text for each key, or the built-in default when none (or only blanks) is saved. */
 export function callPrompts(calls: CallsConfig | undefined): Record<CallPromptKey, string> {
-  return Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, calls?.[key]?.trim() ? calls[key]! : DEFAULT_CALL_PROMPTS[key]])) as Record<CallPromptKey, string>;
+  return Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, customPrompt(key, calls?.[key]) ? calls![key]! : DEFAULT_CALL_PROMPTS[key]])) as Record<CallPromptKey, string>;
 }
 
-/** The saved turn detection, a server_vad number left out taking the phone default. */
+const sameTurnDetection = (a: CallTurnDetection, b: CallTurnDetection) =>
+  a.type === b.type && a.threshold === b.threshold && a.prefixPaddingMs === b.prefixPaddingMs && a.silenceDurationMs === b.silenceDurationMs && a.eagerness === b.eagerness;
+
+/** The saved turn detection, a server_vad number left out taking its phone default; one that was the built-in default
+ * reads as unset. */
 function turnDetectionOf(saved: CallTurnDetection | undefined): CallTurnDetection {
-  if (!saved) return DEFAULT_TURN_DETECTION;
-  if (saved.type === "semantic_vad") return { type: "semantic_vad", ...(saved.eagerness ? { eagerness: saved.eagerness } : {}) };
+  if (!saved || RETIRED_TURN_DETECTIONS.some((retired) => sameTurnDetection(retired, saved))) return DEFAULT_TURN_DETECTION;
+  if (saved.type === "semantic_vad") return { type: "semantic_vad", eagerness: saved.eagerness ?? "auto" };
   return {
     type: "server_vad",
-    threshold: saved.threshold ?? DEFAULT_TURN_DETECTION.threshold!,
-    prefixPaddingMs: saved.prefixPaddingMs ?? DEFAULT_TURN_DETECTION.prefixPaddingMs!,
-    silenceDurationMs: saved.silenceDurationMs ?? DEFAULT_TURN_DETECTION.silenceDurationMs!,
+    threshold: saved.threshold ?? SERVER_VAD_DEFAULTS.threshold,
+    prefixPaddingMs: saved.prefixPaddingMs ?? SERVER_VAD_DEFAULTS.prefixPaddingMs,
+    silenceDurationMs: saved.silenceDurationMs ?? SERVER_VAD_DEFAULTS.silenceDurationMs,
   };
 }
 
@@ -146,6 +162,7 @@ export function callVoice(calls: CallsConfig | undefined) {
     maxTurnsWithoutReply: calls?.maxTurnsWithoutReply ?? DEFAULT_TURNS_WITHOUT_REPLY,
     maxMinutes: calls?.maxMinutes ?? DEFAULT_CALL_MINUTES,
     record: calls?.record !== false,
+    reasoningEffort: calls?.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
   };
 }
 
@@ -229,7 +246,8 @@ export function callsSetup(cfg: CallsConfigInput, listening: boolean): CallsSetu
     ...(calls.publicUrl ? { publicUrl: publicBase(calls.publicUrl) ?? calls.publicUrl } : {}),
     ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
     ...callVoice(calls),
-    prompts: Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: callPrompts(calls)[key], default: DEFAULT_CALL_PROMPTS[key], custom: Boolean(calls[key]?.trim()) }])) as CallsSetup["prompts"],
+    prompts: Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: callPrompts(calls)[key], default: DEFAULT_CALL_PROMPTS[key], custom: customPrompt(key, calls[key]) }])) as CallsSetup["prompts"],
+    onBehalfOfDefault: cfg.profile?.name?.trim() || ON_BEHALF_OF_STAND_IN,
     tools: [endCallTool(callPrompts(calls).endCallDescription)],
     allow: rules(calls.allow),
     deny: rules(calls.deny),

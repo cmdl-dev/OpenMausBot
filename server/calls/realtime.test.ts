@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { describe, expect, it } from "vitest";
 import type { CallLine } from "../../shared/phone-calls.ts";
-import { bridgeCall, realtimeSession, type BridgeEvents } from "./realtime.ts";
+import { bridgeCall, realtimeSession, reasoningModel, type BridgeEvents } from "./realtime.ts";
 
 class FakeSocket extends EventEmitter {
   readyState: number = WebSocket.OPEN;
@@ -20,7 +20,7 @@ class FakeSocket extends EventEmitter {
 const SESSION = realtimeSession({
   model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-transcribe",
   turnDetection: { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 }, noiseReduction: "near_field",
-  instructions: "INSTRUCTIONS", endCallDescription: "Hang up.",
+  instructions: "INSTRUCTIONS", endCallDescription: "Hang up.", reasoningEffort: "low",
 });
 
 function call(maxTurnsWithoutReply = 3) {
@@ -35,7 +35,7 @@ function call(maxTurnsWithoutReply = 3) {
     debug: (type) => void debug.push(type),
   };
   const bridge = bridgeCall(twilio as unknown as WebSocket, () => realtime as unknown as WebSocket,
-    { session: SESSION, opening: "OPENING", goodbye: "GOODBYE", maxTurnsWithoutReply }, events, () => clock);
+    { session: SESSION, opening: "OPENING", goodbye: "GOODBYE", closing: "CLOSING", maxTurnsWithoutReply }, events, () => clock);
   twilio.receive({ event: "start", streamSid: "MZ1", start: { streamSid: "MZ1", callSid: "CA1" } });
   realtime.emit("open");
   const media = (payload: string) => twilio.receive({ event: "media", media: { track: "inbound", payload } });
@@ -45,7 +45,7 @@ function call(maxTurnsWithoutReply = 3) {
     const id = `resp_${++response}`;
     const item = `item_${response}`;
     realtime.receive({ type: "response.created", response: { id } });
-    if (opts.audioBytes) realtime.receive({ type: "response.output_audio.delta", item_id: item, delta: Buffer.alloc(opts.audioBytes).toString("base64") });
+    if (opts.audioBytes) realtime.receive({ type: "response.output_audio.delta", response_id: id, item_id: item, delta: Buffer.alloc(opts.audioBytes).toString("base64") });
     realtime.receive({ type: "response.output_audio.done", item_id: item });
     realtime.receive({ type: "response.output_audio_transcript.done", item_id: item, transcript: `bot line ${response}` });
     realtime.receive({ type: "response.done", response: { id, status: "completed" } });
@@ -163,5 +163,97 @@ describe("the call's voice", () => {
     expect(c.realtime.of("response.create")).toHaveLength(1);
     c.realtime.receive({ type: "response.done", response: { id: "r1", status: "completed" } });
     expect(c.realtime.of("response.create")).toHaveLength(2);
+  });
+
+  it("counts a reply to the callee's words as the first of a new run, even when the transcript arrives after the reply starts", () => {
+    const c = call(3);
+    c.ready();
+    c.turn();
+    c.turn();
+    c.realtime.receive({ type: "input_audio_buffer.committed", item_id: "in_1" });
+    c.turn();
+    expect(c.realtime.of("response.create")).toHaveLength(1);
+    c.heard("I'm good, thank you.", "in_1");
+    c.turn();
+    expect(c.realtime.of("response.create")).toHaveLength(1);
+    expect(c.debug).not.toContain("loop_guard");
+    c.turn();
+    expect(c.realtime.of("response.create").at(-1)).toEqual({ type: "response.create", response: { instructions: "GOODBYE", tool_choice: "none" } });
+  });
+
+  it("counts replies to audio that turned out to be no words once that is known", () => {
+    const c = call(3);
+    c.ready();
+    c.turn();
+    c.realtime.receive({ type: "input_audio_buffer.committed", item_id: "noise_1" });
+    c.turn();
+    c.turn();
+    expect(c.debug).not.toContain("loop_guard");
+    c.realtime.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "noise_1", transcript: "" });
+    expect(c.realtime.of("response.create").at(-1)).toEqual({ type: "response.create", response: { instructions: "GOODBYE", tool_choice: "none" } });
+  });
+
+  it("makes the voice say goodbye before hanging up when it calls end_call without one, and hangs up once that has played", () => {
+    const c = call();
+    c.ready();
+    c.turn({ audioBytes: 800 });
+    c.heard("I'm good, thank you.");
+    c.realtime.receive({ type: "response.created", response: { id: "abrupt" } });
+    c.realtime.receive({ type: "response.function_call_arguments.done", response_id: "abrupt", call_id: "fc_1", name: "end_call", arguments: "{}" });
+    expect(c.realtime.of("conversation.item.create")).toEqual([{ type: "conversation.item.create", item: { type: "function_call_output", call_id: "fc_1", output: "Not hung up yet: say goodbye first." } }]);
+    expect(c.realtime.of("response.create")).toHaveLength(1);
+    c.realtime.receive({ type: "response.done", response: { id: "abrupt", status: "completed" } });
+    expect(c.realtime.of("response.create").at(-1)).toEqual({ type: "response.create", response: { instructions: "CLOSING", tool_choice: "none" } });
+    expect(c.hangUps).toEqual([]);
+    c.realtime.receive({ type: "response.created", response: { id: "bye" } });
+    c.realtime.receive({ type: "response.output_audio.delta", response_id: "bye", item_id: "bye_item", delta: Buffer.alloc(800).toString("base64") });
+    c.realtime.receive({ type: "response.output_audio_transcript.done", item_id: "bye_item", transcript: "Thanks so much, have a great day. Bye!" });
+    c.realtime.receive({ type: "response.done", response: { id: "bye", status: "completed" } });
+    expect(c.hangUps).toEqual([]);
+    c.twilio.receive({ event: "mark", mark: { name: "goodbye" } });
+    expect(c.hangUps).toEqual(["completed"]);
+    expect(c.debug).toContain("end_call_without_goodbye");
+  });
+
+  it("hangs up straight after end_call when the voice said goodbye in that response or just before it", () => {
+    const same = call();
+    same.ready();
+    same.realtime.receive({ type: "response.created", response: { id: "r1" } });
+    same.realtime.receive({ type: "response.output_audio.delta", response_id: "r1", item_id: "i1", delta: Buffer.alloc(80).toString("base64") });
+    same.realtime.receive({ type: "response.function_call_arguments.done", response_id: "r1", call_id: "fc", name: "end_call", arguments: "{}" });
+    same.twilio.receive({ event: "mark", mark: { name: "goodbye" } });
+    expect(same.hangUps).toEqual(["completed"]);
+    expect(same.realtime.of("conversation.item.create")).toEqual([]);
+
+    const before = call();
+    before.ready();
+    before.realtime.receive({ type: "response.created", response: { id: "r1" } });
+    before.realtime.receive({ type: "response.output_audio.delta", response_id: "r1", item_id: "i1", delta: Buffer.alloc(80).toString("base64") });
+    before.realtime.receive({ type: "response.output_audio_transcript.done", item_id: "i1", transcript: "Okay, take care!" });
+    before.realtime.receive({ type: "response.done", response: { id: "r1", status: "completed" } });
+    before.realtime.receive({ type: "response.created", response: { id: "r2" } });
+    before.realtime.receive({ type: "response.function_call_arguments.done", response_id: "r2", call_id: "fc", name: "end_call", arguments: "{}" });
+    expect(before.realtime.of("conversation.item.create")).toEqual([]);
+  });
+});
+
+describe("the session sent to OpenAI", () => {
+  const base = { model: "gpt-realtime-2.1-mini", voice: "cedar", transcriptionModel: "gpt-transcribe", noiseReduction: "near_field" as const, instructions: "I", endCallDescription: "E" };
+
+  it("uses semantic VAD with its eagerness, and the reasoning effort for a reasoning model", () => {
+    const session = realtimeSession({ ...base, turnDetection: { type: "semantic_vad", eagerness: "auto" }, reasoningEffort: "low" });
+    expect(session).toMatchObject({
+      model: "gpt-realtime-2.1-mini", reasoning: { effort: "low" },
+      audio: { input: { turn_detection: { type: "semantic_vad", eagerness: "auto", create_response: true, interrupt_response: true }, noise_reduction: { type: "near_field" } }, output: { voice: "cedar", format: { type: "audio/pcmu" } } },
+    });
+    expect((session.audio as { input: { turn_detection: Record<string, unknown> } }).input.turn_detection).not.toHaveProperty("threshold");
+  });
+
+  it("uses server VAD with its numbers when chosen, and sends no reasoning to a model that doesn't reason", () => {
+    const session = realtimeSession({ ...base, model: "gpt-realtime-1.5", turnDetection: { type: "server_vad", threshold: 0.7, prefixPaddingMs: 200, silenceDurationMs: 900 }, reasoningEffort: "medium" });
+    expect((session.audio as { input: { turn_detection: unknown } }).input.turn_detection).toEqual({ type: "server_vad", threshold: 0.7, prefix_padding_ms: 200, silence_duration_ms: 900, create_response: true, interrupt_response: true });
+    expect(session).not.toHaveProperty("reasoning");
+    expect(["gpt-realtime-2", "gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-3-preview"].every(reasoningModel)).toBe(true);
+    expect(["gpt-realtime", "gpt-realtime-1.5", "gpt-realtime-mini", "gpt-4o-realtime-preview"].some(reasoningModel)).toBe(false);
   });
 });

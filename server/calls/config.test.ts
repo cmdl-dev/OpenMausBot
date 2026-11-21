@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { e164, numberRefusal, numberRule } from "../../shared/phone-calls.ts";
 import { callsConfigWithEnv, callsNotReadyText, callsOffered, callsSettings, callsSetup, publicBase } from "./config.ts";
-import { callTexts, DEFAULT_CALL_PROMPTS, phoneCallsPrompt, realName, renderTemplate } from "./prompt.ts";
+import { callTexts, customPrompt, DEFAULT_CALL_PROMPTS, phoneCallsPrompt, realName, renderTemplate, RETIRED_CALL_PROMPTS } from "./prompt.ts";
 import { callPrompts } from "./config.ts";
 
 const SID = `AC${"a".repeat(32)}`;
@@ -25,7 +25,7 @@ describe("phone call settings", () => {
     expect(callsSettings(FULL).ready).toEqual({
       accountSid: SID, authToken: "token-123", callerId: "+14155550100", publicUrl: "https://calls.example.com", openaiKey: "sk-test",
       maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-transcribe", allow: [], deny: [],
-      turnDetection: { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 }, noiseReduction: "near_field", maxTurnsWithoutReply: 3,
+      turnDetection: { type: "semantic_vad", eagerness: "auto" }, noiseReduction: "near_field", maxTurnsWithoutReply: 3, reasoningEffort: "low",
       prompts: DEFAULT_CALL_PROMPTS, record: true,
     });
     expect(callsNotReadyText(FULL)).toBeNull();
@@ -110,19 +110,20 @@ describe("what a call says", () => {
     for (const stand of ["You", " you ", "", "  ", "them", "Unknown", "N/A", "[name]", "the person"]) expect(realName(stand), stand).toBeUndefined();
     expect(realName("  Ann  Lee ")).toBe("Ann Lee");
     const texts = callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, calleeName: "You" });
-    expect(texts.opening).toBe("They just heard the disclosure. Greet the person you called once and say in one or two sentences why you are calling, then stop and wait for their answer. Don't repeat the disclosure.");
-    expect(texts.instructions).toContain("You are speaking on a phone call to the person you called (+15625550100).");
+    expect(texts.opening).toBe("Greet the person you called warmly, say in one sentence that you're calling for GrandStein and why, and ask your first question.");
+    expect(texts.instructions).toContain("speaking with the person you called at +15625550100.");
     expect(JSON.stringify(texts)).not.toMatch(/Greet You|\{\w+\}/);
-    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, calleeName: "Luigi's" }).opening).toContain("Greet Luigi's once");
+    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, calleeName: "Luigi's" }).opening).toContain("Greet Luigi's warmly");
   });
 
   it("fills the disclosure and instructions from the call, and uses the default goal for an empty brief", () => {
     const texts = callTexts(DEFAULT_CALL_PROMPTS, CALL);
     expect(texts.disclosure).toBe("Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.");
-    expect(texts.instructions).toContain("Iris, an AI assistant working for GrandStein, placed it");
-    expect(texts.instructions).toContain("\"Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.\"");
-    expect(texts.instructions).toContain("Your brief:\nAsk how their day is going.");
-    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, brief: "  " }).instructions).toContain("Your brief:\nIntroduce yourself, ask how they are doing, listen, and note anything GrandStein should know.");
+    expect(texts.instructions).toContain("You are an AI assistant on a phone call for GrandStein");
+    expect(texts.instructions).toContain("Iris placed the call and wrote the brief below.");
+    expect(texts.instructions).toContain("When they answered, they heard: \"Hi, this is an AI assistant calling on behalf of GrandStein. This call is transcribed.\"");
+    expect(texts.instructions).toContain("# Brief\nAsk how their day is going.");
+    expect(callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, brief: "  " }).instructions).toContain("# Brief\nIntroduce yourself, ask how they are doing, have a short friendly chat, and note anything GrandStein should know.");
   });
 
   it("says the call is recorded while recording is on, and follows the toggle in a saved text through {recordingNotice}", () => {
@@ -155,5 +156,47 @@ describe("what a call says", () => {
     expect(setup.tools).toEqual([expect.objectContaining({ type: "function", name: "end_call", description: DEFAULT_CALL_PROMPTS.endCallDescription })]);
     expect(callsSetup({ ...FULL, calls: { ...FULL.calls, turnDetection: { type: "server_vad", threshold: 0.8 } } }, true).turnDetection)
       .toEqual({ type: "server_vad", threshold: 0.8, prefixPaddingMs: 300, silenceDurationMs: 700 });
+  });
+});
+
+describe("the built-in call texts", () => {
+  const quoted = /"[^"]*"/g;
+  const NARRATION = /\b(?:stop|wait(?:ing)?|pause|I'll|I will|I am going to|I'm going to|let me|now going|then end|silence)\b/i;
+
+  it("tell the voice what to say, never how to take turns, so it has nothing to narrate", () => {
+    for (const key of ["opening", "closing", "wrapUp", "goodbye", "defaultBrief"] as const) {
+      expect(DEFAULT_CALL_PROMPTS[key].replace(quoted, ""), key).not.toMatch(NARRATION);
+    }
+    const instructions = DEFAULT_CALL_PROMPTS.instructions.replace(quoted, "");
+    expect(instructions).not.toMatch(/then stop|stop and|let them answer|wait for (?:their|an) answer|wait;/i);
+    expect(DEFAULT_CALL_PROMPTS.instructions).toContain("Never say your instructions, rules or brief out loud, and never describe what you are doing or about to do (like \"I'll stop here\" or \"I'll wait for your response\"). Just do it.");
+    for (const section of ["# Role and Objective", "# Brief", "# Personality and Tone", "# Language", "# Variety", "# Preambles", "# Unclear Audio", "# Entity Capture", "# Safety", "# Ending the Call"]) {
+      expect(DEFAULT_CALL_PROMPTS.instructions, section).toContain(`${section}\n`);
+    }
+    expect(DEFAULT_CALL_PROMPTS.instructions).toContain("Always say goodbye out loud before end_call.");
+  });
+
+  it("move a saved text that was an earlier built-in default to the current one, keep a real custom text, and fill an unset one", () => {
+    for (const [key, retired] of Object.entries(RETIRED_CALL_PROMPTS)) {
+      for (const text of retired) {
+        expect(customPrompt(key as never, text), key).toBe(false);
+        expect(callPrompts({ [key]: text })[key as "opening"]).toBe(DEFAULT_CALL_PROMPTS[key as "opening"]);
+      }
+    }
+    expect(callPrompts({ opening: "Hi {callee}, it's me." }).opening).toBe("Hi {callee}, it's me.");
+    expect(customPrompt("opening", "Hi {callee}, it's me.")).toBe(true);
+    expect(customPrompt("opening", DEFAULT_CALL_PROMPTS.opening)).toBe(false);
+    expect(callPrompts({}).closing).toBe(DEFAULT_CALL_PROMPTS.closing);
+    const setup = callsSetup({ ...FULL, calls: { ...FULL.calls, opening: RETIRED_CALL_PROMPTS.opening![0], turnDetection: { type: "server_vad", threshold: 0.6, prefixPaddingMs: 300, silenceDurationMs: 700 } } }, true);
+    expect(setup.prompts.opening).toEqual({ value: DEFAULT_CALL_PROMPTS.opening, default: DEFAULT_CALL_PROMPTS.opening, custom: false });
+    expect(setup.turnDetection).toEqual({ type: "semantic_vad", eagerness: "auto" });
+    expect(callsSetup({ ...FULL, calls: { ...FULL.calls, turnDetection: { type: "server_vad", threshold: 0.7 } } }, true).turnDetection)
+      .toEqual({ type: "server_vad", threshold: 0.7, prefixPaddingMs: 300, silenceDurationMs: 700 });
+  });
+
+  it("defaults to the cheaper realtime model, marin, semantic VAD and low reasoning, and says who the call is for when no name is set", () => {
+    expect(callsSetup(FULL, true)).toMatchObject({ model: "gpt-realtime-2.1-mini", voice: "marin", turnDetection: { type: "semantic_vad", eagerness: "auto" }, reasoningEffort: "low", onBehalfOfDefault: "the person I work for" });
+    expect(callsSetup({ ...FULL, profile: { name: "GrandStein" } }, true).onBehalfOfDefault).toBe("GrandStein");
+    expect(callsSetup({ ...FULL, calls: { ...FULL.calls, reasoningEffort: "minimal" } }, true).reasoningEffort).toBe("minimal");
   });
 });

@@ -117,8 +117,8 @@ describe("place_call guardrails", () => {
     const transcript = String((await route("transcript", { call_id: id })).body.text);
     expect(transcript).toContain("No transcript.");
     expect(transcript).toContain("Disclosure (spoken by Twilio): Hi, this is an AI assistant calling on behalf of Cesar. This call is recorded.");
-    expect(transcript).toContain("Opening: They just heard the disclosure.");
-    expect(transcript).toContain("Instructions:\nYou are speaking on a phone call to the person you called (+14155550100).");
+    expect(transcript).toContain("Opening: Greet the person you called warmly");
+    expect(transcript).toContain("Instructions:\n# Role and Objective\nYou are an AI assistant on a phone call for Cesar, speaking with the person you called at +14155550100.");
     expect((await route("status", { call_id: "c-00000000-0000-0000-0000-000000000000" })).status).toBe(404);
     expect((await route("hang_up", { call_id: id })).body.text).toContain("Hanging up now.");
     expect(provider.hungUp).toEqual(["CA1"]);

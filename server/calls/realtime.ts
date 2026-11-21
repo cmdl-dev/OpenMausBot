@@ -3,7 +3,7 @@
 // Realtime events: https://developers.openai.com/api/reference/resources/realtime
 // Twilio sends a mark back once the audio queued before it has played, and sends every pending mark back on `clear`.
 import WebSocket from "ws";
-import type { CallLine, CallNoiseReduction, CallTurnDetection } from "../../shared/phone-calls.ts";
+import type { CallLine, CallNoiseReduction, CallReasoningEffort, CallTurnDetection } from "../../shared/phone-calls.ts";
 import type { CallRecorder } from "./recording.ts";
 
 const OPENAI_REALTIME = "wss://api.openai.com/v1/realtime";
@@ -39,14 +39,21 @@ function turnDetection(settings: CallTurnDetection): Record<string, unknown> {
 }
 
 /** The whole `session` of the session.update that starts a call's voice. */
+/** OpenAI's reasoning Realtime models (gpt-realtime-2 and later) take `reasoning.effort`; earlier ones refuse it. */
+export function reasoningModel(model: string): boolean {
+  return /^gpt-realtime-(?:[2-9]|\d{2,})(?:[.-]|$)/.test(model);
+}
+
 export function realtimeSession(input: {
   model: string; voice: string; transcriptionModel: string; turnDetection: CallTurnDetection; noiseReduction: CallNoiseReduction; instructions: string; endCallDescription: string;
+  reasoningEffort: CallReasoningEffort;
 }): Record<string, unknown> {
   return {
     type: "realtime",
     model: input.model,
     output_modalities: ["audio"],
     instructions: input.instructions,
+    ...(reasoningModel(input.model) ? { reasoning: { effort: input.reasoningEffort } } : {}),
     audio: {
       input: {
         format: { type: "audio/pcmu" },
@@ -68,6 +75,8 @@ export interface RealtimeSession {
   opening: string;
   /** Said when the voice has taken `maxTurnsWithoutReply` turns in a row with nothing from the callee; then it hangs up. */
   goodbye: string;
+  /** Said when the voice calls end_call without having said goodbye; then it hangs up. */
+  closing: string;
   maxTurnsWithoutReply: number;
   /** Records both sides of the call, when recording is on. */
   recorder?: CallRecorder;
@@ -104,6 +113,9 @@ const text = (value: unknown): string => (typeof value === "string" ? value : ""
 /** Words, not a cough or "…": letters or digits in any script. */
 const spoken = (said: string) => /[\p{L}\p{N}]/u.test(said);
 
+/** Words that close a call, in the languages a brief is most likely in. */
+const FAREWELL = /\b(?:bye|goodbye|good-bye|take care|have a (?:good|great|nice|lovely)|talk soon|adi[oó]s|hasta luego|au revoir|tsch[üu]ss|auf wiedersehen|ciao|arrivederci|tchau)\b/i;
+
 /** Errors Realtime sends that leave the session usable. */
 const HARMLESS_ERRORS = new Set(["conversation_already_has_active_response", "response_cancel_not_active", "item_truncate_invalid_item_id", "invalid_value"]);
 
@@ -138,7 +150,13 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
   let activeResponse: string | null = null;
   let queuedResponse: Json | null = null;
   let turnsWithoutReply = 0;
-  let goodbye: { responseId?: string } | null = null;
+  /** Replies the voice started while what the callee said was still being transcribed: counted once that is known. */
+  let repliesAwaitingTranscript = 0;
+  const transcribing = new Set<string>();
+  /** The last words the voice says before hanging up, and why it hangs up after them. */
+  let farewell: { reason: "completed" | "no_reply"; responseId?: string } | null = null;
+  const spokeIn = new Map<string, string[]>();
+  let lastSpoken: string | null = null;
   let ending: { reason: "completed" | "no_reply"; why: string; timer: NodeJS.Timeout; done: boolean } | null = null;
   const { recorder } = session;
   let streamStart: number | null = null;
@@ -198,6 +216,38 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
     speaking = null;
   }
 
+  /** Asks for the farewell once nothing else is speaking. */
+  function sayFarewell(instructions: string): void {
+    const response = { instructions, tool_choice: "none" };
+    if (activeResponse) queuedResponse = response;
+    else toRealtime({ type: "response.create", response });
+  }
+
+  /** The loop guard: too many voice turns with nothing from the callee, so it says goodbye. */
+  function guard(): boolean {
+    if (farewell || ending || activeResponse || turnsWithoutReply < session.maxTurnsWithoutReply) return false;
+    farewell = { reason: "no_reply" };
+    queuedResponse = null;
+    events.debug("loop_guard", { turnsWithoutReply });
+    sayFarewell(session.goodbye);
+    return true;
+  }
+
+  /** What the callee said turned out to be no words: the replies to it count as turns without a reply. */
+  function heardNothing(): void {
+    if (transcribing.size) return;
+    turnsWithoutReply += repliesAwaitingTranscript;
+    repliesAwaitingTranscript = 0;
+    guard();
+  }
+
+  /** The voice's goodbye is in the response that hangs up, or in the last thing it said since the callee spoke. */
+  function saidGoodbye(responseId: string): boolean {
+    if (responseId && spokeIn.has(responseId)) return true;
+    if (!lastSpoken) return false;
+    return (spokeIn.get(lastSpoken) ?? []).some((item) => FAREWELL.test(items.get(item)?.transcript ?? ""));
+  }
+
   function onRealtime(event: Json): void {
     switch (event.type) {
       case "session.updated":
@@ -214,29 +264,24 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
           events.debug("response_cancelled", { why: "another_active" });
           return;
         }
-        if (goodbye && goodbye.responseId === undefined) goodbye.responseId = id;
-        else if (goodbye || ending) {
+        if (farewell && farewell.responseId === undefined) farewell.responseId = id;
+        else if (farewell || ending) {
           toRealtime({ type: "response.cancel", response_id: id });
           events.debug("response_cancelled", { why: "ending" });
           return;
         }
         activeResponse = id;
-        turnsWithoutReply += 1;
-        events.debug("response_created", { turnsWithoutReply });
+        if (transcribing.size) repliesAwaitingTranscript += 1;
+        else turnsWithoutReply += 1;
+        events.debug("response_created", { turnsWithoutReply, awaitingTranscript: transcribing.size > 0 });
         return;
       }
       case "response.done": {
         const id = text(field(event.response, "id"));
         events.debug("response_done", { status: text(field(event.response, "status")) || "?" });
         if (activeResponse === id) activeResponse = null;
-        if (goodbye?.responseId === id) return startEnding("no_reply", "the callee didn't answer");
-        if (!goodbye && !ending && turnsWithoutReply >= session.maxTurnsWithoutReply) {
-          goodbye = {};
-          queuedResponse = null;
-          events.debug("loop_guard", { turnsWithoutReply });
-          toRealtime({ type: "response.create", response: { instructions: session.goodbye, tool_choice: "none" } });
-          return;
-        }
+        if (farewell?.responseId === id) return startEnding(farewell.reason, farewell.reason === "no_reply" ? "the callee didn't answer" : "said goodbye");
+        if (guard()) return;
         if (queuedResponse && !activeResponse) {
           const next = queuedResponse;
           queuedResponse = null;
@@ -254,6 +299,11 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
           items.set(id, item);
         }
         speaking = id;
+        const response = text(event.response_id);
+        if (response) {
+          spokeIn.set(response, [...new Set([...(spokeIn.get(response) ?? []), id])]);
+          lastSpoken = response;
+        }
         const audio = Buffer.from(delta, "base64");
         item.sentBytes += audio.length;
         toTwilio({ event: "media", media: { payload: delta } });
@@ -281,31 +331,46 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
       case "input_audio_buffer.speech_started":
         if (typeof event.item_id === "string") calleeStarted.set(event.item_id, now());
         events.debug("speech_started");
-        if (!goodbye && !ending) interrupt();
+        if (!farewell && !ending) interrupt();
         return;
       case "input_audio_buffer.speech_stopped":
         events.debug("speech_stopped");
         return;
+      case "input_audio_buffer.committed":
+        if (typeof event.item_id === "string") transcribing.add(event.item_id);
+        return;
       case "conversation.item.input_audio_transcription.completed": {
         const said = text(event.transcript).trim();
+        transcribing.delete(text(event.item_id));
         if (!spoken(said)) {
           events.debug("transcription_empty");
+          heardNothing();
           return;
         }
-        turnsWithoutReply = 0;
+        turnsWithoutReply = repliesAwaitingTranscript;
+        repliesAwaitingTranscript = 0;
+        lastSpoken = null;
+        events.debug("callee_spoke", { turnsWithoutReply });
         events.line({ speaker: "callee", text: said, at: calleeStarted.get(text(event.item_id)) ?? now() });
         return;
       }
       case "conversation.item.input_audio_transcription.failed":
+        transcribing.delete(text(event.item_id));
         events.debug("transcription_failed", { code: text(field(event.error, "code")) || "?" });
+        heardNothing();
         return;
       case "response.function_call_arguments.done": {
-        if (event.name !== "end_call" || ending) return;
+        if (event.name !== "end_call" || ending || farewell) return;
         let why = "";
         try {
           why = text(field(JSON.parse(text(event.arguments) || "{}"), "reason"));
         } catch { /* no reason given */ }
-        startEnding("completed", why.slice(0, 200));
+        if (saidGoodbye(text(event.response_id))) return startEnding("completed", why.slice(0, 200));
+        events.debug("end_call_without_goodbye");
+        farewell = { reason: "completed" };
+        queuedResponse = null;
+        toRealtime({ type: "conversation.item.create", item: { type: "function_call_output", call_id: text(event.call_id), output: "Not hung up yet: say goodbye first." } });
+        sayFarewell(session.closing);
         return;
       }
       case "error": {
@@ -394,7 +459,7 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
 
   return {
     wrapUp(instruction) {
-      if (goodbye || ending) return;
+      if (farewell || ending) return;
       toRealtime({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: instruction }] } });
       respond({});
       events.debug("wrap_up");

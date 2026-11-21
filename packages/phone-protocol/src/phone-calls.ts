@@ -75,7 +75,7 @@ export interface CallDetail extends CallSummary {
 }
 
 /** The texts of a call that a person can edit in Settings → Phone calls; each is `calls.<key>` in config.json. */
-export const CALL_PROMPT_KEYS = ["disclosure", "instructions", "opening", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const;
+export const CALL_PROMPT_KEYS = ["disclosure", "instructions", "opening", "closing", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const;
 export type CallPromptKey = (typeof CALL_PROMPT_KEYS)[number];
 
 /** What each editable text is, for the Settings screen. */
@@ -83,6 +83,7 @@ export const CALL_PROMPT_ROLES: Record<CallPromptKey, string> = {
   disclosure: "Spoken by Twilio's voice the moment the callee answers, before the AI voice says anything.",
   instructions: "The AI voice's instructions (OpenAI Realtime session instructions), sent whole at the start of the call.",
   opening: "Sent once as the first response's instructions: what the voice says first.",
+  closing: "Sent when the voice tries to hang up without having said goodbye; the call hangs up after it.",
   wrapUp: "Sent as a system message shortly before the time limit.",
   goodbye: "Sent when the callee hasn't said anything for several voice turns in a row; the call hangs up after it.",
   defaultBrief: "Used as {brief} when a bot placed a call without one.",
@@ -101,6 +102,32 @@ export const CALL_PLACEHOLDERS: ReadonlyArray<{ name: string; meaning: string }>
   { name: "maxMinutes", meaning: "The call's time limit in minutes." },
   { name: "recordingNotice", meaning: "\"This call is recorded.\" while recording is on, else \"This call is transcribed.\"" },
 ];
+
+/** The Realtime models offered in Settings, with OpenAI's audio prices in dollars per 1M tokens. Another model id can
+ * still be typed. */
+export const REALTIME_MODELS: ReadonlyArray<{ id: string; label: string; audioIn: number; audioOut: number }> = [
+  { id: "gpt-realtime-2.1-mini", label: "GPT-Realtime-2.1 mini", audioIn: 10, audioOut: 20 },
+  { id: "gpt-realtime-2.1", label: "GPT-Realtime-2.1", audioIn: 32, audioOut: 64 },
+];
+
+/** OpenAI's audio tokens per minute: what the callee says (input) and what the voice says (output). */
+export const AUDIO_TOKENS_PER_MINUTE = { in: 600, out: 1_200 } as const;
+
+/** About what one minute of the callee's audio and one minute of the voice's audio cost on `model`, in dollars. */
+export function realtimeMinuteCost(model: { audioIn: number; audioOut: number }): { listening: number; speaking: number } {
+  return { listening: (model.audioIn * AUDIO_TOKENS_PER_MINUTE.in) / 1_000_000, speaking: (model.audioOut * AUDIO_TOKENS_PER_MINUTE.out) / 1_000_000 };
+}
+
+/** OpenAI Realtime's built-in voices; OpenAI recommends marin and cedar for the best quality. */
+export const REALTIME_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
+export const RECOMMENDED_VOICES: ReadonlySet<string> = new Set(["marin", "cedar"]);
+
+/** What the disclosure says the call is for when neither Calls on behalf of nor a profile name is set. */
+export const ON_BEHALF_OF_STAND_IN = "the person I work for";
+
+/** How much the voice reasons before it speaks (`reasoning.effort`); more is slower. */
+export const CALL_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+export type CallReasoningEffort = (typeof CALL_REASONING_EFFORTS)[number];
 
 /** OpenAI Realtime's turn detection for the call. `threshold`, `prefixPaddingMs` and `silenceDurationMs` are for
  * server_vad; `eagerness` for semantic_vad. */
@@ -126,6 +153,9 @@ export interface CallSent {
   transcriptionModel: string;
   turnDetection: CallTurnDetection;
   noiseReduction: CallNoiseReduction;
+  /** Absent on calls placed before it was a setting, and for a model that doesn't reason. */
+  reasoningEffort?: CallReasoningEffort;
+  closing?: string;
   maxTurnsWithoutReply: number;
   maxMinutes: number;
   /** The call was recorded on this computer. */
@@ -166,6 +196,9 @@ export interface CallsSetup {
   maxTurnsWithoutReply: number;
   /** Each call is recorded on this computer (`calls.record`, on unless false). */
   record: boolean;
+  reasoningEffort: CallReasoningEffort;
+  /** The name the voice says it calls for while Calls on behalf of is empty: the owner's profile name, else a stand-in. */
+  onBehalfOfDefault: string;
   /** Each editable text: what calls use now, the built-in default, and whether a saved one replaces it. */
   prompts: Record<CallPromptKey, { value: string; default: string; custom: boolean }>;
   /** What is also sent to OpenAI Realtime and can't be edited as text, shown as it is sent: the end_call tool. */

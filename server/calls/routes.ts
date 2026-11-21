@@ -2,7 +2,7 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
-import { CALL_END_TEXT, e164, numberRefusal, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
+import { CALL_END_TEXT, e164, numberRefusal, ON_BEHALF_OF_STAND_IN, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
 import type { json } from "../harness/http.ts";
 import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
 import { recordsText } from "../records-block.ts";
@@ -91,7 +91,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
         if (!ctx.active()) return { status: 409, error: "This turn ended before the call was approved, so I didn't call." };
         const record = await calls.place({
           botId, botName: ctx.bot.name, threadId: ctx.threadId, to, ...(input.callee_name ? { calleeName: input.callee_name } : {}),
-          brief: input.brief, onBehalfOf: deps.personName(ctx.threadId)?.trim() || deps.ownerName()?.trim() || "the person I work for",
+          brief: input.brief, onBehalfOf: deps.personName(ctx.threadId)?.trim() || deps.ownerName()?.trim() || ON_BEHALF_OF_STAND_IN,
         });
         return {
           status: 200,

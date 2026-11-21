@@ -37,13 +37,14 @@ exactly what is missing.
 | Public address (https) | Settings → Phone calls → Public address | `calls.publicUrl` | `OMB_CALLS_PUBLIC_URL` |
 | Max call minutes (1–60, default 10) | Settings → Phone calls | `calls.maxMinutes` | `OMB_CALLS_MAX_MINUTES` |
 | Realtime model (default `gpt-realtime-2.1-mini`) | Settings → Phone calls | `calls.model` | `OMB_CALLS_REALTIME_MODEL` |
-| Voice (default `marin`) | Settings → Phone calls | `calls.voice` | `OMB_CALLS_VOICE` |
+| Voice (default `marin`; `cedar` is the other recommended one) | Settings → Phone calls | `calls.voice` | `OMB_CALLS_VOICE` |
+| Reasoning effort (default `low`; `minimal`, `medium`, `high`), sent only to reasoning models | Settings → Phone calls | `calls.reasoningEffort` | |
 | Allowlist (numbers or prefixes like `+1415*`) | Settings → Phone calls | `calls.allow` | `OMB_CALLS_ALLOW` (comma separated) |
 | Denylist (wins over the allowlist) | Settings → Phone calls | `calls.deny` | `OMB_CALLS_DENY` (comma separated) |
 | Name the voice calls for (default: your profile name) | Settings → Phone calls | `calls.onBehalfOf` | `OMB_CALLS_ON_BEHALF_OF` |
 | Call listener port (default 8805) | Settings → Phone calls | `calls.port` | `OMB_CALLS_PORT` |
 | Transcription model (default `gpt-transcribe`) | Settings → Phone calls | `calls.transcriptionModel` | |
-| Turn detection (default server VAD, threshold 0.6, 300 ms padding, 700 ms silence) | Settings → Phone calls | `calls.turnDetection` | |
+| Turn detection (default semantic VAD, eagerness `auto`; server VAD with threshold 0.6, 300 ms padding, 700 ms silence when chosen) | Settings → Phone calls | `calls.turnDetection` | |
 | Noise reduction (default `near_field`) | Settings → Phone calls | `calls.noiseReduction` | |
 | Voice turns without a reply before it says goodbye and hangs up (default 3) | Settings → Phone calls | `calls.maxTurnsWithoutReply` | |
 | Record calls on this computer (default on) | Settings → Phone calls → Record calls | `calls.record` | |
@@ -63,6 +64,7 @@ recording is on, else "This call is transcribed.").
 | Disclosure | `calls.disclosure` | Spoken by Twilio's `<Say>` when the callee answers |
 | Instructions | `calls.instructions` | OpenAI Realtime session instructions |
 | Opening | `calls.opening` | The first response's instructions, sent once |
+| Closing | `calls.closing` | When the voice tries to hang up without having said goodbye; the call hangs up after it |
 | Wrap-up | `calls.wrapUp` | A system message 45 seconds before the time limit |
 | Goodbye | `calls.goodbye` | After that many voice turns with nothing from the callee; the call then hangs up |
 | Default brief | `calls.defaultBrief` | `{brief}` when a bot gave none |
@@ -80,6 +82,32 @@ offers no call tools; `GET /api/calls/setup` lists what is missing.
 
 A non-empty allowlist admits only the numbers it names. The denylist always
 wins. A bot can't call the caller ID number itself, and runs one call at a time.
+
+## The voice
+
+The built-in texts follow OpenAI's Realtime prompting guide: short labelled
+sections (role, brief, tone, language, conversation, variety, preambles,
+unclear audio, entity capture, safety, ending the call), sample phrases, and
+no turn-taking wording. Turn-taking comes from turn detection: a model told
+to "stop and wait" says so out loud. A saved text that is exactly an earlier
+built-in default counts as unset, so it moves to the current default; a text
+you changed stays as you wrote it.
+
+The voice never hangs up without a spoken goodbye: if it calls end_call
+without one, it is asked for the closing first, and the call hangs up once
+that has played. After the set number of voice turns with no words from the
+callee it says the goodbye text and hangs up.
+
+| Model | Audio in / out per 1M tokens | About a minute of the callee / of the voice |
+| --- | --- | --- |
+| `gpt-realtime-2.1-mini` (default) | $10 / $20 | $0.006 / $0.024 |
+| `gpt-realtime-2.1` (best quality) | $32 / $64 | $0.019 / $0.077 |
+
+OpenAI counts about 600 audio tokens a minute for what the callee says and
+1,200 for what the voice says; the conversation so far is also read again on
+each reply, mostly at the cached rate. Any other Realtime model id can be
+typed in. GPT-Live (`gpt-live-1.1`, billed per minute) is a different API and
+isn't used for calls.
 
 ## Recordings
 

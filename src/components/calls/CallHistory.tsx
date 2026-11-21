@@ -10,7 +10,7 @@ import { SettingsEmptyRow, SettingsFoldRow, SettingsGroup, SettingsRows } from "
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
 import { PRE } from "./CallPrompts";
 import {
-  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, recordingDownloadUrl,
+  CALLS_PATH, EAGERNESS_LABEL, END_TEXT, NOISE_REDUCTION_LABEL, PROMPT_LABEL, REASONING_LABEL, TURN_TYPE_LABEL, callOngoing, clockLength, lineOffset, recordingDownloadUrl,
   type CallDetail, type CallLine, type CallRecording, type CallSent, type CallSummary, type CallTurnDetection,
 } from "./calls-settings";
 
@@ -196,7 +196,7 @@ function RecordingSection({ recording }: { recording: CallRecording }) {
   );
 }
 
-const SENT_TEXTS = ["disclosure", "instructions", "opening", "wrapUp", "goodbye"] as const;
+const SENT_TEXTS = ["disclosure", "instructions", "opening", "closing", "wrapUp", "goodbye"] as const;
 
 function turnDetectionText(detection: CallTurnDetection): string {
   const parts = [t(TURN_TYPE_LABEL[detection.type])];
@@ -213,6 +213,7 @@ function SentSection({ sent }: { sent: CallSent }) {
   const values: Array<[string, string]> = [
     [t("settings.calls.model"), sent.model],
     [t("settings.calls.voice"), sent.voice],
+    ...(sent.reasoningEffort ? [[t("settings.calls.reasoningEffort"), t(REASONING_LABEL[sent.reasoningEffort])] as [string, string]] : []),
     [t("settings.calls.transcriptionModel"), sent.transcriptionModel],
     [t("settings.calls.turnDetection"), turnDetectionText(sent.turnDetection)],
     [t("settings.calls.noiseReduction"), t(NOISE_REDUCTION_LABEL[sent.noiseReduction])],
@@ -227,7 +228,7 @@ function SentSection({ sent }: { sent: CallSent }) {
         {t("settings.calls.sent")}
       </button>
       <div id={bodyId} hidden={!open} className="flex flex-col gap-3">
-        {SENT_TEXTS.map((key) => (
+        {SENT_TEXTS.filter((key) => sent[key] !== undefined).map((key) => (
           <div key={key} data-call-sent-text={key} className="flex flex-col gap-1">
             <h5 className="text-[12px] font-medium leading-4 text-ink-tertiary">{t(PROMPT_LABEL[key])}</h5>
             <pre tabIndex={0} aria-label={t(PROMPT_LABEL[key])} dir="auto" className={PRE}>{sent[key]}</pre>

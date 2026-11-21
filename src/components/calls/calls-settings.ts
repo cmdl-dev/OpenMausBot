@@ -1,11 +1,12 @@
 import type { LocaleKey } from "@/locales";
 import {
-  CALL_PROMPT_KEYS, e164, numberRule, type CallDetail, type CallEndReason, type CallNoiseReduction, type CallPromptKey, type CallSetting, type CallsSetup,
-  type CallSummary, type CallTurnDetection,
+  CALL_PROMPT_KEYS, ON_BEHALF_OF_STAND_IN, REALTIME_MODELS, REALTIME_VOICES, RECOMMENDED_VOICES, e164, numberRule, realtimeMinuteCost, type CallDetail,
+  type CallEndReason, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSetting, type CallsSetup, type CallSummary,
+  type CallTurnDetection,
 } from "../../../shared/phone-calls";
 
 export type { CallDetail, CallLine, CallPromptKey, CallRecording, CallSent, CallSummary, CallTurnDetection } from "../../../shared/phone-calls";
-export { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS } from "../../../shared/phone-calls";
+export { CALL_PLACEHOLDERS, CALL_PROMPT_KEYS, CALL_REASONING_EFFORTS, REALTIME_MODELS } from "../../../shared/phone-calls";
 
 /** `GET /api/calls/setup`, with the name the voice says it calls for. */
 export type CallsSetupStatus = CallsSetup & { onBehalfOf?: string };
@@ -37,7 +38,7 @@ export const SETTING_LABEL: Record<CallSetting["id"], LocaleKey> = {
 export type TurnType = CallTurnDetection["type"];
 export type Eagerness = NonNullable<CallTurnDetection["eagerness"]>;
 
-export const TURN_TYPES: readonly TurnType[] = ["server_vad", "semantic_vad"];
+export const TURN_TYPES: readonly TurnType[] = ["semantic_vad", "server_vad"];
 export const EAGERNESS: readonly Eagerness[] = ["auto", "low", "medium", "high"];
 export const NOISE_REDUCTION: readonly CallNoiseReduction[] = ["near_field", "far_field", "off"];
 
@@ -57,12 +58,52 @@ export const NOISE_REDUCTION_LABEL: Record<CallNoiseReduction, LocaleKey> = {
   off: "settings.calls.noiseReduction.off",
 };
 
+export const CUSTOM_MODEL = "custom";
+
+export const MODEL_TAG: Record<string, LocaleKey> = {
+  "gpt-realtime-2.1-mini": "settings.calls.modelLowerCost",
+  "gpt-realtime-2.1": "settings.calls.modelBest",
+};
+
+export function listedModel(id: string) {
+  return REALTIME_MODELS.find((model) => model.id === id);
+}
+
+export function modelPrices(model: { audioIn: number; audioOut: number }, locale: string) {
+  const dollars = new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumSignificantDigits: 2 });
+  const minute = realtimeMinuteCost(model);
+  return { audioIn: dollars.format(model.audioIn), audioOut: dollars.format(model.audioOut), listening: dollars.format(minute.listening), speaking: dollars.format(minute.speaking) };
+}
+
+export function voiceOptions(current: string): Array<{ value: string; recommended: boolean }> {
+  const listed: readonly string[] = REALTIME_VOICES;
+  const voices = current && !listed.includes(current) ? [current, ...listed] : listed;
+  return voices.map((value) => ({ value, recommended: RECOMMENDED_VOICES.has(value) }));
+}
+
+export const DEFAULT_REASONING_EFFORT: CallReasoningEffort = "low";
+
+export const REASONING_LABEL: Record<CallReasoningEffort, LocaleKey> = {
+  minimal: "settings.calls.reasoning.minimal",
+  low: "settings.calls.reasoning.low",
+  medium: "settings.calls.reasoning.medium",
+  high: "settings.calls.reasoning.high",
+};
+
+
+export function onBehalfOfNudge(setup: Pick<CallsSetup, "onBehalfOf" | "onBehalfOfDefault">): "profile" | "standIn" | null {
+  if (setup.onBehalfOf?.trim()) return null;
+  return setup.onBehalfOfDefault === ON_BEHALF_OF_STAND_IN ? "standIn" : "profile";
+}
+
 export interface CallsDraft {
   callerId: string;
   publicUrl: string;
   maxMinutes: string;
+  modelChoice: string;
   model: string;
   voice: string;
+  reasoningEffort: CallReasoningEffort;
   transcriptionModel: string;
   turnType: TurnType;
   threshold: string;
@@ -93,8 +134,10 @@ export function draftFrom(setup: CallsSetupStatus): CallsDraft {
     callerId: setup.callerId ?? "",
     publicUrl: setup.publicUrl ?? "",
     maxMinutes: String(setup.maxMinutes),
+    modelChoice: listedModel(setup.model) ? setup.model : CUSTOM_MODEL,
     model: setup.model,
     voice: setup.voice,
+    reasoningEffort: setup.reasoningEffort,
     transcriptionModel: setup.transcriptionModel,
     turnType: setup.turnDetection.type,
     threshold: optionalNumber(setup.turnDetection.threshold),
@@ -107,6 +150,10 @@ export function draftFrom(setup: CallsSetupStatus): CallsDraft {
     deny: setup.deny.join("\n"),
     onBehalfOf: setup.onBehalfOf ?? "",
   };
+}
+
+export function draftChanged(draft: CallsDraft, saved: CallsDraft): boolean {
+  return (Object.keys(draft) as DraftField[]).some((field) => field !== "modelChoice" && draft[field].trim() !== saved[field].trim());
 }
 
 export function keepEdits<T extends object>(next: T, saved: T, draft: T): T {
@@ -191,6 +238,7 @@ export function callsPatch(draft: CallsDraft, saved: CallsDraft):
   text("model", /^[\w.-]*$/, "settings.calls.modelInvalid");
   text("voice", /^[a-z]*$/, "settings.calls.voiceInvalid");
   text("transcriptionModel", /^[\w.-]*$/, "settings.calls.modelInvalid");
+  if (changed("reasoningEffort")) calls.reasoningEffort = draft.reasoningEffort === DEFAULT_REASONING_EFFORT ? null : draft.reasoningEffort;
   if (changed("turnType") || TURN_FIELDS[draft.turnType].some(changed)) {
     const detection = turnDetectionOf(draft, invalid);
     if (detection) calls.turnDetection = detection;
@@ -215,6 +263,7 @@ export const PROMPT_LABEL: Record<CallPromptKey, LocaleKey> = {
   disclosure: "settings.calls.prompt.disclosure",
   instructions: "settings.calls.prompt.instructions",
   opening: "settings.calls.prompt.opening",
+  closing: "settings.calls.prompt.closing",
   wrapUp: "settings.calls.prompt.wrapUp",
   goodbye: "settings.calls.prompt.goodbye",
   defaultBrief: "settings.calls.prompt.defaultBrief",
@@ -225,6 +274,7 @@ export const PROMPT_ROLE: Record<CallPromptKey, LocaleKey> = {
   disclosure: "settings.calls.promptRole.disclosure",
   instructions: "settings.calls.promptRole.instructions",
   opening: "settings.calls.promptRole.opening",
+  closing: "settings.calls.promptRole.closing",
   wrapUp: "settings.calls.promptRole.wrapUp",
   goodbye: "settings.calls.promptRole.goodbye",
   defaultBrief: "settings.calls.promptRole.defaultBrief",

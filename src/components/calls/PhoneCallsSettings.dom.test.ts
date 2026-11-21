@@ -27,7 +27,7 @@ const READY: CallsSetup = {
   ready: true, missing: [], problems: [], provider: "twilio", callerId: "+14155550123", publicUrl: "https://calls.example.com",
   maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", allow: [], deny: ["+1900*"], port: 8805, listening: true,
   transcriptionModel: "gpt-4o-mini-transcribe", turnDetection: { type: "server_vad", threshold: 0.5, prefixPaddingMs: 300, silenceDurationMs: 500 },
-  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true,
+  noiseReduction: "near_field", maxTurnsWithoutReply: 3, record: true, reasoningEffort: "low", onBehalfOfDefault: "Sam Rivera",
   prompts: {
     ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: `Default ${key} for {callee}.`, default: `Default ${key} for {callee}.`, custom: false }])) as CallsSetup["prompts"],
     opening: { value: "Greet {callee} and say why you're calling.", default: "Default opening.", custom: true },
@@ -52,7 +52,7 @@ const DETAIL: CallDetail = {
   ],
   sent: {
     disclosure: "This call is from an AI assistant.", instructions: "You are calling Dr. Lee's office for Sam.", opening: "Greet Dr. Lee's office.",
-    wrapUp: "Wrap up now.", goodbye: "Say goodbye.", model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-4o-mini-transcribe",
+    closing: "Say goodbye before you hang up.", wrapUp: "Wrap up now.", goodbye: "Say goodbye.", reasoningEffort: "medium", model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-4o-mini-transcribe",
     turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field", maxTurnsWithoutReply: 3, maxMinutes: 10, recorded: true,
     session: { type: "realtime", instructions: "You are calling Dr. Lee's office for Sam." },
   },
@@ -78,6 +78,13 @@ const render = async () => {
 const field = <T extends HTMLInputElement | HTMLTextAreaElement>(name: string) => $<T>(`[data-calls-form] [name="${name}"]`)!;
 const prompt = (key: string) => $<HTMLTextAreaElement>(`[data-calls-prompts] [name="${key}"]`)!;
 const voiceSave = () => $<HTMLButtonElement>('[data-calls-save="calls-voice"]')!;
+const select = (name: string) => $<HTMLSelectElement>(`[data-calls-form] select[name="${name}"]`)!;
+const optionTexts = (name: string) => [...select(name).options].map((option) => [option.value, option.textContent]);
+const saveVoice = async () => {
+  flushSync(() => voiceSave().click());
+  await settle();
+  return puts().map(([, init]) => JSON.parse(init.body));
+};
 function choose(element: HTMLSelectElement, value: string) {
   flushSync(() => {
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(element, value);
@@ -201,7 +208,7 @@ describe("Phone calls fields", () => {
   it("keeps Save off until something changes", async () => {
     await render();
     expect(voiceSave().disabled).toBe(true);
-    type(field("voice"), "cedar");
+    choose(select("voice"), "cedar");
     expect(voiceSave().disabled).toBe(false);
   });
 });
@@ -270,6 +277,108 @@ describe("Voice settings", () => {
   });
 });
 
+describe("Calls on behalf of", () => {
+  const nudge = () => $<HTMLElement>("[data-calls-on-behalf-nudge]");
+
+  it("says which name the disclosure uses while it is empty", async () => {
+    await render();
+    expect(nudge()?.dataset.callsOnBehalfNudge).toBe("profile");
+    expect(nudge()?.textContent).toBe("While this is empty, the disclosure says the call is on behalf of Sam Rivera. Enter the name callees should hear.");
+  });
+
+  it("warns harder when there is no profile name either", async () => {
+    setup = { ...READY, onBehalfOfDefault: "the person I work for" };
+    await render();
+    expect(nudge()?.dataset.callsOnBehalfNudge).toBe("standIn");
+    expect(nudge()?.textContent).toContain("on behalf of \"the person I work for\". Enter your name");
+  });
+
+  it("says nothing more once a name is saved", async () => {
+    setup = { ...READY, onBehalfOf: "Sam" };
+    await render();
+    expect(field("onBehalfOf").value).toBe("Sam");
+    expect(nudge()).toBeNull();
+  });
+});
+
+describe("Model, voice and reasoning", () => {
+  it("lists both Realtime models with their prices and saves the one picked", async () => {
+    await render();
+    expect(optionTexts("modelChoice")).toEqual([
+      ["gpt-realtime-2.1-mini", "GPT-Realtime-2.1 mini (lower cost)"],
+      ["gpt-realtime-2.1", "GPT-Realtime-2.1 (best quality)"],
+      ["custom", "Custom model id"],
+    ]);
+    expect(select("modelChoice").value).toBe("gpt-realtime-2.1-mini");
+    expect($('[data-calls-form] input[name="model"]')).toBeNull();
+    expect($("[data-calls-model-price]")?.textContent)
+      .toBe("gpt-realtime-2.1-mini · Audio $10 in / $20 out per 1M tokens · about $0.006 a minute listening, $0.024 a minute speaking");
+    choose(select("modelChoice"), "gpt-realtime-2.1");
+    expect($("[data-calls-model-price]")?.textContent)
+      .toBe("gpt-realtime-2.1 · Audio $32 in / $64 out per 1M tokens · about $0.019 a minute listening, $0.077 a minute speaking");
+    expect(await saveVoice()).toEqual([{ calls: { model: "gpt-realtime-2.1" } }]);
+  });
+
+  it("saves a typed custom model id, and refuses one with spaces", async () => {
+    await render();
+    choose(select("modelChoice"), "custom");
+    expect($("[data-calls-model-price]")).toBeNull();
+    expect(voiceSave().disabled).toBe(true);
+    type(field("model"), "gpt realtime");
+    expect(await saveVoice()).toEqual([]);
+    expect($('[data-calls-form="calls-voice"] [role="alert"]')?.textContent).toBe("Use only letters, digits, dots, dashes and underscores.");
+    type(field("model"), "gpt-realtime-2025-08-28");
+    expect(await saveVoice()).toEqual([{ calls: { model: "gpt-realtime-2025-08-28" } }]);
+  });
+
+  it("opens on the custom id when the saved model isn't listed", async () => {
+    setup = { ...READY, model: "gpt-realtime" };
+    await render();
+    expect(select("modelChoice").value).toBe("custom");
+    expect(field("model").value).toBe("gpt-realtime");
+  });
+
+  it("marks marin and cedar recommended and saves the voice picked", async () => {
+    await render();
+    const voices = optionTexts("voice");
+    expect(voices.slice(0, 3)).toEqual([["marin", "marin (recommended)"], ["cedar", "cedar (recommended)"], ["alloy", "alloy"]]);
+    expect(voices).toHaveLength(10);
+    expect(select("voice").value).toBe("marin");
+    choose(select("voice"), "coral");
+    expect(await saveVoice()).toEqual([{ calls: { voice: "coral" } }]);
+  });
+
+  it("still shows a saved voice that isn't in the list", async () => {
+    setup = { ...READY, voice: "juniper" };
+    await render();
+    expect(select("voice").value).toBe("juniper");
+    expect(optionTexts("voice")[0]).toEqual(["juniper", "juniper"]);
+  });
+
+  it("saves the reasoning effort, and the recommended low as null", async () => {
+    setup = { ...READY, reasoningEffort: "high" };
+    await render();
+    expect(optionTexts("reasoningEffort").map(([, label]) => label)).toEqual(["Minimal", "Low (recommended)", "Medium", "High"]);
+    expect(select("reasoningEffort").value).toBe("high");
+    expect(host.textContent).toContain("Lower answers faster. Low is OpenAI's recommended start. Sent only to models that reason.");
+    choose(select("reasoningEffort"), "minimal");
+    expect(await saveVoice()).toEqual([{ calls: { reasoningEffort: "minimal" } }]);
+    fx.api.mockClear();
+    choose(select("reasoningEffort"), "low");
+    expect(await saveVoice()).toEqual([{ calls: { reasoningEffort: null } }]);
+  });
+
+  it("shows semantic VAD with auto eagerness as it comes by default, and says how the two differ", async () => {
+    setup = { ...READY, turnDetection: { type: "semantic_vad", eagerness: "auto" } };
+    await render();
+    expect(optionTexts("turnType")[0]).toEqual(["semantic_vad", "By meaning (semantic VAD)"]);
+    expect(select("turnType").value).toBe("semantic_vad");
+    expect(select("eagerness").value).toBe("auto");
+    expect($('[data-calls-form] [name="threshold"]')).toBeNull();
+    expect(host.textContent).toContain("Semantic VAD waits until the callee seems finished, so it's less likely to interrupt. Server VAD answers after a set silence.");
+  });
+});
+
 describe("What the call says", () => {
   it("shows every text as calls use it now, in order, with its role and whether it is custom", async () => {
     await render();
@@ -281,6 +390,9 @@ describe("What the call says", () => {
     expect($('[data-calls-prompt="goodbye"] [data-calls-prompt-state]')?.textContent).toBe("Default");
     expect($('[data-calls-prompt="defaultBrief"]')?.textContent).toContain("Used as {brief} when a bot placed a call without one.");
     expect($('[data-calls-prompt="goodbye"] [data-calls-prompt-reset]')).toBeNull();
+    expect($('[data-calls-prompt="closing"] label')?.textContent).toBe("Closing");
+    expect($('[data-calls-prompt="closing"]')?.textContent).toContain("Sent when the voice tries to hang up without having said goodbye; the call hangs up after it.");
+    expect(prompt("closing").value).toBe("Default closing for {callee}.");
     expect(host.textContent).toContain("Calls use these texts exactly as saved, with nothing added.");
     const legend = $("[data-calls-placeholders]")!.textContent!;
     expect(legend).toContain("{onBehalfOf}");
@@ -361,13 +473,32 @@ describe("Call history", () => {
     flushSync(() => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     const texts = [...sent.querySelectorAll<HTMLElement>("[data-call-sent-text]")];
-    expect(texts.map((element) => element.dataset.callSentText)).toEqual(["disclosure", "instructions", "opening", "wrapUp", "goodbye"]);
+    expect(texts.map((element) => element.dataset.callSentText)).toEqual(["disclosure", "instructions", "opening", "closing", "wrapUp", "goodbye"]);
+    expect(texts[3]!.querySelector("pre")!.textContent).toBe("Say goodbye before you hang up.");
     expect(texts[1]!.querySelector("pre")!.textContent).toBe("You are calling Dr. Lee's office for Sam.");
     const values = sent.querySelector("[data-call-sent-values]")!.textContent!;
     expect(values).toContain("gpt-4o-mini-transcribe");
+    expect(values).toContain("Reasoning effortMedium");
     expect(values).toContain("By meaning (semantic VAD) · Eagerness Low");
     expect(values).toContain("Far (speakerphone)");
     expect(JSON.parse(sent.querySelector("[data-call-sent-session]")!.textContent!)).toEqual(DETAIL.sent!.session);
+  });
+
+  it("leaves out what an older call wasn't sent", async () => {
+    const { closing: _closing, reasoningEffort: _effort, ...older } = DETAIL.sent!;
+    fx.api.mockImplementation(async (path: string) => {
+      if (path === "/api/calls/setup") return setup;
+      if (path === "/api/calls") return { calls: [ENDED] };
+      if (path === "/api/calls/c1") return { ...DETAIL, sent: older };
+      throw new Error(`unexpected ${path}`);
+    });
+    await render();
+    flushSync(() => host.querySelector<HTMLButtonElement>('[data-settings-disclosure="call-c1"] button')!.click());
+    await settle();
+    const sent = $("[data-call-sent]")!;
+    expect([...sent.querySelectorAll<HTMLElement>("[data-call-sent-text]")].map((element) => element.dataset.callSentText))
+      .toEqual(["disclosure", "instructions", "opening", "wrapUp", "goodbye"]);
+    expect(sent.querySelector("[data-call-sent-values]")!.textContent).not.toContain("Reasoning effort");
   });
 
   it("hangs up a call that hasn't ended", async () => {

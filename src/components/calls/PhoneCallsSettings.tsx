@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { intlLocale, t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { SETTINGS_INPUT, SettingRow, SettingsField, SettingsFormFoot, SettingsGroup, SettingsLinkRow, SettingsRows, StatusDot, Switch } from "../SettingsPrimitives";
 import { SettingsSkeletonRows } from "../settings/SettingsStates";
@@ -12,8 +13,9 @@ import { CallHistory } from "./CallHistory";
 import { CallPrompts } from "./CallPrompts";
 import { useSavedDraft } from "./use-saved-draft";
 import {
-  CALLS_PATH, EAGERNESS, EAGERNESS_LABEL, NOISE_REDUCTION, NOISE_REDUCTION_LABEL, NUMBER_RANGES, SETTING_LABEL, TURN_TYPES, TURN_TYPE_LABEL, callsPatch, draftFrom,
-  turnFieldShown, type CallsDraft, type CallsSetupStatus, type DraftField,
+  CALL_REASONING_EFFORTS, CALLS_PATH, CUSTOM_MODEL, EAGERNESS, EAGERNESS_LABEL, MODEL_TAG, NOISE_REDUCTION, NOISE_REDUCTION_LABEL, NUMBER_RANGES, REALTIME_MODELS,
+  REASONING_LABEL, SETTING_LABEL, TURN_TYPES, TURN_TYPE_LABEL, DEFAULT_REASONING_EFFORT, callsPatch, draftChanged, draftFrom, listedModel, modelPrices, onBehalfOfNudge,
+  turnFieldShown, voiceOptions, type CallsDraft, type CallsSetupStatus, type DraftField,
 } from "./calls-settings";
 
 const KEYS: readonly KeyId[] = ["twilioSid", "twilioToken", "openai"];
@@ -124,32 +126,77 @@ function RecordRow({ record, onSaved }: { record: boolean; onSaved: () => Promis
 interface FieldSpec {
   field: DraftField;
   label: LocaleKey;
-  hint?: LocaleKey;
+  hint?: LocaleKey | ((draft: CallsDraft, setup: CallsSetupStatus) => ReactNode);
   placeholder?: string;
   lines?: boolean;
   type?: "tel" | "url" | "number";
-  options?: ReadonlyArray<{ value: string; label: LocaleKey }>;
+  options?: (draft: CallsDraft) => ReadonlyArray<{ value: string; label: string }>;
+  change?: (value: string) => Partial<CallsDraft>;
+  shown?: (draft: CallsDraft) => boolean;
+}
+
+const labelled = <T extends string>(values: readonly T[], labels: Record<T, LocaleKey>) => () => values.map((value) => ({ value, label: t(labels[value]) }));
+const recommended = (option: string) => t("settings.calls.recommendedOption", { option });
+
+function modelOptions() {
+  return [
+    ...REALTIME_MODELS.map(({ id, label }) => ({ value: id, label: MODEL_TAG[id] ? t("settings.calls.modelOption", { model: label, tag: t(MODEL_TAG[id]) }) : label })),
+    { value: CUSTOM_MODEL, label: t("settings.calls.modelCustom") },
+  ];
+}
+
+function modelPriceNote(draft: CallsDraft) {
+  const model = draft.modelChoice === CUSTOM_MODEL ? undefined : listedModel(draft.modelChoice);
+  if (!model) return undefined;
+  return <span data-calls-model-price={model.id}><code className="font-mono">{model.id}</code> · {t("settings.calls.modelPrice", modelPrices(model, intlLocale()))}</span>;
+}
+
+function onBehalfOfHint(_draft: CallsDraft, setup: CallsSetupStatus) {
+  const nudge = onBehalfOfNudge(setup);
+  return <>
+    {t("settings.calls.onBehalfOfHint")}
+    {nudge && (
+      <span data-calls-on-behalf-nudge={nudge} className={cn("mt-1 flex items-start gap-1.5", nudge === "standIn" ? "text-warning" : "text-ink-secondary")}>
+        <TriangleAlert size={14} aria-hidden="true" className="mt-px shrink-0 text-warning" />
+        <span>{t(nudge === "standIn" ? "settings.calls.onBehalfOfStandIn" : "settings.calls.onBehalfOfDefault", { name: setup.onBehalfOfDefault })}</span>
+      </span>
+    )}
+  </>;
 }
 
 const CALLING_FIELDS: readonly FieldSpec[] = [
   { field: "callerId", label: "settings.calls.callerId", hint: "settings.calls.callerIdHint", placeholder: "+14155550123", type: "tel" },
   { field: "publicUrl", label: "settings.calls.publicUrl", hint: "settings.calls.publicUrlHint", placeholder: "https://calls.example.com", type: "url" },
   { field: "maxMinutes", label: "settings.calls.maxMinutes", type: "number" },
-  { field: "onBehalfOf", label: "settings.calls.onBehalfOf", hint: "settings.calls.onBehalfOfHint" },
+  { field: "onBehalfOf", label: "settings.calls.onBehalfOf", hint: onBehalfOfHint },
   { field: "allow", label: "settings.calls.allow", hint: "settings.calls.allowHint", placeholder: "+1415*", lines: true },
   { field: "deny", label: "settings.calls.deny", hint: "settings.calls.denyHint", placeholder: "+1900*", lines: true },
 ];
 
 const VOICE_FIELDS: readonly FieldSpec[] = [
-  { field: "model", label: "settings.calls.model" },
-  { field: "voice", label: "settings.calls.voice" },
+  {
+    field: "modelChoice", label: "settings.calls.model", options: modelOptions, hint: modelPriceNote,
+    change: (value) => (value === CUSTOM_MODEL ? { modelChoice: value } : { modelChoice: value, model: value }),
+  },
+  { field: "model", label: "settings.calls.modelCustom", hint: "settings.calls.modelCustomHint", shown: (draft) => draft.modelChoice === CUSTOM_MODEL },
+  {
+    field: "voice", label: "settings.calls.voice",
+    options: (draft) => voiceOptions(draft.voice).map(({ value, recommended: best }) => ({ value, label: best ? recommended(value) : value })),
+  },
+  {
+    field: "reasoningEffort", label: "settings.calls.reasoningEffort", hint: "settings.calls.reasoningEffortHint",
+    options: () => CALL_REASONING_EFFORTS.map((value) => {
+      const label = t(REASONING_LABEL[value]);
+      return { value, label: value === DEFAULT_REASONING_EFFORT ? recommended(label) : label };
+    }),
+  },
   { field: "transcriptionModel", label: "settings.calls.transcriptionModel", hint: "settings.calls.transcriptionModelHint" },
-  { field: "turnType", label: "settings.calls.turnDetection", options: TURN_TYPES.map((value) => ({ value, label: TURN_TYPE_LABEL[value] })) },
+  { field: "turnType", label: "settings.calls.turnDetection", hint: "settings.calls.turnDetectionHint", options: labelled(TURN_TYPES, TURN_TYPE_LABEL) },
   { field: "threshold", label: "settings.calls.threshold", hint: "settings.calls.thresholdHint", type: "number" },
   { field: "prefixPaddingMs", label: "settings.calls.prefixPadding", type: "number" },
   { field: "silenceDurationMs", label: "settings.calls.silence", type: "number" },
-  { field: "eagerness", label: "settings.calls.eagerness", hint: "settings.calls.eagernessHint", options: EAGERNESS.map((value) => ({ value, label: EAGERNESS_LABEL[value] })) },
-  { field: "noiseReduction", label: "settings.calls.noiseReduction", options: NOISE_REDUCTION.map((value) => ({ value, label: NOISE_REDUCTION_LABEL[value] })) },
+  { field: "eagerness", label: "settings.calls.eagerness", hint: "settings.calls.eagernessHint", options: labelled(EAGERNESS, EAGERNESS_LABEL) },
+  { field: "noiseReduction", label: "settings.calls.noiseReduction", options: labelled(NOISE_REDUCTION, NOISE_REDUCTION_LABEL) },
   { field: "maxTurnsWithoutReply", label: "settings.calls.maxTurns", hint: "settings.calls.maxTurnsHint", type: "number" },
 ];
 
@@ -165,7 +212,7 @@ function CallsForm({ setup, onSaved, label, block, fields, lead }: {
   const [notice, setNotice] = useState<string | null>(null);
   const formId = useId();
 
-  const dirty = (Object.keys(draft) as DraftField[]).some((field) => draft[field].trim() !== saved[field].trim());
+  const dirty = draftChanged(draft, saved);
 
   const save = async () => {
     const patch = callsPatch(draft, saved);
@@ -191,19 +238,19 @@ function CallsForm({ setup, onSaved, label, block, fields, lead }: {
       <SettingsRows>
         {lead}
         <form id={formId} noValidate data-calls-form={block} className="flex flex-col gap-4 px-4 pb-1 pt-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void save(); }}>
-          {fields.filter(({ field }) => turnFieldShown(field, draft.turnType)).map(({ field, label: fieldLabel, hint, placeholder, lines, type, options }) => {
+          {fields.filter(({ field, shown }) => turnFieldShown(field, draft.turnType) && (shown?.(draft) ?? true)).map(({ field, label: fieldLabel, hint, placeholder, lines, type, options, change }) => {
             const wrong = invalid[field];
-            const onChange = (event: { target: { value: string } }) => { edit({ [field]: event.target.value }); setNotice(null); };
+            const onChange = (event: { target: { value: string } }) => { edit(change ? change(event.target.value) : { [field]: event.target.value }); setNotice(null); };
             const shared = {
               name: field, value: draft[field], disabled: saving, placeholder, "aria-invalid": Boolean(wrong) || undefined, autoComplete: "off", spellCheck: false, dir: "auto", onChange,
             };
             const range = type === "number" ? NUMBER_RANGES[field as keyof typeof NUMBER_RANGES] : undefined;
             return (
               <SettingsField key={field} label={t(fieldLabel)}
-                hint={wrong ? <span role="alert" className="text-danger">{t(wrong)}</span> : hint ? t(hint) : undefined}>
+                hint={wrong ? <span role="alert" className="text-danger">{t(wrong)}</span> : typeof hint === "function" ? hint(draft, setup) : hint ? t(hint) : undefined}>
                 {options
                   ? <Select name={field} value={draft[field]} disabled={saving} onChange={onChange}>
-                    {options.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
+                    {options(draft).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </Select>
                   : lines
                     ? <textarea {...shared} rows={3} className={cn(SETTINGS_INPUT, "h-auto min-h-16 resize-y py-1.5", wrong && "border-danger/60")} />

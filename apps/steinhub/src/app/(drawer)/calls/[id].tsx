@@ -152,6 +152,7 @@ const SENT_TEXTS = [
   ["disclosure", "Disclosure"],
   ["instructions", "Voice instructions"],
   ["opening", "Opening"],
+  ["closing", "Closing"],
   ["wrapUp", "Wrap-up"],
   ["goodbye", "Goodbye"],
 ] as const satisfies ReadonlyArray<readonly [keyof CallSent, string]>;
@@ -162,6 +163,7 @@ function SentSection({ sent }: { sent: CallSent }) {
   const values: Array<[string, string]> = [
     ["Realtime model", sent.model],
     ["Voice", sent.voice],
+    ...(sent.reasoningEffort ? [["Reasoning effort", sent.reasoningEffort] as [string, string]] : []),
     ["Transcription model", sent.transcriptionModel],
     ["Turn detection", Object.entries(sent.turnDetection).map(([name, value]) => (name === "type" ? String(value) : `${name} ${value}`)).join(" · ")],
     ["Noise reduction", sent.noiseReduction],
@@ -178,7 +180,7 @@ function SentSection({ sent }: { sent: CallSent }) {
       </Pressable>
       {open ? (
         <View style={styles.card}>
-          {SENT_TEXTS.map(([key, label]) => (
+          {SENT_TEXTS.filter(([key]) => sent[key] !== undefined).map(([key, label]) => (
             <View key={key} style={styles.line}>
               <Txt variant="caption" tone="secondary">
                 {label}

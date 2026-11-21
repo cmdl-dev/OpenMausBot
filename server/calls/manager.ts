@@ -4,7 +4,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type WebSocket from "ws";
-import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallRecording, type CallSent, type CallSummary } from "../../shared/phone-calls.ts";
+import { numberRefusal, type CallDetail, type CallEndReason, type CallLine, type CallPhase, type CallRecording, type CallCaller, type CallSent, type CallSummary } from "../../shared/phone-calls.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import type { ReadyCalls } from "./config.ts";
 import { callTexts, summaryPrompt } from "./prompt.ts";
@@ -21,7 +21,9 @@ export interface CallRecord {
   to: string;
   calleeName?: string;
   brief: string;
-  onBehalfOf: string;
+  /** Who the call is for and why. Calls placed by an earlier version have only `onBehalfOf`. */
+  caller?: CallCaller;
+  onBehalfOf?: string;
   provider: "twilio";
   providerCallId?: string;
   maxMinutes: number;
@@ -285,7 +287,7 @@ export function createCalls(deps: CallDeps) {
 
   return {
     /** Places the call and answers once the provider has it; the rest happens in the background. */
-    async place(input: { botId: string; botName: string; threadId: string; to: string; calleeName?: string; brief: string; onBehalfOf: string }): Promise<CallRecord> {
+    async place(input: { botId: string; botName: string; threadId: string; to: string; calleeName?: string; brief: string; caller: CallCaller }): Promise<CallRecord> {
       if (closed) throw new CallError("OpenMausBot is shutting down.");
       const settings = deps.settings();
       if ("refusal" in settings) throw new CallError(settings.refusal);
@@ -299,15 +301,15 @@ export function createCalls(deps: CallDeps) {
       const record: CallRecord = {
         id: `c-${randomUUID()}`, botId: input.botId, botName: input.botName, threadId: input.threadId, to: input.to,
         ...(input.calleeName?.trim() ? { calleeName: input.calleeName.trim().slice(0, 80) } : {}), brief: input.brief.trim().slice(0, 4_000),
-        onBehalfOf: (settings.onBehalfOf?.trim() || input.onBehalfOf).slice(0, 80), provider: "twilio", maxMinutes: settings.maxMinutes,
+        caller: input.caller, provider: "twilio", maxMinutes: settings.maxMinutes,
         phase: "dialing", createdAt: now(), lines: 0,
       };
-      const texts = callTexts(settings.prompts, { ...record, recorded: settings.record, disclosureSpoken: settings.disclosureEnabled });
+      const texts = callTexts(settings.prompts, { ...record, caller: input.caller, recorded: settings.record, disclosureSpoken: settings.disclosureEnabled });
       record.sent = {
         disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, closing: texts.closing, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
         model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel, turnDetection: settings.turnDetection,
         noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes, recorded: settings.record,
-        disclosureEnabled: settings.disclosureEnabled, disclosureSpoken: false,
+        disclosureEnabled: settings.disclosureEnabled, disclosureSpoken: false, caller: input.caller,
         ...(reasoningModel(settings.model) ? { reasoningEffort: settings.reasoningEffort } : {}),
         ...openingSessions(realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription })),
       };

@@ -2,7 +2,8 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
-import { CALL_END_TEXT, e164, numberRefusal, ON_BEHALF_OF_STAND_IN, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
+import { CALL_END_TEXT, e164, numberRefusal, type CallCaller, type CallSent, type CallsSetup } from "../../shared/phone-calls.ts";
+import { resolveCaller } from "./caller.ts";
 import type { json } from "../harness/http.ts";
 import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
 import { recordsText } from "../records-block.ts";
@@ -38,7 +39,12 @@ export interface CallRouteDeps {
 
 const callId = z.string().min(1).max(80);
 const schemas = {
-  place: z.object({ to: z.string().trim().min(3).max(40), brief: z.string().trim().min(10).max(4_000), callee_name: z.string().trim().max(80).optional() }),
+  place: z.object({
+    to: z.string().trim().min(3).max(40), brief: z.string().trim().min(10).max(4_000), callee_name: z.string().trim().max(80).optional(),
+    purpose: z.string().trim().max(200).optional(), call_type: z.enum(["business", "owner"]).optional(),
+    on_behalf_of: z.string().trim().max(80).optional(), booking_name: z.string().trim().max(80).optional(),
+    details: z.string().trim().max(2_000).optional(), callback_number: z.string().trim().max(40).optional(),
+  }),
   status: z.object({ call_id: callId }),
   hang_up: z.object({ call_id: callId }),
   transcript: z.object({ call_id: callId, page: z.number().int().min(1).optional() }),
@@ -51,8 +57,20 @@ const PER_PAGE = 200;
 const ALWAYS_ASK = { policy: "ask" } as const;
 
 /** What a call sent to the voice and had Twilio say, as get_call_transcript shows it. */
+const FROM: Record<CallCaller["userNameFrom"], string> = { call: "from the call", settings: "from About you", profile: "from the profile", none: "none known" };
+
+/** Who the call was for, as get_call_transcript shows it. */
+export function callerText(caller: CallCaller): string {
+  return [
+    `Call type: ${caller.callType}. Purpose: ${caller.purpose ?? "(none given)"}.`,
+    `Name given: ${caller.userName ?? "(none, so \"for a client\")"} (${FROM[caller.userNameFrom]}). Booking name: ${caller.bookingName ?? "(none)"} (${FROM[caller.bookingNameFrom]}).`,
+    `Callback number: ${caller.callbackNumber ?? "(none)"} (${FROM[caller.callbackNumberFrom]}). Details: ${caller.details ? caller.details.replace(/\s+/g, " ") : "(none)"}${caller.aboutMeIncluded ? " (includes About me)" : ""}.`,
+  ].join("\n");
+}
+
 export function sentText(sent: CallSent): string {
   return [
+    ...(sent.caller ? [callerText(sent.caller)] : []),
     `Sent for this call (model ${sent.model}, voice ${sent.voice}, transcription ${sent.transcriptionModel}, turn detection ${JSON.stringify(sent.turnDetection)}, noise reduction ${sent.noiseReduction}, up to ${sent.maxMinutes} min, goodbye after ${sent.maxTurnsWithoutReply} turns without a reply):`,
     sent.disclosureEnabled === false
       ? `Disclosure: off, so nothing was said before the voice spoke (saved text, not spoken: ${sent.disclosure})`
@@ -82,7 +100,10 @@ export function createCallRoutes(deps: CallRouteDeps) {
         const refused = numberRefusal(to, settings);
         if (refused) return { status: 403, error: refused };
         const bot = { ...ctx.bot, outbound: ALWAYS_ASK };
-        const calling = { to, ...(input.callee_name ? { callee_name: input.callee_name } : {}), brief: input.brief };
+        const calling = Object.fromEntries(Object.entries({
+          to, call_type: input.call_type ?? "business", purpose: input.purpose, callee_name: input.callee_name, on_behalf_of: input.on_behalf_of,
+          booking_name: input.booking_name, callback_number: input.callback_number, details: input.details, brief: input.brief,
+        }).filter(([, value]) => value));
         const held = await deps.outbound().hold({ bot, threadId: ctx.threadId, tool: PLACE_CALL_TOOL, calls: [{ slug: PLACE_CALL_TOOL, arguments: calling }], opaque: false, fullAccess: false, active: ctx.active });
         if (!held.ok) return { status: 403, error: held.text };
         try {
@@ -93,7 +114,12 @@ export function createCallRoutes(deps: CallRouteDeps) {
         if (!ctx.active()) return { status: 409, error: "This turn ended before the call was approved, so I didn't call." };
         const record = await calls.place({
           botId, botName: ctx.bot.name, threadId: ctx.threadId, to, ...(input.callee_name ? { calleeName: input.callee_name } : {}),
-          brief: input.brief, onBehalfOf: deps.personName(ctx.threadId)?.trim() || deps.ownerName()?.trim() || ON_BEHALF_OF_STAND_IN,
+          brief: input.brief,
+          caller: resolveCaller({
+            ...(input.purpose ? { purpose: input.purpose } : {}), ...(input.call_type ? { callType: input.call_type } : {}),
+            ...(input.on_behalf_of ? { onBehalfOf: input.on_behalf_of } : {}), ...(input.booking_name ? { bookingName: input.booking_name } : {}),
+            ...(input.callback_number ? { callbackNumber: input.callback_number } : {}), ...(input.details ? { details: input.details } : {}),
+          }, settings, deps.ownerName()?.trim() || deps.personName(ctx.threadId)?.trim()),
         });
         return {
           status: 200,

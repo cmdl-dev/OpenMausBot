@@ -41,7 +41,9 @@ exactly what is missing.
 | Reasoning effort (default `low`; `minimal`, `medium`, `high`), sent only to reasoning models | Settings → Phone calls | `calls.reasoningEffort` | |
 | Allowlist (numbers or prefixes like `+1415*`) | Settings → Phone calls | `calls.allow` | `OMB_CALLS_ALLOW` (comma separated) |
 | Denylist (wins over the allowlist) | Settings → Phone calls | `calls.deny` | `OMB_CALLS_DENY` (comma separated) |
-| Name the voice calls for (default: your profile name) | Settings → Phone calls | `calls.onBehalfOf` | `OMB_CALLS_ON_BEHALF_OF` |
+| Your name, the name the voice gives (optional) | Settings → Phone calls → About you → Your name | `calls.userName` (an earlier `calls.onBehalfOf` counts while it is empty) | `OMB_CALLS_ON_BEHALF_OF` |
+| Callback number the voice may give (optional) | Settings → Phone calls → About you → Callback number | `calls.callbackNumber` | |
+| About me, what the voice may share (optional) | Settings → Phone calls → About you → About me | `calls.aboutMe` | |
 | Call listener port (default 8805) | Settings → Phone calls | `calls.port` | `OMB_CALLS_PORT` |
 | Transcription model (default `gpt-transcribe`) | Settings → Phone calls | `calls.transcriptionModel` | |
 | Turn detection (default semantic VAD, eagerness `auto`; server VAD with threshold 0.6, 300 ms padding, 700 ms silence when chosen) | Settings → Phone calls | `calls.turnDetection` | |
@@ -55,7 +57,13 @@ exactly what is missing.
 Every text a call sends is shown and editable in Settings → Phone calls → What
 the call says, with a Reset to default button each. A saved text is used exactly
 as written, with nothing added before or after; only its `{placeholders}` are
-filled: `{onBehalfOf}`, `{callee}` (the name, or "the person you called"),
+filled: `{forUser}` ("for <your name>", or "for a client" when no name is known),
+`{userName}` (the name, or empty), `{purpose}` (or "help with a quick request"),
+`{bookingName}` (or `{userName}`, or empty), `{callbackNumber}` (or empty),
+`{details}` (the bot's details, then About me labelled, or empty), `{callType}`
+(`business` or `owner`), `{callTypeNote}` (one sentence saying which),
+`{onBehalfOf}` (kept for texts saved earlier: the name, or "a client"),
+`{callee}` (the name, or "the person you called"),
 `{calleeName}`, `{to}`, `{botName}`, `{brief}`, `{disclosure}`,
 `{maxMinutes}`, `{recordingNotice}` ("This call is recorded." while
 recording is on, else "This call is transcribed.") and `{disclosureHeard}`
@@ -96,6 +104,36 @@ offers no call tools; `GET /api/calls/setup` lists what is missing.
 
 A non-empty allowlist admits only the numbers it names. The denylist always
 wins. A bot can't call the caller ID number itself, and runs one call at a time.
+
+## Who the call is for
+
+`place_call` takes, besides the number and the brief:
+
+| Field | What it is |
+| --- | --- |
+| `purpose` | Why it calls, in a few words the voice says after "I'm calling to": "book a haircut this Sunday". The tool asks the bot to always give it. |
+| `call_type` | `business` (default: a shop, an office, anyone but you) or `owner` (calling you yourself). The opening is `calls.opening` for business calls and `calls.openingOwner` for owner calls. |
+| `on_behalf_of` | The name the voice gives. |
+| `booking_name` | The name for a booking, when it differs. |
+| `details` | Dates, times, acceptable options and facts the voice may share. |
+| `callback_number` | A number the voice may give. |
+
+The bot fills `on_behalf_of` from what it knows (the chat, its memory, your
+name in OpenMausBot). If a call books or reserves something and it doesn't
+know your name, it asks you first and saves the answer with its memory tool,
+`memory_update`, so it knows next time.
+
+Each name or number comes from the call, else About you in Settings, else your
+profile name, else nowhere. With no name the voice says it is calling "for a
+client" and never invents one; "the person I work for" is never said. A call's
+details and `get_call_transcript` show each value and where it came from.
+
+The approach follows what others do: Google Duplex says "I'm calling to book
+a women's haircut for a client" and gives a first name when asked; Gemini's
+Call for Me says it is an AI calling on your behalf with your name, after you
+review the name and contact details; Grok's assistant says it is "a virtual
+assistant calling for <name> on a recorded line"; Vapi, Retell and Bland fill
+`{{name}}`-style variables into the first message and the prompt.
 
 ## The voice
 

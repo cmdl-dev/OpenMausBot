@@ -1,7 +1,8 @@
 // Phone calls' settings in config.json, their OMB_* overrides, and what is still missing before a call can be placed.
 import { z } from "zod";
-import { CALL_PROMPT_KEYS, CALL_REASONING_EFFORTS, CALL_SETTINGS, e164, numberRule, ON_BEHALF_OF_STAND_IN, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSetting, type CallsSetup, type CallTurnDetection } from "../../shared/phone-calls.ts";
+import { CALL_PROMPT_KEYS, CALL_REASONING_EFFORTS, CALL_SETTINGS, e164, numberRule, type CallNoiseReduction, type CallPromptKey, type CallReasoningEffort, type CallSetting, type CallsSetup, type CallTurnDetection } from "../../shared/phone-calls.ts";
 import { usableLiveKey, type LiveConfig } from "../live-config.ts";
+import { defaultName } from "./caller.ts";
 import { customPrompt, DEFAULT_CALL_PROMPTS } from "./prompt.ts";
 import { endCallTool } from "./realtime.ts";
 
@@ -32,7 +33,9 @@ export const DEFAULT_REASONING_EFFORT: CallReasoningEffort = "low";
  * `maxMinutes` caps each call (default 10); `model` is the OpenAI Realtime model (default gpt-realtime-2.1-mini),
  * `voice` its voice and `transcriptionModel` the model that writes down what the callee says; `allow` and `deny` are
  * E.164 numbers or prefixes ending in `*` — a non-empty allowlist admits only what it names, the denylist always wins;
- * `onBehalfOf` is the name the voice says it calls for (default: the person's profile name). The OpenAI key is
+ * `userName`, `callbackNumber` and `aboutMe` are About you: the name the voice gives, a number it may give and what it
+ * may share, each used when the bot's call doesn't say; `onBehalfOf` is the same name saved by an earlier version as
+ * Calls on behalf of, used while `userName` is empty. The OpenAI key is
  * `openai.key`. */
 export const callsConfigSchema = z.object({
   accountSid: z.string().trim().max(64).optional(),
@@ -47,6 +50,9 @@ export const callsConfigSchema = z.object({
   allow: z.array(z.string().trim().max(20)).max(200).optional(),
   deny: z.array(z.string().trim().max(20)).max(200).optional(),
   onBehalfOf: z.string().trim().max(80).optional(),
+  userName: z.string().trim().max(80).optional(),
+  callbackNumber: z.string().trim().max(40).optional(),
+  aboutMe: z.string().trim().max(2_000).optional(),
   turnDetection: z.object({
     type: z.enum(["server_vad", "semantic_vad"]),
     threshold: z.number().min(0).max(1).optional(),
@@ -130,7 +136,20 @@ export interface ReadyCalls {
   prompts: Record<CallPromptKey, string>;
   allow: string[];
   deny: string[];
-  onBehalfOf?: string;
+  /** About you, the legacy Calls on behalf of standing in for an empty Your name. */
+  userName?: string;
+  callbackNumber?: string;
+  aboutMe?: string;
+}
+
+/** About you as calls use it: Your name, else the name saved as Calls on behalf of. */
+export function aboutYou(calls: CallsConfig): { userName?: string; callbackNumber?: string; aboutMe?: string } {
+  const userName = calls.userName?.trim() || calls.onBehalfOf?.trim();
+  return {
+    ...(userName ? { userName } : {}),
+    ...(calls.callbackNumber?.trim() ? { callbackNumber: calls.callbackNumber.trim() } : {}),
+    ...(calls.aboutMe?.trim() ? { aboutMe: calls.aboutMe.trim() } : {}),
+  };
 }
 
 /** The saved text for each key, or the built-in default when none (or only blanks) is saved. */
@@ -219,7 +238,7 @@ export function callsSettings(cfg: CallsConfigInput): { ready: ReadyCalls | null
   return {
     ready: {
       accountSid: calls.accountSid!, authToken: calls.authToken!, callerId: callerId!, publicUrl: publicUrl!, openaiKey: openaiKey!,
-      ...callVoice(calls), prompts: callPrompts(calls), allow, deny, ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
+      ...callVoice(calls), prompts: callPrompts(calls), allow, deny, ...aboutYou(calls),
     },
     missing,
     problems,
@@ -249,9 +268,12 @@ export function callsSetup(cfg: CallsConfigInput, listening: boolean): CallsSetu
     ...(calls.callerId ? { callerId: calls.callerId } : {}),
     ...(calls.publicUrl ? { publicUrl: publicBase(calls.publicUrl) ?? calls.publicUrl } : {}),
     ...(calls.onBehalfOf ? { onBehalfOf: calls.onBehalfOf } : {}),
+    ...(calls.userName ? { userName: calls.userName } : {}),
+    ...(calls.callbackNumber ? { callbackNumber: calls.callbackNumber } : {}),
+    ...(calls.aboutMe ? { aboutMe: calls.aboutMe } : {}),
     ...callVoice(calls),
     prompts: Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, { value: callPrompts(calls)[key], default: DEFAULT_CALL_PROMPTS[key], custom: customPrompt(key, calls[key]) }])) as CallsSetup["prompts"],
-    onBehalfOfDefault: cfg.profile?.name?.trim() || ON_BEHALF_OF_STAND_IN,
+    nameDefault: (({ name, from }) => ({ name: name ?? "", from }))(defaultName(aboutYou(calls), cfg.profile?.name)),
     tools: [endCallTool(callPrompts(calls).endCallDescription)],
     allow: rules(calls.allow),
     deny: rules(calls.deny),

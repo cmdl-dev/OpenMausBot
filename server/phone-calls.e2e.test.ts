@@ -160,7 +160,7 @@ describe("a phone call placed by a bot", () => {
 
     expect((await hook("status", { CallStatus: "ringing" })).status).toBe(204);
     const answer = await hook("answer", { CallStatus: "in-progress" });
-    expect(answer.text).toContain("an AI assistant calling on behalf of");
+    expect(answer.text).toContain("an AI assistant calling for a client");
     const stream = await twilioStream(/<Stream url="([^"]+)"/.exec(answer.text)![1]!.replace("wss://calls.example.com", listener.replace("http:", "ws:")));
     stream.socket.send(JSON.stringify({ event: "start", streamSid: "MZ9", start: { streamSid: "MZ9", callSid: params.CallSid } }));
     expect((await realtime.waitFor("session.update")).session).toMatchObject({ model: "gpt-realtime-2.1-mini" });

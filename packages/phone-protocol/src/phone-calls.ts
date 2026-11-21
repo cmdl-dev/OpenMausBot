@@ -75,14 +75,15 @@ export interface CallDetail extends CallSummary {
 }
 
 /** The texts of a call that a person can edit in Settings → Phone calls; each is `calls.<key>` in config.json. */
-export const CALL_PROMPT_KEYS = ["disclosure", "instructions", "opening", "closing", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const;
+export const CALL_PROMPT_KEYS = ["disclosure", "instructions", "opening", "openingOwner", "closing", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const;
 export type CallPromptKey = (typeof CALL_PROMPT_KEYS)[number];
 
 /** What each editable text is, for the Settings screen. */
 export const CALL_PROMPT_ROLES: Record<CallPromptKey, string> = {
   disclosure: "Spoken by Twilio's voice the moment the callee answers, before the AI voice says anything.",
   instructions: "The AI voice's instructions (OpenAI Realtime session instructions), sent whole at the start of the call.",
-  opening: "Sent once as the first response's instructions: what the voice says first.",
+  opening: "Sent once as the first response's instructions on a business call (the bot calls a shop, an office, anyone but you): what the voice says first.",
+  openingOwner: "The same, when the bot calls you yourself.",
   closing: "Sent when the voice tries to hang up without having said goodbye; the call hangs up after it.",
   wrapUp: "Sent as a system message shortly before the time limit.",
   goodbye: "Sent when the callee hasn't said anything for several voice turns in a row; the call hangs up after it.",
@@ -92,7 +93,15 @@ export const CALL_PROMPT_ROLES: Record<CallPromptKey, string> = {
 
 /** The `{name}` placeholders every call text may use. */
 export const CALL_PLACEHOLDERS: ReadonlyArray<{ name: string; meaning: string }> = [
-  { name: "onBehalfOf", meaning: "Who the call is for: Calls on behalf of, else your profile name." },
+  { name: "forUser", meaning: "\"for <your name>\", or \"for a client\" when no name is known." },
+  { name: "userName", meaning: "The name the voice gives: the bot's on_behalf_of, else Your name in About you, else your profile name; empty when none is known." },
+  { name: "purpose", meaning: "Why the bot is calling, in a few words (\"book a haircut this Sunday\"); \"help with a quick request\" when the bot gave none." },
+  { name: "bookingName", meaning: "The name for any booking: the bot's booking_name, else {userName}; empty when none is known." },
+  { name: "callbackNumber", meaning: "A number the voice may give: the bot's callback_number, else Callback number in About you; empty when none." },
+  { name: "details", meaning: "What the voice may share: the bot's details, then About me from About you, labelled; empty when none." },
+  { name: "callType", meaning: "\"business\" or \"owner\" (the bot is calling you yourself)." },
+  { name: "callTypeNote", meaning: "Business: \"You are calling a business or someone other than the person you represent.\" Owner: \"You are calling the person you represent themselves, not a business.\"" },
+  { name: "onBehalfOf", meaning: "Kept for texts saved earlier: {userName}, or \"a client\" when no name is known." },
   { name: "callee", meaning: "The callee's name, or \"the person you called\" when the bot gave none." },
   { name: "calleeName", meaning: "The callee's name as the bot gave it, empty when there is none." },
   { name: "to", meaning: "The number called, E.164." },
@@ -123,8 +132,24 @@ export function realtimeMinuteCost(model: { audioIn: number; audioOut: number })
 export const REALTIME_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
 export const RECOMMENDED_VOICES: ReadonlySet<string> = new Set(["marin", "cedar"]);
 
-/** What the disclosure says the call is for when neither Calls on behalf of nor a profile name is set. */
-export const ON_BEHALF_OF_STAND_IN = "the person I work for";
+/** Where a name or number a call used came from: the bot's place_call, About you in Settings, your profile, or
+ * nowhere. */
+export type CallInfoSource = "call" | "settings" | "profile" | "none";
+
+/** Who a call is for and why, as resolved when it was placed. Empty fields render as their placeholder says. */
+export interface CallCaller {
+  callType: "business" | "owner";
+  purpose?: string;
+  userName?: string;
+  userNameFrom: CallInfoSource;
+  bookingName?: string;
+  bookingNameFrom: CallInfoSource;
+  callbackNumber?: string;
+  callbackNumberFrom: CallInfoSource;
+  details?: string;
+  /** About me from Settings was added to `details`. */
+  aboutMeIncluded: boolean;
+}
 
 /** How much the voice reasons before it speaks (`reasoning.effort`); more is slower. */
 export const CALL_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
@@ -170,6 +195,8 @@ export interface CallSent {
   session: Record<string, unknown>;
   /** The session.update sent once the opening was said, turning automatic replies and interruptions on. */
   afterOpening?: Record<string, unknown>;
+  /** Who the call was for and why; absent on calls placed before it was asked. */
+  caller?: CallCaller;
 }
 
 /** A setting phone calls need, named where a person sets it. */
@@ -191,8 +218,14 @@ export interface CallsSetup {
   callerId?: string;
   /** The public address as saved, without a trailing slash. */
   publicUrl?: string;
-  /** The name the voice says it calls for, when one is set. */
+  /** About you: the name the voice gives (`calls.userName`). */
+  userName?: string;
+  /** A name saved by an earlier version as Calls on behalf of (`calls.onBehalfOf`); used as Your name while that is empty. */
   onBehalfOf?: string;
+  /** About you: a number the voice may give (`calls.callbackNumber`). */
+  callbackNumber?: string;
+  /** About you: what the voice may share about you (`calls.aboutMe`). */
+  aboutMe?: string;
   maxMinutes: number;
   model: string;
   voice: string;
@@ -208,8 +241,9 @@ export interface CallsSetup {
   /** Twilio speaks the disclosure when the callee answers (`calls.disclosureEnabled`, on unless false). */
   disclosureEnabled: boolean;
   reasoningEffort: CallReasoningEffort;
-  /** The name the voice says it calls for while Calls on behalf of is empty: the owner's profile name, else a stand-in. */
-  onBehalfOfDefault: string;
+  /** The name a call uses when the bot gives none, and where it comes from; empty with `from: "none"`, when the voice
+   * says it is calling for a client. */
+  nameDefault: { name: string; from: CallInfoSource };
   /** Each editable text: what calls use now, the built-in default, and whether a saved one replaces it. */
   prompts: Record<CallPromptKey, { value: string; default: string; custom: boolean }>;
   /** What is also sent to OpenAI Realtime and can't be edited as text, shown as it is sent: the end_call tool. */

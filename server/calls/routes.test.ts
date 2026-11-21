@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveCaller } from "./caller.ts";
 import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
 import { callsSettings, callsNotReadyText, type CallsConfigInput, type ReadyCalls } from "./config.ts";
 import { createCalls, type Calls } from "./manager.ts";
@@ -92,7 +93,7 @@ describe("place_call guardrails", () => {
     expect(out.body.text).toMatch(/^call_id c-[0-9a-f-]{36}\. Calling \+14155550100 now from \+14155550199/);
     expect(holds).toHaveLength(1);
     expect(holds[0]).toMatchObject({ tool: PLACE_CALL_TOOL, fullAccess: false, opaque: false, bot: { id: "bot-1", outbound: { policy: "ask" } } });
-    expect(holds[0]!.calls).toEqual([{ slug: "place_call", arguments: { to: "+14155550100", callee_name: "Luigi's", brief: "Ask whether they are open on Sunday." } }]);
+    expect(holds[0]!.calls).toEqual([{ slug: "place_call", arguments: { to: "+14155550100", call_type: "business", callee_name: "Luigi's", brief: "Ask whether they are open on Sunday." } }]);
     expect(provider.placed).toEqual(["+14155550100"]);
   });
 
@@ -116,9 +117,9 @@ describe("place_call guardrails", () => {
     expect((await route("status", { call_id: id })).body.text).toContain(`call_id ${id} to +14155550100: dialing.`);
     const transcript = String((await route("transcript", { call_id: id })).body.text);
     expect(transcript).toContain("No transcript.");
-    expect(transcript).toContain("Disclosure (spoken by Twilio when the callee answered): Hi, this is an AI assistant calling on behalf of Cesar. This call is recorded.");
-    expect(transcript).toContain("Opening: Greet the person you called warmly");
-    expect(transcript).toContain("Instructions:\n# Role and Objective\nYou are an AI assistant on a phone call for Cesar, speaking with the person you called at +14155550100.");
+    expect(transcript).toContain("Disclosure (spoken by Twilio when the callee answered): Hi, this is an AI assistant calling for Cesar. This call is recorded.");
+    expect(transcript).toContain("Opening: Say why you're calling in one short, friendly sentence, for example \"Hi! I'm calling to help with a quick request for Cesar.\"");
+    expect(transcript).toContain("Instructions:\n# Role and Objective\nYou are an AI assistant making a phone call for Cesar.");
     expect((await route("status", { call_id: "c-00000000-0000-0000-0000-000000000000" })).status).toBe(404);
     expect((await route("hang_up", { call_id: id })).body.text).toContain("Hanging up now.");
     expect(provider.hungUp).toEqual(["CA1"]);
@@ -128,7 +129,7 @@ describe("place_call guardrails", () => {
 describe("call limits", () => {
   it("asks the voice to wrap up, then hangs up at the time limit, and ends with that reason", async () => {
     vi.useFakeTimers();
-    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", caller: resolveCaller({ onBehalfOf: "Cesar" }, {}, undefined) });
     calls.status(record.id, { CallStatus: "in-progress" }, () => ({ kind: "answered" }));
     expect(calls.record(record.id)!.phase).toBe("in_progress");
     await vi.advanceTimersByTimeAsync(9 * 60_000);
@@ -141,7 +142,7 @@ describe("call limits", () => {
 
   it("hangs up an answered call whose audio stream never arrives, saying why", async () => {
     vi.useFakeTimers();
-    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", caller: resolveCaller({ onBehalfOf: "Cesar" }, {}, undefined) });
     calls.answer(record.id);
     await vi.advanceTimersByTimeAsync(20_000);
     expect(provider.hungUp).toEqual(["CA1"]);
@@ -151,7 +152,7 @@ describe("call limits", () => {
 
   it("ends the call by itself when the provider never confirms a hang-up", async () => {
     vi.useFakeTimers();
-    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", caller: resolveCaller({ onBehalfOf: "Cesar" }, {}, undefined) });
     await calls.hangUp(record.id, "hung_up");
     expect(calls.record(record.id)!.phase).toBe("dialing");
     await vi.advanceTimersByTimeAsync(20_000);
@@ -161,7 +162,7 @@ describe("call limits", () => {
   it("after a restart, hangs up a call that lost its voice", async () => {
     const other = mkdtempSync(join(tmpdir(), "omb-call-resume-"));
     mkdirSync(join(other, "calls"));
-    writeFileSync(join(other, "calls", "calls.json"), JSON.stringify({ calls: [{ id: "c-1", botId: "b", botName: "Iris", threadId: "t", to: "+14155550100", brief: "x", onBehalfOf: "C", provider: "twilio", providerCallId: "CA9", maxMinutes: 10, phase: "in_progress", createdAt: 1, answeredAt: 2, lines: 0 }] }));
+    writeFileSync(join(other, "calls", "calls.json"), JSON.stringify({ calls: [{ id: "c-1", botId: "b", botName: "Iris", threadId: "t", to: "+14155550100", brief: "x", caller: resolveCaller({ onBehalfOf: "C" }, {}, undefined), provider: "twilio", providerCallId: "CA9", maxMinutes: 10, phase: "in_progress", createdAt: 1, answeredAt: 2, lines: 0 }] }));
     const prompts: string[] = [];
     const resumed = createCalls({ dataDir: other, settings, provider: () => provider, openRealtime: () => { throw new Error("no"); }, card: { show: () => null, update: () => {} }, followUp: async (_r, prompt) => void prompts.push(prompt), log: () => {} });
     await resumed.resume();
@@ -175,9 +176,60 @@ describe("call limits", () => {
 
 describe("what get_call_transcript says was sent", () => {
   it("says plainly when no disclosure was spoken", async () => {
-    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", caller: resolveCaller({ onBehalfOf: "Cesar" }, {}, undefined) });
     const sent = { ...calls.detail(record.id)!.sent!, disclosureEnabled: false, disclosureSpoken: false };
-    expect(sentText(sent)).toContain("Disclosure: off, so nothing was said before the voice spoke (saved text, not spoken: Hi, this is an AI assistant calling on behalf of Cesar.");
+    expect(sentText(sent)).toContain("Disclosure: off, so nothing was said before the voice spoke (saved text, not spoken: Hi, this is an AI assistant calling for Cesar.");
     expect(sentText({ ...sent, disclosureEnabled: true, disclosureSpoken: true })).toContain("Disclosure (spoken by Twilio when the callee answered): Hi, this is");
+  });
+});
+
+describe("place_call's who-and-why fields", () => {
+  const BOOKING = {
+    to: "+14155550100", brief: "Book a men's haircut, any barber.", callee_name: "Sal's Barbershop", purpose: "book a haircut this Sunday", call_type: "business",
+    on_behalf_of: "Cesar", booking_name: "Cesar Hernandez", details: "Sunday between 10am and 1pm.", callback_number: "+15625550111",
+  };
+
+  it("refuses fields that don't fit, before asking anyone", async () => {
+    expect((await route("place", { ...BOOKING, call_type: "friend" })).status).toBe(400);
+    expect((await route("place", { ...BOOKING, purpose: "x".repeat(201) })).status).toBe(400);
+    expect((await route("place", { ...BOOKING, on_behalf_of: "x".repeat(81) })).status).toBe(400);
+    expect(holds).toHaveLength(0);
+  });
+
+  it("shows the person every field on the approval card, and keeps who the call is for and where each name came from", async () => {
+    const placed = await route("place", BOOKING);
+    expect(placed.status).toBe(200);
+    expect(holds[0]!.calls).toEqual([{ slug: "place_call", arguments: {
+      to: "+14155550100", call_type: "business", purpose: "book a haircut this Sunday", callee_name: "Sal's Barbershop", on_behalf_of: "Cesar",
+      booking_name: "Cesar Hernandez", callback_number: "+15625550111", details: "Sunday between 10am and 1pm.", brief: "Book a men's haircut, any barber.",
+    } }]);
+    const id = /call_id (c-[0-9a-f-]{36})/.exec(String(placed.body.text))![1]!;
+    const sent = calls.detail(id)!.sent!;
+    expect(sent.caller).toEqual({
+      callType: "business", purpose: "book a haircut this Sunday", userName: "Cesar", userNameFrom: "call", bookingName: "Cesar Hernandez", bookingNameFrom: "call",
+      callbackNumber: "+15625550111", callbackNumberFrom: "call", details: "Sunday between 10am and 1pm.", aboutMeIncluded: false,
+    });
+    expect(sent.disclosure).toBe("Hi, this is an AI assistant calling for Cesar. This call is recorded.");
+    expect(sent.opening).toContain("\"Hi! I'm calling to book a haircut this Sunday for Cesar.\"");
+    expect(sent.instructions).toContain("- Name for any booking: Cesar Hernandez.");
+    expect(sent.instructions).toContain("- Callback number you may give: +15625550111.");
+    const transcript = String((await route("transcript", { call_id: id })).body.text);
+    expect(transcript).toContain("Call type: business. Purpose: book a haircut this Sunday.");
+    expect(transcript).toContain("Name given: Cesar (from the call). Booking name: Cesar Hernandez (from the call).");
+    expect(transcript).toContain("Callback number: +15625550111 (from the call). Details: Sunday between 10am and 1pm..");
+  });
+
+  it("without a name from the call uses About you, then the profile, and with none calls for a client", async () => {
+    cfg.calls = { ...cfg.calls, userName: "Cesar H.", callbackNumber: "+15625550122", aboutMe: "Prefers mornings." };
+    const fromSettings = await route("place", { to: "+14155550100", brief: "Book a haircut.", purpose: "book a haircut" });
+    const id = /call_id (c-[0-9a-f-]{36})/.exec(String(fromSettings.body.text))![1]!;
+    expect(calls.detail(id)!.sent!.caller).toMatchObject({ userName: "Cesar H.", userNameFrom: "settings", callbackNumber: "+15625550122", callbackNumberFrom: "settings", details: "About Cesar H.: Prefers mornings.", aboutMeIncluded: true });
+    await calls.hangUp(id, "hung_up");
+    calls.status(id, { CallStatus: "completed" }, () => ({ kind: "ended", reason: "completed" }));
+
+    cfg.calls = { ...CONFIG.calls };
+    const fromProfile = await route("place", { to: "+14155550100", brief: "Book a haircut.", purpose: "book a haircut" });
+    const second = /call_id (c-[0-9a-f-]{36})/.exec(String(fromProfile.body.text))![1]!;
+    expect(calls.detail(second)!.sent!.caller).toMatchObject({ userName: "Cesar", userNameFrom: "profile" });
   });
 });

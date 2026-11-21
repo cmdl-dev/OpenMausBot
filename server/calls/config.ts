@@ -57,6 +57,7 @@ export const callsConfigSchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field", "off"]).optional(),
   maxTurnsWithoutReply: z.number().int().min(1).max(10).optional(),
   record: z.boolean().optional(),
+  disclosureEnabled: z.boolean().optional(),
   reasoningEffort: z.enum(CALL_REASONING_EFFORTS).optional(),
   ...Object.fromEntries(CALL_PROMPT_KEYS.map((key) => [key, z.string().max(12_000).optional()])) as Record<CallPromptKey, z.ZodOptional<z.ZodString>>,
 });
@@ -122,6 +123,8 @@ export interface ReadyCalls {
   maxTurnsWithoutReply: number;
   /** Each call is recorded on this computer. */
   record: boolean;
+  /** Twilio speaks the disclosure when the callee answers. */
+  disclosureEnabled: boolean;
   reasoningEffort: CallReasoningEffort;
   /** Each call text: the saved one, else the built-in default. */
   prompts: Record<CallPromptKey, string>;
@@ -162,6 +165,7 @@ export function callVoice(calls: CallsConfig | undefined) {
     maxTurnsWithoutReply: calls?.maxTurnsWithoutReply ?? DEFAULT_TURNS_WITHOUT_REPLY,
     maxMinutes: calls?.maxMinutes ?? DEFAULT_CALL_MINUTES,
     record: calls?.record !== false,
+    disclosureEnabled: calls?.disclosureEnabled !== false,
     reasoningEffort: calls?.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
   };
 }

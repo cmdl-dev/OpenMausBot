@@ -48,6 +48,7 @@ exactly what is missing.
 | Noise reduction (default `near_field`) | Settings → Phone calls | `calls.noiseReduction` | |
 | Voice turns without a reply before it says goodbye and hangs up (default 3) | Settings → Phone calls | `calls.maxTurnsWithoutReply` | |
 | Record calls on this computer (default on) | Settings → Phone calls → Record calls | `calls.record` | |
+| Speak disclosure (default on) | Settings → Phone calls → What the call says → Speak disclosure | `calls.disclosureEnabled` | |
 
 ## What a call says
 
@@ -56,8 +57,21 @@ the call says, with a Reset to default button each. A saved text is used exactly
 as written, with nothing added before or after; only its `{placeholders}` are
 filled: `{onBehalfOf}`, `{callee}` (the name, or "the person you called"),
 `{calleeName}`, `{to}`, `{botName}`, `{brief}`, `{disclosure}`,
-`{maxMinutes}` and `{recordingNotice}` ("This call is recorded." while
-recording is on, else "This call is transcribed.").
+`{maxMinutes}`, `{recordingNotice}` ("This call is recorded." while
+recording is on, else "This call is transcribed.") and `{disclosureHeard}`
+(while Speak disclosure is on: `When they answered, they heard: "<the
+disclosure>" Don't repeat it.`; while it is off: `Nothing was said to them
+before you spoke; they haven't been told this call is from an AI assistant.`).
+The default instructions use `{disclosureHeard}`, so they never claim the
+callee heard a disclosure that wasn't spoken. `{disclosure}` and
+`{recordingNotice}` work in the opening too, for a voice that says it itself.
+
+With Speak disclosure off, Twilio says nothing when the callee answers: the
+TwiML is only `<Connect><Stream>`, the call's audio reaches the voice at once,
+and no disclosure line is written into the transcript. The saved disclosure
+text is kept. In California every party has to agree to a call being
+recorded, and the TCPA restricts calls placed with an artificial voice; the
+switch is the owner's decision.
 
 | Text | `config.json` | Sent |
 | --- | --- | --- |
@@ -92,6 +106,12 @@ no turn-taking wording. Turn-taking comes from turn detection: a model told
 to "stop and wait" says so out loud. A saved text that is exactly an earlier
 built-in default counts as unset, so it moves to the current default; a text
 you changed stays as you wrote it.
+
+The voice says the opening once. Until the opening has been said, the
+session holds automatic replies and interruptions back, so a "Hello?" the
+instant the callee answers neither starts a second greeting nor cuts the
+first; a second `session.update` then turns them on as configured. Both are
+in the call's details.
 
 The voice never hangs up without a spoken goodbye: if it calls end_call
 without one, it is asked for the closing first, and the call hangs up once

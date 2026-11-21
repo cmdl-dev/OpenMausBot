@@ -7,7 +7,7 @@ import type { OutboundHold, OutboundHoldBot } from "../outbound-hold.ts";
 import { callsSettings, callsNotReadyText, type CallsConfigInput, type ReadyCalls } from "./config.ts";
 import { createCalls, type Calls } from "./manager.ts";
 import type { CallProvider } from "./provider.ts";
-import { createCallRoutes, PLACE_CALL_TOOL } from "./routes.ts";
+import { createCallRoutes, PLACE_CALL_TOOL, sentText } from "./routes.ts";
 
 const SID = `AC${"b".repeat(32)}`;
 const CONFIG: CallsConfigInput = { calls: { accountSid: SID, authToken: "tok-abcdefghijkl", callerId: "+14155550199", publicUrl: "https://calls.example.com" }, openai: { key: "sk-x" } };
@@ -116,7 +116,7 @@ describe("place_call guardrails", () => {
     expect((await route("status", { call_id: id })).body.text).toContain(`call_id ${id} to +14155550100: dialing.`);
     const transcript = String((await route("transcript", { call_id: id })).body.text);
     expect(transcript).toContain("No transcript.");
-    expect(transcript).toContain("Disclosure (spoken by Twilio): Hi, this is an AI assistant calling on behalf of Cesar. This call is recorded.");
+    expect(transcript).toContain("Disclosure (spoken by Twilio when the callee answered): Hi, this is an AI assistant calling on behalf of Cesar. This call is recorded.");
     expect(transcript).toContain("Opening: Greet the person you called warmly");
     expect(transcript).toContain("Instructions:\n# Role and Objective\nYou are an AI assistant on a phone call for Cesar, speaking with the person you called at +14155550100.");
     expect((await route("status", { call_id: "c-00000000-0000-0000-0000-000000000000" })).status).toBe(404);
@@ -170,5 +170,14 @@ describe("call limits", () => {
     expect(prompts).toHaveLength(1);
     resumed.close();
     rmSync(other, { recursive: true, force: true });
+  });
+});
+
+describe("what get_call_transcript says was sent", () => {
+  it("says plainly when no disclosure was spoken", async () => {
+    const record = await calls.place({ botId: "bot-1", botName: "Iris", threadId: "t", to: "+14155550100", brief: "Ask.", onBehalfOf: "Cesar" });
+    const sent = { ...calls.detail(record.id)!.sent!, disclosureEnabled: false, disclosureSpoken: false };
+    expect(sentText(sent)).toContain("Disclosure: off, so nothing was said before the voice spoke (saved text, not spoken: Hi, this is an AI assistant calling on behalf of Cesar.");
+    expect(sentText({ ...sent, disclosureEnabled: true, disclosureSpoken: true })).toContain("Disclosure (spoken by Twilio when the callee answered): Hi, this is");
   });
 });

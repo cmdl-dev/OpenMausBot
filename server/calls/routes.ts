@@ -54,7 +54,9 @@ const ALWAYS_ASK = { policy: "ask" } as const;
 export function sentText(sent: CallSent): string {
   return [
     `Sent for this call (model ${sent.model}, voice ${sent.voice}, transcription ${sent.transcriptionModel}, turn detection ${JSON.stringify(sent.turnDetection)}, noise reduction ${sent.noiseReduction}, up to ${sent.maxMinutes} min, goodbye after ${sent.maxTurnsWithoutReply} turns without a reply):`,
-    `Disclosure (spoken by Twilio): ${sent.disclosure}`,
+    sent.disclosureEnabled === false
+      ? `Disclosure: off, so nothing was said before the voice spoke (saved text, not spoken: ${sent.disclosure})`
+      : `Disclosure (spoken by Twilio when the callee answered): ${sent.disclosure}`,
     `Opening: ${sent.opening}`,
     `Instructions:\n${sent.instructions}`,
   ].join("\n");

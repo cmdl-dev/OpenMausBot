@@ -83,6 +83,11 @@ describe("phone calls with nothing set up", () => {
       maxTurnsWithoutReply: 5, turnDetection: { type: "semantic_vad", eagerness: "low" }, noiseReduction: "far_field",
     });
     expect((await api("PUT", "/api/config", { calls: { maxTurnsWithoutReply: 99 } })).status).toBe(400);
+    expect((await api("GET", "/api/calls/setup")).body.disclosureEnabled).toBe(true);
+    expect((await api("PUT", "/api/config", { calls: { disclosureEnabled: false } })).status).toBe(200);
+    expect((await api("GET", "/api/calls/setup")).body.disclosureEnabled).toBe(false);
+    expect((await api("PUT", "/api/config", { calls: { disclosureEnabled: null } })).status).toBe(200);
+    expect((await api("GET", "/api/calls/setup")).body.disclosureEnabled).toBe(true);
     expect((await api("PUT", "/api/config", { calls: { instructions: null, maxTurnsWithoutReply: null, turnDetection: null, noiseReduction: null } })).status).toBe(200);
     expect((await api("GET", "/api/calls/setup")).body).toMatchObject({
       prompts: { instructions: { value: before.prompts.instructions.default, custom: false } }, maxTurnsWithoutReply: 3, turnDetection: { type: "semantic_vad", eagerness: "auto" }, noiseReduction: "near_field", reasoningEffort: "low",

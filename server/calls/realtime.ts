@@ -68,9 +68,24 @@ export function realtimeSession(input: {
   };
 }
 
+/** The session split in two: the first holds replies and interruptions back, so nothing the callee says while the
+ * opening is being said (a "Hello?" the instant they answer) starts a second greeting or cuts the first; the second,
+ * sent once the opening is said, turns them on as configured. */
+export function openingSessions(session: Record<string, unknown>): { session: Record<string, unknown>; afterOpening: Record<string, unknown> } {
+  const audio = session.audio as { input: { turn_detection: Record<string, unknown> | null } & Record<string, unknown> } & Record<string, unknown>;
+  const configured = audio.input.turn_detection;
+  if (!configured) return { session, afterOpening: { type: "realtime", audio: { input: { turn_detection: null } } } };
+  return {
+    session: { ...session, audio: { ...audio, input: { ...audio.input, turn_detection: { ...configured, create_response: false, interrupt_response: false } } } },
+    afterOpening: { type: "realtime", audio: { input: { turn_detection: configured } } },
+  };
+}
+
 export interface RealtimeSession {
   /** Sent whole as the session.update. */
   session: Record<string, unknown>;
+  /** Sent as a session.update once the opening has been said. */
+  afterOpening?: Record<string, unknown>;
   /** The first response's instructions, sent once. */
   opening: string;
   /** Said when the voice has taken `maxTurnsWithoutReply` turns in a row with nothing from the callee; then it hangs up. */
@@ -157,6 +172,8 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
   let farewell: { reason: "completed" | "no_reply"; responseId?: string } | null = null;
   const spokeIn = new Map<string, string[]>();
   let lastSpoken: string | null = null;
+  /** The opening's response, until it is done: the callee can't interrupt it or start a reply yet. */
+  let opening: { responseId?: string } | null = null;
   let ending: { reason: "completed" | "no_reply"; why: string; timer: NodeJS.Timeout; done: boolean } | null = null;
   const { recorder } = session;
   let streamStart: number | null = null;
@@ -254,6 +271,7 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
         if (ready) return;
         ready = true;
         toRealtime({ type: "input_audio_buffer.clear" });
+        if (session.afterOpening) opening = {};
         respond({ instructions: session.opening });
         events.debug("opening_sent");
         return;
@@ -271,6 +289,7 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
           return;
         }
         activeResponse = id;
+        if (opening && opening.responseId === undefined) opening.responseId = id;
         if (transcribing.size) repliesAwaitingTranscript += 1;
         else turnsWithoutReply += 1;
         events.debug("response_created", { turnsWithoutReply, awaitingTranscript: transcribing.size > 0 });
@@ -280,6 +299,11 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
         const id = text(field(event.response, "id"));
         events.debug("response_done", { status: text(field(event.response, "status")) || "?" });
         if (activeResponse === id) activeResponse = null;
+        if (opening?.responseId === id) {
+          opening = null;
+          toRealtime({ type: "session.update", session: session.afterOpening });
+          events.debug("replies_on");
+        }
         if (farewell?.responseId === id) return startEnding(farewell.reason, farewell.reason === "no_reply" ? "the callee didn't answer" : "said goodbye");
         if (guard()) return;
         if (queuedResponse && !activeResponse) {
@@ -331,7 +355,7 @@ export function bridgeCall(twilio: WebSocket, openRealtime: () => WebSocket, ses
       case "input_audio_buffer.speech_started":
         if (typeof event.item_id === "string") calleeStarted.set(event.item_id, now());
         events.debug("speech_started");
-        if (!farewell && !ending) interrupt();
+        if (!farewell && !ending && !opening) interrupt();
         return;
       case "input_audio_buffer.speech_stopped":
         events.debug("speech_stopped");

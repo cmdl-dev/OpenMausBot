@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { e164, numberRefusal, numberRule } from "../../shared/phone-calls.ts";
 import { callsConfigWithEnv, callsNotReadyText, callsOffered, callsSettings, callsSetup, publicBase } from "./config.ts";
-import { callTexts, customPrompt, DEFAULT_CALL_PROMPTS, phoneCallsPrompt, realName, renderTemplate, RETIRED_CALL_PROMPTS } from "./prompt.ts";
+import { callTexts, customPrompt, DEFAULT_CALL_PROMPTS, NOTHING_HEARD, phoneCallsPrompt, realName, renderTemplate, RETIRED_CALL_PROMPTS } from "./prompt.ts";
 import { callPrompts } from "./config.ts";
 
 const SID = `AC${"a".repeat(32)}`;
@@ -26,7 +26,7 @@ describe("phone call settings", () => {
       accountSid: SID, authToken: "token-123", callerId: "+14155550100", publicUrl: "https://calls.example.com", openaiKey: "sk-test",
       maxMinutes: 10, model: "gpt-realtime-2.1-mini", voice: "marin", transcriptionModel: "gpt-transcribe", allow: [], deny: [],
       turnDetection: { type: "semantic_vad", eagerness: "auto" }, noiseReduction: "near_field", maxTurnsWithoutReply: 3, reasoningEffort: "low",
-      prompts: DEFAULT_CALL_PROMPTS, record: true,
+      prompts: DEFAULT_CALL_PROMPTS, record: true, disclosureEnabled: true,
     });
     expect(callsNotReadyText(FULL)).toBeNull();
   });
@@ -104,7 +104,7 @@ describe("the bot's instructions about phone calls", () => {
 });
 
 describe("what a call says", () => {
-  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10, recorded: false };
+  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10, recorded: false, disclosureSpoken: true };
 
   it("never greets a stand-in name like \"You\" or a blank one", () => {
     for (const stand of ["You", " you ", "", "  ", "them", "Unknown", "N/A", "[name]", "the person"]) expect(realName(stand), stand).toBeUndefined();
@@ -198,5 +198,38 @@ describe("the built-in call texts", () => {
     expect(callsSetup(FULL, true)).toMatchObject({ model: "gpt-realtime-2.1-mini", voice: "marin", turnDetection: { type: "semantic_vad", eagerness: "auto" }, reasoningEffort: "low", onBehalfOfDefault: "the person I work for" });
     expect(callsSetup({ ...FULL, profile: { name: "GrandStein" } }, true).onBehalfOfDefault).toBe("GrandStein");
     expect(callsSetup({ ...FULL, calls: { ...FULL.calls, reasoningEffort: "minimal" } }, true).reasoningEffort).toBe("minimal");
+  });
+});
+
+describe("turning the spoken disclosure off", () => {
+  const CALL = { botName: "Iris", brief: "Ask how their day is going.", onBehalfOf: "GrandStein", to: "+15625550100", maxMinutes: 10, recorded: true };
+
+  it("is on unless turned off, and setup says which", () => {
+    expect(callsSettings(FULL).ready?.disclosureEnabled).toBe(true);
+    expect(callsSetup(FULL, true).disclosureEnabled).toBe(true);
+    expect(callsSetup({ ...FULL, calls: { ...FULL.calls, disclosureEnabled: false } }, true).disclosureEnabled).toBe(false);
+  });
+
+  it("tells the voice what the callee heard only when Twilio said it", () => {
+    const spoken = callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, disclosureSpoken: true });
+    expect(spoken.instructions).toContain("- When they answered, they heard: \"Hi, this is an AI assistant calling on behalf of GrandStein. This call is recorded.\" Don't repeat it.");
+    const silent = callTexts(DEFAULT_CALL_PROMPTS, { ...CALL, disclosureSpoken: false });
+    expect(silent.instructions).toContain(`- ${NOTHING_HEARD}`);
+    expect(silent.instructions).not.toMatch(/they heard/i);
+    expect(DEFAULT_CALL_PROMPTS.instructions).toContain("\n- {disclosureHeard}\n");
+  });
+
+  it("keeps the default opening exactly as it was, and lets a saved opening say the disclosure itself", () => {
+    expect(DEFAULT_CALL_PROMPTS.opening).toBe("Greet {callee} warmly, say in one sentence that you're calling for {onBehalfOf} and why, and ask your first question.");
+    for (const key of ["opening", "closing", "wrapUp", "goodbye", "defaultBrief", "endCallDescription"] as const) expect(DEFAULT_CALL_PROMPTS[key], key).not.toMatch(/\{(?:disclosure|recordingNotice|disclosureHeard)\}/);
+    const opening = callTexts(callPrompts({ opening: "Say: {disclosure} Then mention: {recordingNotice}" }), { ...CALL, disclosureSpoken: false }).opening;
+    expect(opening).toBe("Say: Hi, this is an AI assistant calling on behalf of GrandStein. This call is recorded. Then mention: This call is recorded.");
+  });
+
+  it("moves a saved copy of the previous default instructions to the current one", () => {
+    const previous = RETIRED_CALL_PROMPTS.instructions![0]!;
+    expect(previous).toContain("- When they answered, they heard: \"{disclosure}\" Don't repeat it.");
+    expect(customPrompt("instructions", previous)).toBe(false);
+    expect(callPrompts({ instructions: previous }).instructions).toBe(DEFAULT_CALL_PROMPTS.instructions);
   });
 });

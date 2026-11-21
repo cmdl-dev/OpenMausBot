@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { describe, expect, it } from "vitest";
 import type { CallLine } from "../../shared/phone-calls.ts";
-import { bridgeCall, realtimeSession, reasoningModel, type BridgeEvents } from "./realtime.ts";
+import { bridgeCall, openingSessions, realtimeSession, reasoningModel, type BridgeEvents } from "./realtime.ts";
 
 class FakeSocket extends EventEmitter {
   readyState: number = WebSocket.OPEN;
@@ -255,5 +255,62 @@ describe("the session sent to OpenAI", () => {
     expect(session).not.toHaveProperty("reasoning");
     expect(["gpt-realtime-2", "gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-3-preview"].every(reasoningModel)).toBe(true);
     expect(["gpt-realtime", "gpt-realtime-1.5", "gpt-realtime-mini", "gpt-4o-realtime-preview"].some(reasoningModel)).toBe(false);
+  });
+});
+
+describe("the opening, with the stream starting the moment the callee answers", () => {
+  function opened() {
+    const twilio = new FakeSocket();
+    const realtime = new FakeSocket();
+    const lines: CallLine[] = [];
+    const debug: string[] = [];
+    const split = openingSessions(SESSION);
+    bridgeCall(twilio as unknown as WebSocket, () => realtime as unknown as WebSocket, {
+      session: split.session, afterOpening: split.afterOpening, opening: "OPENING", goodbye: "GOODBYE", closing: "CLOSING", maxTurnsWithoutReply: 3,
+    }, {
+      started: () => {}, line: (line) => void lines.push(line), hangUp: () => {}, failed: () => {}, closed: () => {}, log: () => {}, debug: (type) => void debug.push(type),
+    }, () => 1_000);
+    twilio.receive({ event: "start", streamSid: "MZ1", start: { streamSid: "MZ1", callSid: "CA1" } });
+    realtime.emit("open");
+    return { twilio, realtime, lines, debug, split };
+  }
+
+  it("holds replies and interruptions back until the opening is said, then turns them on as configured", () => {
+    const { split } = opened();
+    expect((split.session.audio as { input: { turn_detection: unknown } }).input.turn_detection).toEqual({
+      type: "server_vad", threshold: 0.6, prefix_padding_ms: 300, silence_duration_ms: 700, create_response: false, interrupt_response: false,
+    });
+    expect(split.afterOpening).toEqual({ type: "realtime", audio: { input: { turn_detection: (SESSION.audio as { input: { turn_detection: unknown } }).input.turn_detection } } });
+  });
+
+  it("drops the callee's \"Hello?\" from before the voice is ready, says the opening once, and doesn't greet again or get cut off by it", () => {
+    const c = opened();
+    expect(c.realtime.sent[0]).toEqual({ type: "session.update", session: c.split.session });
+    c.twilio.receive({ event: "media", media: { track: "inbound", payload: "SEVMTE8/" } });
+    c.realtime.receive({ type: "session.updated" });
+    expect(c.realtime.of("input_audio_buffer.append")).toEqual([]);
+    expect(c.realtime.of("input_audio_buffer.clear")).toHaveLength(1);
+    c.realtime.receive({ type: "response.created", response: { id: "opening" } });
+    c.realtime.receive({ type: "response.output_audio.delta", response_id: "opening", item_id: "o1", delta: Buffer.alloc(1_600).toString("base64") });
+    c.twilio.receive({ event: "media", media: { track: "inbound", payload: "SEVMTE8/" } });
+    c.realtime.receive({ type: "input_audio_buffer.speech_started", item_id: "in_1" });
+    c.realtime.receive({ type: "input_audio_buffer.committed", item_id: "in_1" });
+    c.realtime.receive({ type: "conversation.item.input_audio_transcription.completed", item_id: "in_1", transcript: "Hello?" });
+    expect(c.twilio.of("clear", "event")).toEqual([]);
+    expect(c.realtime.of("conversation.item.truncate")).toEqual([]);
+    c.realtime.receive({ type: "session.updated" });
+    c.realtime.receive({ type: "response.output_audio_transcript.done", item_id: "o1", transcript: "Hi, I'm calling for GrandStein to ask how your day is going." });
+    c.realtime.receive({ type: "response.done", response: { id: "opening", status: "completed" } });
+    expect(c.realtime.of("response.create")).toEqual([{ type: "response.create", response: { instructions: "OPENING" } }]);
+    expect(c.realtime.of("session.update")).toEqual([
+      { type: "session.update", session: c.split.session },
+      { type: "session.update", session: c.split.afterOpening },
+    ]);
+    c.realtime.receive({ type: "session.updated" });
+    expect(c.realtime.of("response.create")).toHaveLength(1);
+    expect(c.lines.map((line) => line.speaker)).toEqual(["callee"]);
+    c.realtime.receive({ type: "input_audio_buffer.speech_started", item_id: "in_2" });
+    expect(c.twilio.of("clear", "event")).toHaveLength(1);
+    expect(c.debug).toContain("replies_on");
   });
 });

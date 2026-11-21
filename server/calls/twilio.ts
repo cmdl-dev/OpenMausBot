@@ -145,9 +145,10 @@ export function formParams(body: string): Record<string, string | string[]> {
 
 const xml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 
-/** The answered call: Twilio says the disclosure itself, then connects the call's audio both ways to our socket. */
-export function connectStreamTwiml(input: { disclosure: string; streamUrl: string; language?: string }): string {
-  const say = `<Say${input.language ? ` language="${xml(input.language)}"` : ""}>${xml(input.disclosure)}</Say>`;
+/** The answered call: Twilio says the disclosure itself, when there is one to say, then connects the call's audio both
+ * ways to our socket. */
+export function connectStreamTwiml(input: { disclosure?: string; streamUrl: string; language?: string }): string {
+  const say = input.disclosure ? `<Say${input.language ? ` language="${xml(input.language)}"` : ""}>${xml(input.disclosure)}</Say>` : "";
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${say}<Connect><Stream url="${xml(input.streamUrl)}"/></Connect></Response>`;
 }
 

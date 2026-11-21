@@ -9,7 +9,7 @@ import { writeFileAtomic } from "../atomic.ts";
 import type { ReadyCalls } from "./config.ts";
 import { callTexts, summaryPrompt } from "./prompt.ts";
 import type { CallProvider, ProviderProgress } from "./provider.ts";
-import { bridgeCall, realtimeSession, reasoningModel, type CallBridge } from "./realtime.ts";
+import { bridgeCall, openingSessions, realtimeSession, reasoningModel, type CallBridge } from "./realtime.ts";
 import { connectStreamTwiml, hangUpTwiml } from "./twilio.ts";
 import { createCallRecorder, repairRecording, type CallRecorder } from "./recording.ts";
 
@@ -302,13 +302,14 @@ export function createCalls(deps: CallDeps) {
         onBehalfOf: (settings.onBehalfOf?.trim() || input.onBehalfOf).slice(0, 80), provider: "twilio", maxMinutes: settings.maxMinutes,
         phase: "dialing", createdAt: now(), lines: 0,
       };
-      const texts = callTexts(settings.prompts, { ...record, recorded: settings.record });
+      const texts = callTexts(settings.prompts, { ...record, recorded: settings.record, disclosureSpoken: settings.disclosureEnabled });
       record.sent = {
         disclosure: texts.disclosure, instructions: texts.instructions, opening: texts.opening, closing: texts.closing, wrapUp: texts.wrapUp, goodbye: texts.goodbye,
         model: settings.model, voice: settings.voice, transcriptionModel: settings.transcriptionModel, turnDetection: settings.turnDetection,
         noiseReduction: settings.noiseReduction, maxTurnsWithoutReply: settings.maxTurnsWithoutReply, maxMinutes: settings.maxMinutes, recorded: settings.record,
+        disclosureEnabled: settings.disclosureEnabled, disclosureSpoken: false,
         ...(reasoningModel(settings.model) ? { reasoningEffort: settings.reasoningEffort } : {}),
-        session: realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription }),
+        ...openingSessions(realtimeSession({ ...settings, instructions: texts.instructions, endCallDescription: texts.endCallDescription })),
       };
       records.set(record.id, record);
       const token = randomBytes(24).toString("hex");
@@ -340,14 +341,17 @@ export function createCalls(deps: CallDeps) {
       const running = live.get(id);
       if (!record?.sent || isEnded(record) || !running || "refusal" in settings) return hangUpTwiml();
       const { disclosure } = record.sent;
+      const speak = record.sent.disclosureEnabled !== false;
+      record.sent.disclosureSpoken = speak;
       answered(record);
       running.timers.push(setTimeout(() => {
         if (running.bridge || isEnded(record)) return;
         record.endDetail = NO_AUDIO_DETAIL;
         void hangUp(id, "error");
       }, STREAM_WAIT_MS));
-      addLine(record, { speaker: "note", text: disclosure, at: now() });
-      return connectStreamTwiml({ disclosure, streamUrl: urls(settings, record, running.token).streamUrl });
+      if (speak) addLine(record, { speaker: "note", text: disclosure, at: now() });
+      else save();
+      return connectStreamTwiml({ ...(speak ? { disclosure } : {}), streamUrl: urls(settings, record, running.token).streamUrl });
     },
 
     status(id: string, params: { CallStatus?: string; CallDuration?: string }, progress: (status: string | undefined, duration?: string) => ProviderProgress): void {
@@ -376,7 +380,8 @@ export function createCalls(deps: CallDeps) {
         save();
       }
       running.bridge = bridgeCall(socket, () => deps.openRealtime(settings), {
-        session: sent.session, opening: sent.opening, goodbye: sent.goodbye, closing: sent.closing ?? sent.goodbye, maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
+        session: sent.session, ...(sent.afterOpening ? { afterOpening: sent.afterOpening } : {}), opening: sent.opening, goodbye: sent.goodbye, closing: sent.closing ?? sent.goodbye,
+        maxTurnsWithoutReply: sent.maxTurnsWithoutReply,
         ...(running.recorder ? { recorder: running.recorder } : {}),
       }, {
         started: () => answered(record),

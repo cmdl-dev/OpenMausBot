@@ -87,6 +87,12 @@ describe("Twilio calls", () => {
     expect(answeredByMachine(undefined)).toBe(false);
   });
 
+  it("connects the stream at once, with no <Say>, when there is no disclosure to speak", () => {
+    expect(connectStreamTwiml({ streamUrl: "wss://x/calls/twilio/stream/c-1/abc" })).toBe(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Connect><Stream url=\"wss://x/calls/twilio/stream/c-1/abc\"/></Connect></Response>",
+    );
+  });
+
   it("says the disclosure before connecting the stream, escaping what it writes", () => {
     expect(connectStreamTwiml({ disclosure: "Hi, this is an AI assistant calling on behalf of Ann & Bo.", streamUrl: "wss://x/calls/twilio/stream/c-1/abc" })).toBe(
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Say>Hi, this is an AI assistant calling on behalf of Ann &amp; Bo.</Say><Connect><Stream url=\"wss://x/calls/twilio/stream/c-1/abc\"/></Connect></Response>",

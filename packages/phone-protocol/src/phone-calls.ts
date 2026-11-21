@@ -100,6 +100,7 @@ export const CALL_PLACEHOLDERS: ReadonlyArray<{ name: string; meaning: string }>
   { name: "brief", meaning: "The bot's brief for this call." },
   { name: "disclosure", meaning: "The disclosure line, as spoken." },
   { name: "maxMinutes", meaning: "The call's time limit in minutes." },
+  { name: "disclosureHeard", meaning: "While Speak disclosure is on: When they answered, they heard: \"<the disclosure>\" Don't repeat it. While it is off: Nothing was said to them before you spoke; they haven't been told this call is from an AI assistant." },
   { name: "recordingNotice", meaning: "\"This call is recorded.\" while recording is on, else \"This call is transcribed.\"" },
 ];
 
@@ -160,7 +161,15 @@ export interface CallSent {
   maxMinutes: number;
   /** The call was recorded on this computer. */
   recorded: boolean;
+  /** Speak disclosure was on for this call. */
+  disclosureEnabled?: boolean;
+  /** Twilio spoke `disclosure` when the callee answered: false until then, and for a call nobody answered. */
+  disclosureSpoken?: boolean;
+  /** The session.update that starts the voice, exactly as sent: replies and interruptions wait until the opening has
+   * been said. */
   session: Record<string, unknown>;
+  /** The session.update sent once the opening was said, turning automatic replies and interruptions on. */
+  afterOpening?: Record<string, unknown>;
 }
 
 /** A setting phone calls need, named where a person sets it. */
@@ -196,6 +205,8 @@ export interface CallsSetup {
   maxTurnsWithoutReply: number;
   /** Each call is recorded on this computer (`calls.record`, on unless false). */
   record: boolean;
+  /** Twilio speaks the disclosure when the callee answers (`calls.disclosureEnabled`, on unless false). */
+  disclosureEnabled: boolean;
   reasoningEffort: CallReasoningEffort;
   /** The name the voice says it calls for while Calls on behalf of is empty: the owner's profile name, else a stand-in. */
   onBehalfOfDefault: string;
